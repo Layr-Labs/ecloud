@@ -1,0 +1,30 @@
+# node
+node_modules/
+.pnpm-store/
+
+# builds
+dist/
+*.tsbuildinfo
+
+# logs
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# env
+.env
+.env.*
+!.env.example
+
+# editor
+.idea/
+.vscode/
+.DS_Store
+
+# lock artifacts
+*.lock
+
+# oclif autocomplete cache (if enabled later)
+_autocomplete/
