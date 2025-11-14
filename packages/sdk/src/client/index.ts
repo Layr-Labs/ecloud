@@ -21,7 +21,6 @@ export interface CreateClientConfig {
   privateKey: `0x${string}`;
   environment: Environment | string;
   rpcUrl?: string;
-  apiBaseUrl?: string;
 }
 
 export interface CoreContext {
@@ -30,7 +29,6 @@ export interface CoreContext {
   account: ReturnType<typeof privateKeyToAccount>;
   wallet: ReturnType<typeof createWalletClient>;
   publicClient: ReturnType<typeof createPublicClient>;
-  apiBaseUrl?: string;
   privateKey: `0x${string}`;
   rpcUrl: string;
   environment: string;
@@ -71,7 +69,6 @@ export function createECloudClient(cfg: CreateClientConfig): ecloudClient {
     wallet,
     publicClient,
     verbose: cfg.verbose,
-    apiBaseUrl: cfg.apiBaseUrl,
     privateKey: cfg.privateKey,
     rpcUrl: rpc,
     environment: cfg.environment,

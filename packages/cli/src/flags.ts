@@ -17,11 +17,6 @@ export const commonFlags = {
     description: "RPC URL to connect to blockchain",
     env: "ECLOUD_RPC_URL",
   }),
-  "api-base-url": Flags.string({
-    required: false,
-    description: "RPC URL to connect to blockchain",
-    env: "ECLOUD_API_BASE_URL",
-  }),
   verbose: Flags.boolean({
     required: false,
     description: "Enable verbose logging (default: false)",

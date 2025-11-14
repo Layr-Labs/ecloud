@@ -74,7 +74,6 @@ npx ecloud app deploy \
 - `--private-key`: Your Ethereum private key (or set `ECLOUD_PRIVATE_KEY` env var)
 - `--environment`: Target environment (`sepolia` or `mainnet-alpha`)
 - `--rpc-url`: Custom RPC URL (optional, or set `ECLOUD_RPC_URL` env var)
-- `--api-base-url`: API base URL (optional, or set `ECLOUD_API_BASE_URL` env var)
 
 **Example:**
 ```bash
