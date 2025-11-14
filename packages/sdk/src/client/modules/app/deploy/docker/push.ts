@@ -204,7 +204,6 @@ export async function pushDockerImage(
     });
 
     process.on("error", (error) => {
-      hasError = true;
       const msg = error.message || String(error);
       if (msg.includes("command not found") || msg.includes("ENOENT")) {
         reject(

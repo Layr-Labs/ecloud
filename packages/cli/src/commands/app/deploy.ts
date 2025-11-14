@@ -1,7 +1,7 @@
 import { Command, Flags } from "@oclif/core";
+import { logVisibility } from "@ecloud/sdk";
 import { loadClient } from "../../client";
 import { commonFlags } from "../../flags";
-import { logVisibility } from "packages/sdk/src/client/common/types";
 
 export default class AppDeploy extends Command {
   static description = "Deploy new app";

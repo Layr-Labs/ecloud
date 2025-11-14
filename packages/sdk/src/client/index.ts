@@ -9,6 +9,9 @@ import { createAppModule, type AppModule } from "./modules/app";
 import type { WalletClient, Transport, Account } from "viem";
 import { getEnvironmentConfig } from "./common/config/environment";
 
+// Export all types
+export * from "./common/types";
+
 // special case on createApp - we don't need the client to run it
 export { createApp, CreateAppOpts } from "./modules/app/create/create";
 
