@@ -32,7 +32,7 @@ const ENVIRONMENTS: Record<string, Omit<EnvironmentConfig, "chainID">> = {
       ChainAddresses[SEPOLIA_CHAIN_ID].PermissionController,
     erc7702DelegatorAddress: CommonAddresses.ERC7702Delegator,
     kmsServerURL: "http://10.128.15.203:8080",
-    userApiServerURL: "https://35.190.43.182",
+    userApiServerURL: "https://userapi-compute-sepolia-prod.eigencloud.xyz",
     defaultRPCURL: "https://ethereum-sepolia-rpc.publicnode.com",
   },
   "mainnet-alpha": {
