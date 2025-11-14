@@ -5,16 +5,19 @@
     "ecloud": "./bin/run.js"
   },
   "dependencies": {
+    "@inquirer/prompts": "^7.10.1",
     "@layr-labs/ecloud-sdk": "workspace:*",
     "@oclif/core": "^4.8.0",
-    "viem": "^2.38.6",
     "dockerode": "^4.0.9",
     "handlebars": "^4.7.8",
+    "js-yaml": "^4.1.1",
     "node-forge": "^1.3.1",
-    "undici": "^7.16.0"
+    "undici": "^7.16.0",
+    "viem": "^2.38.6"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && npm run build:copy-templates",
+    "build:copy-templates": "node scripts/copy-templates.js",
     "lint": "eslint .",
     "format": "prettier --check .",
     "format:fix": "prettier --write .",

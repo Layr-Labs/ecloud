@@ -1,16 +1,26 @@
 /**
  * Main deploy function
- * 
+ *
  * This is the main entry point for deploying applications to ecloud TEE.
  * It orchestrates all the steps: build, push, encrypt, and deploy on-chain.
  */
 
-import { DeployOptions, DeployResult, Logger } from './types';
-import { getEnvironmentConfig } from './config/environment';
-import { ensureDockerIsRunning } from './docker/build';
-import { prepareRelease } from './release/prepare';
-import { deployApp } from './contract/caller';
-import { watchUntilRunning } from './contract/watcher';
+import { DeployOptions, DeployResult, Logger } from "../../../common/types";
+import { ensureDockerIsRunning } from "./docker/build";
+import { prepareRelease } from "./release/prepare";
+import { deployApp, calculateAppID } from "./contract/caller";
+import { watchUntilRunning } from "./contract/watcher";
+import {
+  getDockerfileInteractive,
+  getImageReferenceInteractive,
+  getOrPromptAppName,
+  getEnvFileInteractive,
+  getInstanceTypeInteractive,
+  getLogSettingsInteractive,
+} from "./utils/prompts";
+import { doPreflightChecks, PreflightContext } from "./utils/preflight";
+import { UserApiClient } from "../../../common/utils/userapi";
+import { setAppName } from "./registry/appNames";
 
 /**
  * Default logger (console-based)
@@ -23,83 +33,144 @@ const defaultLogger: Logger = {
 };
 
 /**
- * Deploy an application to ecloud TEE
+ * Deploy an application to ECloud TEE
+ *
+ * This function follows the exact same flow as the Go CLI deploy command:
+ * 1. Preflight checks (auth, network, etc.)
+ * 2. Ensure Docker is running
+ * 3. Check for Dockerfile before asking for image reference
+ * 4. Get image reference (context-aware based on Dockerfile decision)
+ * 5. Get app name upfront (before any expensive operations)
+ * 6. Get environment file configuration
+ * 7. Get instance type selection
+ * 8. Get log settings from flags or interactive prompt
+ * 9. Generate random salt
+ * 10. Get app ID (calculate from salt and address)
+ * 11. Prepare the release (includes build/push if needed)
+ * 12. Deploy the app
+ * 13. Save the app name mapping
+ * 14. Watch until app is running
  */
 export async function deploy(
-  options: DeployOptions,
-  logger: Logger = defaultLogger
+  options: Partial<DeployOptions>,
+  logger: Logger = defaultLogger,
 ): Promise<DeployResult> {
-  logger.info('Starting deployment...');
+  // 1. Do preflight checks (auth, network, etc.) first
+  logger.debug("Performing preflight checks...");
+  const preflightCtx = await doPreflightChecks(options, logger);
 
-  // 1. Preflight checks
-  logger.debug('Performing preflight checks...');
-  const environmentConfig = getEnvironmentConfig(options.environment);
-  
-  // 2. Ensure Docker is running
-  logger.debug('Checking Docker...');
+  // 2. Check if docker is running, else try to start it
+  logger.debug("Checking Docker...");
   await ensureDockerIsRunning();
 
-  // 3. Generate random salt for app ID
-  const salt = generateRandomSalt();
-  logger.debug(`Generated salt: ${Buffer.from(salt).toString('hex')}`);
+  // 3. Check for Dockerfile before asking for image reference
+  const dockerfilePath = await getDockerfileInteractive(options.dockerfilePath);
+  const buildFromDockerfile = dockerfilePath !== "";
 
-  // 4. Calculate app ID (requires contract interaction)
-  const appID = await calculateAppID(
-    options.privateKey,
-    options.rpcUrl,
-    environmentConfig,
-    salt
+  // 4. Get image reference (context-aware based on Dockerfile decision)
+  const imageRef = await getImageReferenceInteractive(
+    options.imageRef,
+    buildFromDockerfile,
   );
-  logger.info(`App ID: ${appID}`);
 
-  // 5. Prepare release (build, push, encrypt)
-  logger.info('Preparing release...');
+  // 5. Get app name upfront (before any expensive operations)
+  const environment = preflightCtx.environmentConfig.name;
+  const appName = await getOrPromptAppName(
+    options.appName,
+    environment,
+    imageRef,
+  );
+
+  // 6. Get environment file configuration
+  const envFilePath = await getEnvFileInteractive(options.envFilePath);
+
+  // 7. Get instance type selection (uses first from backend as default for new apps)
+  const availableTypes = await fetchAvailableInstanceTypes(
+    preflightCtx,
+    logger,
+  );
+  const instanceType = await getInstanceTypeInteractive(
+    options.instanceType,
+    "", // defaultSKU - empty for new deployments
+    availableTypes,
+  );
+
+  // 8. Get log settings from flags or interactive prompt
+  const logSettings = await getLogSettingsInteractive(
+    options.logVisibility as "public" | "private" | "off" | undefined,
+  );
+  const { logRedirect, publicLogs } = logSettings;
+
+  // 9. Generate random salt
+  const salt = generateRandomSalt();
+  logger.debug(`Generated salt: ${Buffer.from(salt).toString("hex")}`);
+
+  // 10. Get app ID (calculate from salt and address)
+  logger.debug("Calculating app ID...");
+  const appIDToBeDeployed = await calculateAppID(
+    preflightCtx.privateKey,
+    options.rpcUrl || preflightCtx.rpcUrl,
+    preflightCtx.environmentConfig,
+    salt,
+  );
+  logger.info(`App ID: ${appIDToBeDeployed}`);
+
+  // 11. Prepare the release (includes build/push if needed, with automatic retry on permission errors)
+  logger.info("Preparing release...");
   const { release, finalImageRef } = await prepareRelease(
     {
-      dockerfilePath: options.dockerfilePath,
-      imageRef: options.imageRef,
-      envFilePath: options.envFilePath,
-      logRedirect: options.logRedirect,
-      instanceType: options.instanceType,
-      environmentConfig,
-      appID,
+      dockerfilePath,
+      imageRef,
+      envFilePath,
+      logRedirect,
+      instanceType,
+      environmentConfig: preflightCtx.environmentConfig,
+      appID: appIDToBeDeployed,
     },
-    logger
+    logger,
   );
 
-  // 6. Deploy on-chain
-  logger.info('Deploying on-chain...');
-  const { appAddress: deployedAppID, txHash } = await deployApp(
+  // 12. Deploy the app
+  logger.info("Deploying on-chain...");
+  const deployedAppID = await deployApp(
     {
-      privateKey: options.privateKey,
-      rpcUrl: options.rpcUrl,
-      environmentConfig,
+      privateKey: preflightCtx.privateKey,
+      rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
+      environmentConfig: preflightCtx.environmentConfig,
       salt,
       release,
-      publicLogs: options.publicLogs,
+      publicLogs,
       imageRef: finalImageRef,
     },
-    logger
+    logger,
   );
 
-  // 7. Watch until running
-  logger.info('Waiting for app to start...');
+  // 13. Save the app name mapping
+  try {
+    await setAppName(environment, deployedAppID.appAddress, appName);
+    logger.info(`App saved with name: ${appName}`);
+  } catch (err: any) {
+    logger.warn(`Failed to save app name: ${err.message}`);
+  }
+
+  // 14. Watch until app is running
+  logger.info("Waiting for app to start...");
   const ipAddress = await watchUntilRunning(
     {
-      privateKey: options.privateKey,
-      rpcUrl: options.rpcUrl,
-      environmentConfig,
-      appID: deployedAppID,
+      privateKey: preflightCtx.privateKey,
+      rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
+      environmentConfig: preflightCtx.environmentConfig,
+      appID: deployedAppID.appAddress,
     },
-    logger
+    logger,
   );
 
   return {
-    appID: deployedAppID,
-    appName: options.appName || '',
+    appID: deployedAppID.appAddress,
+    txHash: deployedAppID.txHash,
+    appName,
     imageRef: finalImageRef,
     ipAddress,
-    txHash,
   };
 }
 
@@ -113,21 +184,27 @@ function generateRandomSalt(): Uint8Array {
 }
 
 /**
- * Calculate app ID from owner address and salt
+ * Fetch available instance types from backend
  */
-async function calculateAppID(
-  privateKey: string,
-  rpcUrl: string,
-  environmentConfig: any,
-  salt: Uint8Array
-): Promise<string> {
-  // Import calculateAppID from contract caller
-  const { calculateAppID } = await import('./contract/caller');
-  return calculateAppID(
-    privateKey as `0x${string}`,
-    rpcUrl,
-    environmentConfig,
-    salt
-  );
-}
+async function fetchAvailableInstanceTypes(
+  preflightCtx: PreflightContext,
+  logger: Logger,
+): Promise<Array<{ sku: string; Description: string }>> {
+  try {
+    const userApiClient = new UserApiClient(
+      preflightCtx.environmentConfig,
+      preflightCtx.privateKey,
+    );
 
+    const skuList = await userApiClient.getSKUs();
+    if (skuList.skus.length === 0) {
+      throw new Error("No instance types available from server");
+    }
+
+    return skuList.skus;
+  } catch (err: any) {
+    logger.warn(`Failed to fetch instance types: ${err.message}`);
+    // Return a default fallback
+    return [{ sku: "standard", Description: "Standard instance type" }];
+  }
+}

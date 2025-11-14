@@ -1,18 +1,20 @@
 /**
  * Release preparation
- * 
+ *
  * This module handles building/layering images, encrypting environment variables,
  * and creating the release struct.
  */
 
-import { Release, EnvironmentConfig, Logger } from '../types';
-import { buildAndPushLayeredImage } from '../docker/layer';
-import { layerRemoteImageIfNeeded } from '../docker/layer';
-import { getImageDigestAndName } from '../registry/digest';
-import { parseAndValidateEnvFile } from '../env/parser';
-import { encryptRSAOAEPAndAES256GCM, getAppProtectedHeaders } from '../encryption/kms';
-import { getKMSKeysForEnvironment } from '../utils/keys';
-import { REGISTRY_PROPAGATION_WAIT_SECONDS } from '../constants';
+import { buildAndPushLayeredImage } from "../docker/layer";
+import { layerRemoteImageIfNeeded } from "../docker/layer";
+import { getImageDigestAndName } from "../registry/digest";
+import { encryptRSAOAEPAndAES256GCM } from "../encryption/kms"; // getAppProtectedHeaders
+import { getKMSKeysForEnvironment } from "../utils/keys";
+import { REGISTRY_PROPAGATION_WAIT_SECONDS } from "../constants";
+
+import { parseAndValidateEnvFile } from "../../../../common/env/parser";
+
+import { Release, EnvironmentConfig, Logger } from "../../../../common/types";
 
 export interface PrepareReleaseOptions {
   dockerfilePath?: string;
@@ -34,7 +36,7 @@ export interface PrepareReleaseResult {
  */
 export async function prepareRelease(
   options: PrepareReleaseOptions,
-  logger: Logger
+  logger: Logger,
 ): Promise<PrepareReleaseResult> {
   const {
     dockerfilePath,
@@ -43,7 +45,6 @@ export async function prepareRelease(
     logRedirect,
     instanceType,
     environmentConfig,
-    appID,
   } = options;
 
   let finalImageRef = imageRef;
@@ -51,7 +52,7 @@ export async function prepareRelease(
   // 1. Build/layer image if needed
   if (dockerfilePath) {
     // Build from Dockerfile
-    logger.info('Building and pushing layered image...');
+    logger.info("Building and pushing layered image...");
     finalImageRef = await buildAndPushLayeredImage(
       {
         dockerfilePath,
@@ -60,19 +61,19 @@ export async function prepareRelease(
         envFilePath,
         environmentConfig,
       },
-      logger
+      logger,
     );
 
     // Wait for registry propagation
     logger.info(
-      `Waiting ${REGISTRY_PROPAGATION_WAIT_SECONDS} seconds for registry propagation...`
+      `Waiting ${REGISTRY_PROPAGATION_WAIT_SECONDS} seconds for registry propagation...`,
     );
     await new Promise((resolve) =>
-      setTimeout(resolve, REGISTRY_PROPAGATION_WAIT_SECONDS * 1000)
+      setTimeout(resolve, REGISTRY_PROPAGATION_WAIT_SECONDS * 1000),
     );
   } else {
     // Layer remote image if needed
-    logger.info('Checking if image needs layering...');
+    logger.info("Checking if image needs layering...");
     finalImageRef = await layerRemoteImageIfNeeded(
       {
         imageRef,
@@ -80,52 +81,88 @@ export async function prepareRelease(
         envFilePath,
         environmentConfig,
       },
-      logger
+      logger,
     );
 
     // Wait for registry propagation if image was layered
     if (finalImageRef !== imageRef) {
       logger.info(
-        `Waiting ${REGISTRY_PROPAGATION_WAIT_SECONDS} seconds for registry propagation...`
+        `Waiting ${REGISTRY_PROPAGATION_WAIT_SECONDS} seconds for registry propagation...`,
       );
       await new Promise((resolve) =>
-        setTimeout(resolve, REGISTRY_PROPAGATION_WAIT_SECONDS * 1000)
+        setTimeout(resolve, REGISTRY_PROPAGATION_WAIT_SECONDS * 1000),
       );
     }
   }
 
-  // 2. Get image digest and registry name
-  logger.info('Extracting image digest...');
-  const { digest, registry } = await getImageDigestAndName(finalImageRef);
-  logger.info(`Image digest: ${Buffer.from(digest).toString('hex')}`);
+  // 2. Wait a moment for registry to process the push (especially for GHCR)
+  logger.info("Waiting for registry to process image...");
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+
+  // 3. Get image digest and registry name
+  logger.info("Extracting image digest...");
+  let digest: Uint8Array | undefined;
+  let registry: string | undefined;
+
+  // Retry getting digest in case registry needs more time
+  let retries = 3;
+  let lastError: Error | null = null;
+
+  while (retries > 0) {
+    try {
+      const result = await getImageDigestAndName(finalImageRef);
+      digest = result.digest;
+      registry = result.registry;
+      break;
+    } catch (error: any) {
+      lastError = error;
+      retries--;
+      if (retries > 0) {
+        logger.info(
+          `Digest extraction failed, retrying in 2 seconds... (${retries} retries left)`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+    }
+  }
+
+  if (!digest || !registry) {
+    throw new Error(
+      `Failed to get image digest after retries. This usually means the image wasn't pushed successfully.\n` +
+        `Original error: ${lastError?.message}\n` +
+        `Please verify the image exists: docker manifest inspect ${finalImageRef}`,
+    );
+  }
+
+  logger.info(`Image digest: ${Buffer.from(digest).toString("hex")}`);
   logger.info(`Registry: ${registry}`);
 
-  // 3. Parse and validate environment file
+  // 4. Parse and validate environment file
   let publicEnv: Record<string, string> = {};
   let privateEnv: Record<string, string> = {};
 
   if (envFilePath) {
-    logger.info('Parsing environment file...');
+    logger.info("Parsing environment file...");
     const parsed = parseAndValidateEnvFile(envFilePath);
     publicEnv = parsed.public;
     privateEnv = parsed.private;
   } else {
-    logger.info('Continuing without environment file');
+    logger.info("Continuing without environment file");
   }
 
   // 4. Add instance type to public env
-  publicEnv['EIGEN_MACHINE_TYPE'] = instanceType;
+  publicEnv["EIGEN_MACHINE_TYPE"] = instanceType;
   logger.info(`Instance type: ${instanceType}`);
 
   // 5. Encrypt private environment variables
-  logger.info('Encrypting environment variables...');
+  logger.info("Encrypting environment variables...");
   const { encryptionKey } = getKMSKeysForEnvironment(environmentConfig.name);
-  const protectedHeaders = getAppProtectedHeaders(appID);
+  // const protectedHeaders = getAppProtectedHeaders(appID);
   const privateEnvBytes = Buffer.from(JSON.stringify(privateEnv));
   const encryptedEnvStr = encryptRSAOAEPAndAES256GCM(
     encryptionKey,
     privateEnvBytes,
-    protectedHeaders
+    // protectedHeaders
   );
 
   // 6. Create release struct
@@ -148,4 +185,3 @@ export async function prepareRelease(
     finalImageRef,
   };
 }
-

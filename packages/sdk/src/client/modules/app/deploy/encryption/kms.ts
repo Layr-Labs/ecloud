@@ -3,8 +3,34 @@
  * Implements RSA-OAEP + AES-256-GCM encryption
  */
 
-import * as forge from 'node-forge';
-import { Buffer } from 'buffer';
+import { Buffer } from "buffer";
+import { createRequire } from "module";
+
+// Import node-forge at runtime to work in both ESM and CJS
+// This function will be called when encryption is needed
+function getForge(): any {
+  try {
+    // Try ESM context first - use createRequire with import.meta.url
+    if (typeof import.meta !== "undefined" && import.meta.url) {
+      const requireFn = createRequire(import.meta.url);
+      return requireFn("node-forge");
+    }
+  } catch {
+    // Fall through to CJS require
+  }
+
+  // CJS context - use regular require
+  return require("node-forge");
+}
+
+// Cache the forge module
+let forgeCache: any = null;
+function getForgeCached(): any {
+  if (!forgeCache) {
+    forgeCache = getForge();
+  }
+  return forgeCache;
+}
 
 /**
  * Get app protected headers for encryption
@@ -23,14 +49,15 @@ export function getAppProtectedHeaders(appID: string): Record<string, string> {
 export function encryptRSAOAEPAndAES256GCM(
   encryptionKeyPEM: string | Buffer,
   plaintext: Buffer,
-  protectedHeaders: Record<string, string>
+  // protectedHeaders: Record<string, string>
 ): string {
   const pemString =
-    typeof encryptionKeyPEM === 'string'
+    typeof encryptionKeyPEM === "string"
       ? encryptionKeyPEM
-      : encryptionKeyPEM.toString('utf-8');
+      : encryptionKeyPEM.toString("utf-8");
 
   // Parse RSA public key from PEM
+  const forge = getForgeCached();
   const publicKey = forge.pki.publicKeyFromPem(pemString);
 
   // Generate random AES-256 key (32 bytes)
@@ -38,16 +65,16 @@ export function encryptRSAOAEPAndAES256GCM(
   const iv = forge.random.getBytesSync(12); // 96-bit IV for GCM
 
   // Encrypt plaintext with AES-256-GCM
-  const cipher = forge.cipher.createCipher('AES-GCM', aesKey);
+  const cipher = forge.cipher.createCipher("AES-GCM", aesKey);
   cipher.start({ iv });
-  cipher.update(forge.util.createBuffer(plaintext.toString('binary')));
+  cipher.update(forge.util.createBuffer(plaintext.toString("binary")));
   cipher.finish();
 
   const encrypted = cipher.output.getBytes();
   const tag = cipher.mode.tag.getBytes();
 
   // Encrypt AES key with RSA-OAEP
-  const encryptedAESKey = publicKey.encrypt(aesKey, 'RSA-OAEP');
+  const encryptedAESKey = publicKey.encrypt(aesKey, "RSA-OAEP");
 
   // Combine: RSA-encrypted key + IV + ciphertext + tag
   // Format: [encrypted_key_length (4 bytes)] [encrypted_key] [iv_length (4 bytes)] [iv] [ciphertext] [tag]
@@ -60,15 +87,15 @@ export function encryptRSAOAEPAndAES256GCM(
 
   const combined = Buffer.concat([
     encryptedKeyLength,
-    Buffer.from(encryptedKeyBytes, 'binary'),
+    Buffer.from(encryptedKeyBytes, "binary"),
     ivLength,
-    Buffer.from(iv, 'binary'),
-    Buffer.from(encrypted, 'binary'),
-    Buffer.from(tag, 'binary'),
+    Buffer.from(iv, "binary"),
+    Buffer.from(encrypted, "binary"),
+    Buffer.from(tag, "binary"),
   ]);
 
   // Base64 encode the result
-  return combined.toString('base64');
+  return combined.toString("base64");
 }
 
 /**
@@ -76,9 +103,9 @@ export function encryptRSAOAEPAndAES256GCM(
  */
 export function decryptRSAOAEPAndAES256GCM(
   privateKeyPEM: string,
-  encryptedData: string
+  encryptedData: string,
 ): Buffer {
-  const combined = Buffer.from(encryptedData, 'base64');
+  const combined = Buffer.from(encryptedData, "base64");
 
   // Extract components
   let offset = 0;
@@ -96,37 +123,36 @@ export function decryptRSAOAEPAndAES256GCM(
 
   // Ciphertext is everything except the last 16 bytes (tag)
   const tagLength = 16;
-  const ciphertext = combined.subarray(
-    offset,
-    combined.length - tagLength
-  );
+  const ciphertext = combined.subarray(offset, combined.length - tagLength);
   const tag = combined.subarray(combined.length - tagLength);
 
   // Decrypt AES key with RSA-OAEP
+  const forge = getForgeCached();
   const privateKey = forge.pki.privateKeyFromPem(privateKeyPEM);
   const encryptedKeyBase64 = forge.util.encode64(
-    encryptedKey.toString('binary')
+    encryptedKey.toString("binary"),
   );
-  const aesKey = privateKey.decrypt(encryptedKeyBase64, 'RSA-OAEP');
+  const aesKey = privateKey.decrypt(encryptedKeyBase64, "RSA-OAEP");
 
   // Decrypt plaintext with AES-256-GCM
-  const decipher = forge.cipher.createDecipher('AES-GCM', aesKey);
-  decipher.start({ iv: iv.toString('binary'), tag: toByteStringBuffer(tag) });
-  decipher.update(forge.util.createBuffer(ciphertext.toString('binary')));
+  const decipher = forge.cipher.createDecipher("AES-GCM", aesKey);
+  decipher.start({ iv: iv.toString("binary"), tag: toByteStringBuffer(tag) });
+  decipher.update(forge.util.createBuffer(ciphertext.toString("binary")));
   const success = decipher.finish();
 
   if (!success) {
-    throw new Error('Decryption failed: authentication tag mismatch');
+    throw new Error("Decryption failed: authentication tag mismatch");
   }
 
-  return Buffer.from(decipher.output.getBytes(), 'binary');
+  return Buffer.from(decipher.output.getBytes(), "binary");
 }
 
-function toByteStringBuffer(buf: ArrayBuffer | Uint8Array): forge.util.ByteStringBuffer {
+function toByteStringBuffer(buf: ArrayBuffer | Uint8Array): any {
+  const forge = getForgeCached();
   const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
 
   // Efficient binary encode
   const binary = forge.util.binary.raw.encode(u8);
 
-  return forge.util.createBuffer(binary, 'raw');
+  return forge.util.createBuffer(binary, "raw");
 }

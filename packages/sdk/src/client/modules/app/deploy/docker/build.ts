@@ -2,54 +2,84 @@
  * Docker build operations
  */
 
-import * as child_process from 'child_process';
-import { promisify } from 'util';
-import { DOCKER_PLATFORM } from '../constants';
-import { Logger } from '../types';
+import * as child_process from "child_process";
+import { promisify } from "util";
+import { DOCKER_PLATFORM } from "../constants";
+import { Logger } from "../../../../common/types";
 
 const exec = promisify(child_process.exec);
 
 /**
  * Build Docker image using docker buildx
+ * Streams output in real-time to logger
  */
 export async function buildDockerImage(
   buildContext: string,
   dockerfilePath: string,
   tag: string,
-  logger?: Logger
+  logger?: Logger,
 ): Promise<void> {
-  const command = [
-    'docker',
-    'buildx',
-    'build',
-    '--platform',
+  const args = [
+    "buildx",
+    "build",
+    "--platform",
     DOCKER_PLATFORM,
-    '-t',
+    "-t",
     tag,
-    '-f',
+    "-f",
     dockerfilePath,
-    '--progress=plain',
+    "--progress=plain",
     buildContext,
-  ].join(' ');
+  ];
 
   logger?.info(`Building Docker image: ${tag}`);
 
-  try {
-    const { stdout, stderr } = await exec(command, {
+  return new Promise<void>((resolve, reject) => {
+    const process = child_process.spawn("docker", args, {
       cwd: buildContext,
-      maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+      stdio: ["ignore", "pipe", "pipe"],
     });
 
-    if (stdout) {
-      logger?.debug(stdout);
-    }
-    if (stderr) {
-      logger?.warn(stderr);
-    }
-  } catch (error: any) {
-    const errorMessage = error.stderr || error.message || 'Unknown error';
-    throw new Error(`Docker build failed: ${errorMessage}`);
-  }
+    let stdout = "";
+    let stderr = "";
+
+    // Stream stdout to logger
+    process.stdout?.on("data", (data: Buffer) => {
+      const output = data.toString();
+      stdout += output;
+      // Log each line to info (Docker build output is important)
+      output.split("\n").forEach((line) => {
+        if (line.trim()) {
+          logger?.info(line);
+        }
+      });
+    });
+
+    // Stream stderr to logger
+    process.stderr?.on("data", (data: Buffer) => {
+      const output = data.toString();
+      stderr += output;
+      // Log each line to info (Docker build output is important)
+      output.split("\n").forEach((line) => {
+        if (line.trim()) {
+          logger?.info(line);
+        }
+      });
+    });
+
+    process.on("close", (code) => {
+      if (code !== 0) {
+        const errorMessage = stderr || stdout || "Unknown error";
+        reject(new Error(`Docker build failed: ${errorMessage}`));
+      } else {
+        resolve();
+      }
+    });
+
+    process.on("error", (error) => {
+      reject(new Error(`Failed to start Docker build: ${error.message}`));
+    });
+  });
 }
 
 /**
@@ -57,7 +87,7 @@ export async function buildDockerImage(
  */
 export async function isDockerRunning(): Promise<boolean> {
   try {
-    await exec('docker info');
+    await exec("docker info");
     return true;
   } catch {
     return false;
@@ -71,8 +101,7 @@ export async function ensureDockerIsRunning(): Promise<void> {
   const running = await isDockerRunning();
   if (!running) {
     throw new Error(
-      'Docker is not running. Please start Docker and try again.'
+      "Docker is not running. Please start Docker and try again.",
     );
   }
 }
-
