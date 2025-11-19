@@ -53,15 +53,6 @@ export function createAppModule(ctx: CoreContext): AppModule {
   // Get logger that respects verbose setting
   const logger = getLogger(ctx.verbose);
 
-  // Helper to merge user gas overrides
-  const gas = (g?: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint }) =>
-    g
-      ? {
-          maxFeePerGas: g.maxFeePerGas,
-          maxPriorityFeePerGas: g.maxPriorityFeePerGas,
-        }
-      : {};
-
   return {
     async create(opts) {
       return createApp(opts, logger);

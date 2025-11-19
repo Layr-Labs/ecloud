@@ -222,7 +222,12 @@ function extractRegistryName(imageRef: string): string {
     name = name.substring(0, digestIndex);
   }
 
-  // Default registry (docker.io)
+  // Prefix with docker.io/ if no registry is provided
+  if ([...name].filter(c => c === "/").length === 1) {
+    name = `docker.io/${name}`;
+  }
+
+  // Default registry
   return name;
 }
 
