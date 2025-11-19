@@ -202,11 +202,12 @@ export async function upgrade(
 async function fetchAvailableInstanceTypes(
   preflightCtx: PreflightContext,
   logger: Logger,
-): Promise<Array<{ sku: string; Description: string }>> {
+): Promise<Array<{ sku: string; description: string }>> {
   try {
     const userApiClient = new UserApiClient(
       preflightCtx.environmentConfig,
       preflightCtx.privateKey,
+      preflightCtx.rpcUrl,
     );
 
     const skuList = await userApiClient.getSKUs();
@@ -218,6 +219,6 @@ async function fetchAvailableInstanceTypes(
   } catch (err: any) {
     logger.warn(`Failed to fetch instance types: ${err.message}`);
     // Return a default fallback
-    return [{ sku: "standard", Description: "Standard instance type" }];
+    return [{ sku: "standard", description: "Standard instance type" }];
   }
 }

@@ -2,6 +2,7 @@ import { Command, Flags } from "@oclif/core";
 import { logVisibility } from "@ecloud/sdk";
 import { loadClient } from "../../client";
 import { commonFlags } from "../../flags";
+import chalk from "chalk";
 
 export default class AppDeploy extends Command {
   static description = "Deploy new app";
@@ -46,7 +47,7 @@ export default class AppDeploy extends Command {
 
   async run() {
     const { flags } = await this.parse(AppDeploy);
-    const client = loadClient(flags);
+    const client = await loadClient(flags);
 
     const res = await client.app.deploy({
       name: flags.name,
@@ -57,6 +58,10 @@ export default class AppDeploy extends Command {
       instanceType: flags["instance-type"],
     });
 
-    this.log(JSON.stringify(res, null, 2));
+    if (!res.tx || !res.ipAddress) {
+      this.log(`\n${chalk.gray(`Deploy ${res.ipAddress ? "failed" : "aborted"}`)}`);
+    } else {
+      this.log(`\n✅ ${chalk.green(`App deployed successfully ${chalk.bold(`(id: ${res.appID}, ip: ${res.ipAddress})`)}`)}`);
+    }
   }
 }

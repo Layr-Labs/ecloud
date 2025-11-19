@@ -33,7 +33,7 @@ const KEYS_BASE_PATH = findKeysBasePath();
  */
 export function getKMSKeysForEnvironment(
   environment: string,
-  build: "dev" | "prod" = "dev",
+  build: "dev" | "prod" = "prod",
 ): { encryptionKey: Buffer; signingKey: Buffer } {
   const encryptionPath = path.join(
     KEYS_BASE_PATH,
@@ -71,7 +71,7 @@ export function getKMSKeysForEnvironment(
  */
 export function keysExistForEnvironment(
   environment: string,
-  build: "dev" | "prod" = "dev",
+  build: "dev" | "prod" = "prod",
 ): boolean {
   const encryptionPath = path.join(
     KEYS_BASE_PATH,

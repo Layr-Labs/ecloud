@@ -3,9 +3,19 @@
  */
 
 import { request, Agent as UndiciAgent } from "undici";
-import { Address, Hex } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import {
+  Address,
+  Hex,
+  concat,
+  createPublicClient,
+  http,
+  keccak256,
+  toBytes,
+} from "viem";
+import { privateKeyToAccount, sign } from "viem/accounts";
+import { sepolia, mainnet } from "viem/chains";
 import { EnvironmentConfig } from "../types";
+import AppControllerABI from "../abis/AppController.json";
 // import { getKMSKeysForEnvironment } from '../../modules/app/deploy/utils/keys';
 
 import { defaultLogger } from "./logger";
@@ -34,16 +44,19 @@ export interface AppInfoResponse {
 
 const MAX_ADDRESS_COUNT = 5;
 
-// Permission constants (matching Go version)
+// Permission constants
 export const CanViewAppLogsPermission = "0x2fd3f2fe" as Hex;
 export const CanViewSensitiveAppInfoPermission = "0x0e67b22f" as Hex;
 
 export class UserApiClient {
   private readonly account?: ReturnType<typeof privateKeyToAccount>;
+  private readonly privateKey?: Hex;
+  private readonly rpcUrl?: string;
 
   constructor(
     private readonly config: EnvironmentConfig,
     privateKey?: string | Hex,
+    rpcUrl?: string,
   ) {
     if (privateKey) {
       const privateKeyHex =
@@ -53,7 +66,9 @@ export class UserApiClient {
               : `0x${privateKey}`) as Hex)
           : privateKey;
       this.account = privateKeyToAccount(privateKeyHex);
+      this.privateKey = privateKeyHex;
     }
+    this.rpcUrl = rpcUrl;
   }
 
   async getInfos(
@@ -103,7 +118,7 @@ export class UserApiClient {
    * Get available SKUs (instance types) from UserAPI
    */
   async getSKUs(): Promise<{
-    skus: Array<{ sku: string; Description: string }>;
+    skus: Array<{ sku: string; description: string }>;
   }> {
     const endpoint = `${this.config.userApiServerURL}/skus`;
     const response = await this.makeAuthenticatedRequest(endpoint);
@@ -116,9 +131,39 @@ export class UserApiClient {
     };
   }
 
+  /**
+   * Get logs for an app
+   */
+  async getLogs(appID: Address): Promise<string> {
+    const endpoint = `${this.config.userApiServerURL}/logs/${appID}`;
+    const response = await this.makeAuthenticatedRequest(
+      endpoint,
+      CanViewAppLogsPermission,
+    );
+    return await response.text();
+  }
+
+  /**
+   * Get statuses for apps
+   */
+  async getStatuses(appIDs: Address[]): Promise<Array<{ address: Address; status: string }>> {
+    const endpoint = `${this.config.userApiServerURL}/status`;
+    const url = `${endpoint}?${new URLSearchParams({ apps: appIDs.join(",") })}`;
+    const response = await this.makeAuthenticatedRequest(url);
+    const result = await response.json();
+
+    // Transform response to match expected format
+    // The API returns an array of app statuses
+    const apps = result.apps || result.Apps || [];
+    return apps.map((app: any, i: number) => ({
+      address: (app.address || appIDs[i]) as Address,
+      status: app.status || app.Status || "",
+    }));
+  }
+
   private async makeAuthenticatedRequest(
     url: string,
-    permission?: string,
+    permission?: Hex,
   ): Promise<Response> {
     const headers: Record<string, string> = {};
     // Add auth headers if permission is specified
@@ -130,7 +175,6 @@ export class UserApiClient {
 
     try {
       // Use undici directly with TLS config that skips certificate verification
-      // This matches the Go implementation which uses InsecureSkipVerify: true
       const insecureAgent = new UndiciAgent({
         connect: {
           rejectUnauthorized: false, // Skip TLS certificate verification
@@ -142,7 +186,7 @@ export class UserApiClient {
         method: "GET",
         headers,
         dispatcher: insecureAgent,
-        headersTimeout: 30000, // 30 second timeout (matches Go version)
+        headersTimeout: 30000, // 30 second timeout
       });
 
       // Convert undici response to fetch-like Response object
@@ -193,54 +237,68 @@ export class UserApiClient {
 
   /**
    * Generate authentication headers for UserAPI requests
-   * Signs a message containing permission and expiry timestamp
    */
   private async generateAuthHeaders(
-    permission: string,
+    permission: Hex,
     expiry: bigint,
   ): Promise<Record<string, string>> {
     if (!this.account) {
       throw new Error("Private key required for authenticated requests");
     }
 
-    // Create message to sign: permission + expiry
-    // Format matches what the backend expects
-    const message = `${permission}${expiry.toString(16).padStart(64, "0")}`;
+    if (!this.rpcUrl) {
+      throw new Error("RPC URL required for authenticated requests");
+    }
 
-    // Sign the message directly using the account's signMessage method
-    // This works for local accounts without needing a wallet client
-    const signature = await this.account.signMessage({
-      message,
+    // Get chain from environment config
+    const chain =
+      this.config.chainID === 11155111n
+        ? sepolia
+        : this.config.chainID === 1n
+          ? mainnet
+          : sepolia;
+
+    // Create public client to call contract
+    const publicClient = createPublicClient({
+      chain,
+      transport: http(this.rpcUrl),
     });
 
-    if (
-      !signature ||
-      typeof signature !== "string" ||
-      !signature.startsWith("0x")
-    ) {
-      throw new Error(`Invalid signature format: ${signature}`);
+    // Call the contract to calculate the digest hash
+    const digestHash = (await publicClient.readContract({
+      address: this.config.appControllerAddress as Address,
+      abi: AppControllerABI,
+      functionName: "calculateApiPermissionDigestHash",
+      args: [permission, expiry],
+    })) as Hex;
+
+    // Apply EIP-191 message signing prefix ("\x19Ethereum Signed Message:\n" + length)
+    // Keccak256 concatenates the two byte arrays before hashing
+    const messagePrefix = "\x19Ethereum Signed Message:\n32";
+    const prefixBytes = toBytes(messagePrefix);
+    const digestBytes = toBytes(digestHash);
+    const prefixedHash = keccak256(concat([prefixBytes, digestBytes]));
+
+    // Sign the EIP-191 prefixed hash
+    if (!this.privateKey) {
+      throw new Error("Private key required for signing");
     }
+    const signature = await sign({
+      hash: prefixedHash,
+      privateKey: this.privateKey,
+    });
 
-    // Extract r, s, v from signature (65 bytes: 32 bytes r + 32 bytes s + 1 byte v)
-    const sigBytes = Buffer.from(signature.slice(2), "hex");
-    if (sigBytes.length !== 65) {
-      throw new Error(
-        `Invalid signature length: expected 65 bytes, got ${sigBytes.length}`,
-      );
-    }
+    // Convert signature to hex string format (r + s + v)
+    // viem's sign returns {r, s, v} object, we need to convert to 65-byte hex string
+    const r = signature.r.slice(2); // Remove 0x
+    const s = signature.s.slice(2); // Remove 0x
+    const v = Number(signature.v).toString(16).padStart(2, "0");
+    const signatureHex = `0x${r}${s}${v}`;
 
-    const r = `0x${sigBytes.slice(0, 32).toString("hex")}`;
-    const s = `0x${sigBytes.slice(32, 64).toString("hex")}`;
-    const v = sigBytes[64];
-
-    // Return auth headers (format may need adjustment based on backend expectations)
+    // Return auth headers
     return {
-      "X-Auth-Address": this.account.address,
-      "X-Auth-Permission": permission,
-      "X-Auth-Expiry": expiry.toString(),
-      "X-Auth-Signature-R": r,
-      "X-Auth-Signature-S": s,
-      "X-Auth-Signature-V": `0x${v.toString(16).padStart(2, "0")}`,
+      Authorization: `Bearer ${signatureHex.slice(2)}`, // Remove 0x prefix
+      "X-eigenx-expiry": expiry.toString(),
     };
   }
 }

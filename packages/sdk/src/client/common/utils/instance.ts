@@ -21,6 +21,7 @@ export async function getCurrentInstanceType(
     const userApiClient = new UserApiClient(
       preflightCtx.environmentConfig,
       preflightCtx.privateKey,
+      preflightCtx.rpcUrl,
     );
 
     const infos = await userApiClient.getInfos([appID], 1, logger);

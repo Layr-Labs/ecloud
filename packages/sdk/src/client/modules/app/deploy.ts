@@ -21,16 +21,7 @@ import {
 import { doPreflightChecks, PreflightContext } from "../../common/utils/preflight";
 import { UserApiClient } from "../../common/utils/userapi";
 import { setAppName } from "../../common/registry/appNames";
-
-/**
- * Default logger (console-based)
- */
-const defaultLogger: Logger = {
-  debug: (...args) => console.debug(...args),
-  info: (...args) => console.info(...args),
-  warn: (...args) => console.warn(...args),
-  error: (...args) => console.error(...args),
-};
+import { defaultLogger } from "../../common/utils";
 
 /**
  * Deploy an application to ECloud TEE
@@ -189,11 +180,12 @@ function generateRandomSalt(): Uint8Array {
 async function fetchAvailableInstanceTypes(
   preflightCtx: PreflightContext,
   logger: Logger,
-): Promise<Array<{ sku: string; Description: string }>> {
-  try {
+): Promise<Array<{ sku: string; description: string }>> {
+  try{
     const userApiClient = new UserApiClient(
       preflightCtx.environmentConfig,
       preflightCtx.privateKey,
+      preflightCtx.rpcUrl,
     );
 
     const skuList = await userApiClient.getSKUs();
@@ -205,6 +197,6 @@ async function fetchAvailableInstanceTypes(
   } catch (err: any) {
     logger.warn(`Failed to fetch instance types: ${err.message}`);
     // Return a default fallback
-    return [{ sku: "standard", Description: "Standard instance type" }];
+    return [{ sku: "standard", description: "Standard instance type" }];
   }
 }

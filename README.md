@@ -90,7 +90,7 @@ import { createECloudClient } from "@layr-labs/ecloud-sdk";
 // Create a client
 const client = createECloudClient({
   privateKey: "0x...",
-  environment: "sepolia", // or "mainnet-alpha"
+  environment: "sepolia", // or "sepolia-dev" or "mainnet-alpha"
   rpcUrl: "https://sepolia.infura.io/v3/...",
 });
 

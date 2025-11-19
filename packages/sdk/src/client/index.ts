@@ -12,15 +12,20 @@ import { getEnvironmentConfig } from "./common/config/environment";
 // Export all types
 export * from "./common/types";
 
-// special case on createApp - we don't need the client to run it
+// Export all prompts
+export * from "./common/utils/prompts";
+
+// Special case on createApp - we don't need the client to run it
 export { createApp, CreateAppOpts } from "./modules/app/create";
+export { logs, LogsOptions } from "./modules/app/logs";
 
 // Export utility functions for CLI use
 export { getOrPromptAppID } from "./common/utils/prompts";
+export { getEnvironmentConfig } from "./common/config/environment";
 
-export type Environment = "sepolia" | "mainnet-alpha";
+export type Environment = "sepolia" | "sepolia-dev" | "mainnet-alpha";
 
-const CHAINS: Record<string, Chain> = { sepolia, "mainnet-alpha": mainnet };
+const CHAINS: Record<string, Chain> = { sepolia, "sepolia-dev": sepolia, "mainnet-alpha": mainnet };
 
 export interface CreateClientConfig {
   verbose: boolean;

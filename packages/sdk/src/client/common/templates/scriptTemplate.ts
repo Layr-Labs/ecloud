@@ -8,7 +8,6 @@ const __dirname = getDirname();
 
 export interface ScriptTemplateData {
   kmsServerURL: string;
-  jwtFile: string;
   userAPIURL: string;
 }
 

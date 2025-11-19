@@ -8,7 +8,7 @@
 import { buildAndPushLayeredImage } from "../docker/layer";
 import { layerRemoteImageIfNeeded } from "../docker/layer";
 import { getImageDigestAndName } from "../registry/digest";
-import { encryptRSAOAEPAndAES256GCM } from "../encryption/kms"; // getAppProtectedHeaders
+import { encryptRSAOAEPAndAES256GCM, getAppProtectedHeaders } from "../encryption/kms"; // getAppProtectedHeaders
 import { getKMSKeysForEnvironment } from "../utils/keys";
 import { REGISTRY_PROPAGATION_WAIT_SECONDS } from "../constants";
 
@@ -156,13 +156,13 @@ export async function prepareRelease(
 
   // 5. Encrypt private environment variables
   logger.info("Encrypting environment variables...");
-  const { encryptionKey } = getKMSKeysForEnvironment(environmentConfig.name);
-  // const protectedHeaders = getAppProtectedHeaders(appID);
+  const { encryptionKey } = getKMSKeysForEnvironment(environmentConfig.name, environmentConfig.build);
+  const protectedHeaders = getAppProtectedHeaders(options.appID);
   const privateEnvBytes = Buffer.from(JSON.stringify(privateEnv));
-  const encryptedEnvStr = encryptRSAOAEPAndAES256GCM(
+  const encryptedEnvStr = await encryptRSAOAEPAndAES256GCM(
     encryptionKey,
     privateEnvBytes,
-    // protectedHeaders
+    protectedHeaders
   );
 
   // 6. Create release struct
