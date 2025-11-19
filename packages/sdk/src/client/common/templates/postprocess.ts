@@ -7,7 +7,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { Logger } from "../types";
-import { LANGUAGE_FILES } from "../../modules/app/create";
+import { TemplateEntry } from "./catalog";
 import { getDirname } from "../utils/dirname";
 
 // Config file paths
@@ -20,6 +20,7 @@ const CONFIG_DIR = path.join(__dirname, "../../config");
 export async function postProcessTemplate(
   projectDir: string,
   language: string,
+  templateEntry: TemplateEntry,
   logger: Logger,
 ): Promise<void> {
   const projectName = path.basename(projectDir);
@@ -28,30 +29,15 @@ export async function postProcessTemplate(
   // 1. Copy .gitignore
   await copyGitignore(projectDir);
 
-  // 2. Copy shared template files (.env.example)
+  // 2. Copy shared template files (.env.example, README.md)
   await copySharedTemplateFiles(projectDir);
 
-  // 3. Update README.md title for all languages
-  await updateProjectFile(
-    projectDir,
-    "README.md",
-    templateName,
-    projectName,
-    logger,
-  );
+  // 3. Get files to update from template metadata, fallback to just README.md
+  const filesToUpdate = templateEntry.postProcess?.replaceNameIn || ["README.md"];
 
-  // 4. Update language-specific project files
-  const languageFiles = LANGUAGE_FILES[language];
-  if (languageFiles) {
-    for (const filename of languageFiles) {
-      await updateProjectFile(
-        projectDir,
-        filename,
-        templateName,
-        projectName,
-        logger,
-      );
-    }
+  // 4. Update all files specified in template metadata
+  for (const filename of filesToUpdate) {
+    await updateProjectFile(projectDir, filename, templateName, projectName, logger);
   }
 }
 

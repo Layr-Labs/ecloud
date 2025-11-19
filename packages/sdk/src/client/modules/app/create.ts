@@ -8,7 +8,16 @@ import * as fs from "fs";
 import * as path from "path";
 import { Logger } from "../../common/types";
 import { defaultLogger } from "../../common/utils";
-import { loadTemplateConfig, getTemplateURLs } from "../../common/templates/config";
+import {
+  fetchTemplateCatalog,
+  getTemplate,
+  getCategoryDescriptions,
+  DEFAULT_TEMPLATE_REPO,
+  DEFAULT_TEMPLATE_VERSION,
+  ENV_VAR_USE_LOCAL_TEMPLATES,
+  ENV_VAR_TEMPLATES_PATH,
+  type TemplateEntry,
+} from "../../common/templates/catalog";
 import { fetchTemplate, fetchTemplateSubdirectory } from "../../common/templates/git";
 import { postProcessTemplate } from "../../common/templates/postprocess";
 import { input, select } from "@inquirer/prompts";
@@ -16,7 +25,7 @@ import { input, select } from "@inquirer/prompts";
 export interface CreateAppOpts {
   name?: string;
   language?: string;
-  template?: string;
+  template?: string; // Template name/category (e.g., "minimal") or custom template URL
   templateVersion?: string;
   verbose?: boolean;
 }
@@ -38,86 +47,54 @@ export const LANGUAGE_FILES: Record<string, string[]> = {
 };
 
 /**
+ * Project configuration
+ */
+interface ProjectConfig {
+  name: string;
+  language?: string;
+  templateName?: string;
+  templateEntry?: TemplateEntry;
+  repoURL: string;
+  ref: string;
+  subPath: string;
+}
+
+/**
  * Create a new app project from template
  */
 export async function createApp(
   options: CreateAppOpts,
   logger: Logger = defaultLogger,
 ): Promise<void> {
-  // 1. Get project name
-  let name = options.name;
-  if (!name) {
-    name = await promptProjectName();
+  // 1. Gather project configuration
+  const cfg = await gatherProjectConfig(options, logger);
+
+  // 2. Check if directory exists
+  if (fs.existsSync(cfg.name)) {
+    throw new Error(`Directory ${cfg.name} already exists`);
   }
 
-  // Validate project name
-  validateProjectName(name);
-
-  // Check if directory exists
-  if (fs.existsSync(name)) {
-    throw new Error(`Directory ${name} already exists`);
-  }
-
-  // 2. Get language - only needed for built-in templates
-  let language: string | undefined;
-  if (!options.template) {
-    language = options.language;
-    if (!language) {
-      language = await promptLanguage();
-    } else {
-      // Resolve short names to full names
-      if (SHORT_NAMES[language]) {
-        language = SHORT_NAMES[language];
-      }
-
-      // Validate language is supported
-      if (!PRIMARY_LANGUAGES.includes(language)) {
-        throw new Error(`Unsupported language: ${language}`);
-      }
-    }
-  }
-
-  // 3. Resolve template source
-  const { repoURL, ref, subPath } = await resolveTemplateSource(
-    options.template,
-    options.templateVersion,
-    language,
-  );
-
-  // 4. Create project directory
-  fs.mkdirSync(name, { mode: 0o755 });
+  // 3. Create project directory
+  fs.mkdirSync(cfg.name, { mode: 0o755 });
 
   try {
-    // 5. Check if we should use local templates (for development)
-    const useLocalTemplates = process.env.EIGENX_USE_LOCAL_TEMPLATES === "true";
-    if (useLocalTemplates) {
-      await useLocalTemplate(name, language!, logger);
-    } else {
-      // 6. Fetch template from Git
-      if (subPath) {
-        // Fetch only the subdirectory
-        await fetchTemplateSubdirectory(repoURL, ref, subPath, name, logger);
-      } else {
-        // Fetch the full repository
-        await fetchTemplate(
-          repoURL,
-          ref,
-          name,
-          { verbose: options.verbose || false },
-          logger,
-        );
-      }
+    // 4. Populate project from template
+    await populateProjectFromTemplate(cfg, options, logger);
+
+    // 5. Post-process template
+    if (cfg.subPath && cfg.language && cfg.templateEntry) {
+      await postProcessTemplate(
+        cfg.name,
+        cfg.language,
+        cfg.templateEntry,
+        logger,
+      );
     }
 
-    // 7. Post-process only internal templates
-    if (subPath && language) {
-      await postProcessTemplate(name, language, logger);
-    }
-
-    logger.info(`Successfully created ${language || "project"}: ${name}`);
+    logger.info(`Successfully created ${cfg.language || "project"} project: ${cfg.name}`);
   } catch (error: any) {
     // Cleanup on failure
-    fs.rmSync(name, { recursive: true, force: true });
+    fs.rmSync(cfg.name, { recursive: true, force: true });
     throw error;
   }
 }
@@ -135,80 +112,170 @@ function validateProjectName(name: string): void {
 }
 
 /**
- * Resolve template source (URL, ref, subdirectory path)
+ * Gather project configuration
  */
-async function resolveTemplateSource(
-  templateFlag?: string,
-  templateVersionFlag?: string,
-  language?: string,
-): Promise<{ repoURL: string; ref: string; subPath: string }> {
-  if (templateFlag) {
-    // Custom template URL provided
-    const ref = templateVersionFlag || "main";
-    return { repoURL: templateFlag, ref, subPath: "" };
+async function gatherProjectConfig(
+  options: CreateAppOpts,
+  logger: Logger,
+): Promise<ProjectConfig> {
+  const cfg: ProjectConfig = {
+    repoURL: DEFAULT_TEMPLATE_REPO,
+    ref: DEFAULT_TEMPLATE_VERSION,
+    subPath: "",
+    name: "",
+  };
+
+  // 1. Get project name
+  let name = options.name;
+  if (!name) {
+    name = await promptProjectName();
+  }
+  // Validate project name
+  validateProjectName(name);
+  cfg.name = name;
+
+  // 2. Handle custom template repo (if template is a URL)
+  const customTemplateRepo = options.template;
+  if (customTemplateRepo && isURL(customTemplateRepo)) {
+    cfg.repoURL = customTemplateRepo;
+    cfg.ref = options.templateVersion || DEFAULT_TEMPLATE_VERSION;
+    return cfg;
   }
 
-  // Use template configuration system for defaults
-  const config = await loadTemplateConfig();
+  // 3. Handle built-in templates
+  // Get language
+  let language = options.language;
   if (!language) {
-    throw new Error("Language is required for default templates");
+    language = await promptLanguage();
+  } else {
+    // Resolve short names to full names
+    if (SHORT_NAMES[language]) {
+      language = SHORT_NAMES[language];
+    }
   }
+  cfg.language = language;
 
-  // Get template URL and version from config for "tee" framework
-  const { templateURL, version } = getTemplateURLs(config, "tee", language);
+  // Get template name (category)
+  let templateName = customTemplateRepo; // If provided and not a URL, it's a template name
+  if (!templateName) {
+    templateName = await selectTemplateInteractive(language, logger);
+  }
+  cfg.templateName = templateName;
 
-  // Override version if templateVersionFlag provided
-  const ref = templateVersionFlag || version;
+  // Resolve template details from catalog
+  const catalog = await fetchTemplateCatalog();
+  const matchedTemplate = getTemplate(catalog, templateName, language);
+  cfg.templateEntry = matchedTemplate;
+  cfg.repoURL = DEFAULT_TEMPLATE_REPO;
+  cfg.ref = options.templateVersion || DEFAULT_TEMPLATE_VERSION;
+  cfg.subPath = matchedTemplate.path;
 
-  // For templates from config, assume they follow our subdirectory structure
-  const subPath = `templates/minimal/${language}`;
-
-  return { repoURL: templateURL, ref, subPath };
+  return cfg;
 }
 
 /**
- * Use local template (for development)
+ * Check if a string is a URL
  */
-async function useLocalTemplate(
-  projectDir: string,
+function isURL(str: string): boolean {
+  try {
+    new URL(str);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Select template interactively
+ */
+async function selectTemplateInteractive(
   language: string,
   logger: Logger,
-): Promise<void> {
-  // First try EIGENX_TEMPLATES_PATH env var, then look for the eigenx-templates directory as a sibling directory
-  let eigenxTemplatesPath = process.env.EIGENX_TEMPLATES_PATH;
+): Promise<string> {
+  const catalog = await fetchTemplateCatalog();
+  const categoryDescriptions = getCategoryDescriptions(catalog, language);
 
-  if (!eigenxTemplatesPath) {
-    // Look for eigenx-templates as a sibling directory
-    const possiblePaths = ["eigenx-templates", "../eigenx-templates"];
-    for (const possiblePath of possiblePaths) {
-      const testPath = path.join(possiblePath, "templates/minimal");
-      if (fs.existsSync(testPath)) {
-        eigenxTemplatesPath = possiblePath;
-        break;
+  if (Object.keys(categoryDescriptions).length === 0) {
+    throw new Error(`No templates found for language ${language}`);
+  }
+
+  // Sort categories alphabetically for consistent ordering
+  const categories = Object.keys(categoryDescriptions).sort();
+
+  // Build display options: "category: description" or just "category"
+  const options = categories.map((category) => {
+    const description = categoryDescriptions[category];
+    if (description) {
+      return { name: `${category}: ${description}`, value: category };
+    }
+    return { name: category, value: category };
+  });
+
+  // Prompt user to select
+  const selected = await select({
+    message: "Select template:",
+    choices: options,
+  });
+
+  return selected;
+}
+
+/**
+ * Populate project from template
+ */
+async function populateProjectFromTemplate(
+  cfg: ProjectConfig,
+  options: CreateAppOpts,
+  logger: Logger,
+): Promise<void> {
+  // Handle local templates for development
+  if (process.env[ENV_VAR_USE_LOCAL_TEMPLATES] === "true") {
+    let eigenxTemplatesPath = process.env[ENV_VAR_TEMPLATES_PATH];
+    if (!eigenxTemplatesPath) {
+      // Look for eigenx-templates as a sibling directory
+      const possiblePaths = ["eigenx-templates", "../eigenx-templates"];
+      for (const possiblePath of possiblePaths) {
+        const testPath = path.join(possiblePath, "templates");
+        if (fs.existsSync(testPath)) {
+          eigenxTemplatesPath = possiblePath;
+          break;
+        }
+      }
+      if (!eigenxTemplatesPath) {
+        throw new Error(
+          `Cannot find eigenx-templates directory. Set ${ENV_VAR_TEMPLATES_PATH} or ensure eigenx-templates is a sibling directory`,
+        );
       }
     }
 
-    if (!eigenxTemplatesPath) {
-      throw new Error(
-        "Cannot find eigenx-templates directory. Set EIGENX_TEMPLATES_PATH or ensure eigenx-templates is a sibling directory",
-      );
+    const localTemplatePath = path.join(eigenxTemplatesPath, cfg.subPath);
+    if (!fs.existsSync(localTemplatePath)) {
+      throw new Error(`Local template not found at ${localTemplatePath}`);
     }
+
+    await copyDirectory(localTemplatePath, cfg.name);
+    logger.info(`Using local template from ${localTemplatePath}`);
+    return;
   }
 
-  // Use local templates from the eigenx-templates repository
-  const localTemplatePath = path.join(
-    eigenxTemplatesPath,
-    "templates/minimal",
-    language,
-  );
-
-  if (!fs.existsSync(localTemplatePath)) {
-    throw new Error(`Local template not found at ${localTemplatePath}`);
+  // Fetch from remote repository
+  if (cfg.subPath) {
+    await fetchTemplateSubdirectory(
+      cfg.repoURL,
+      cfg.ref,
+      cfg.subPath,
+      cfg.name,
+      logger,
+    );
+  } else {
+    await fetchTemplate(
+      cfg.repoURL,
+      cfg.ref,
+      cfg.name,
+      { verbose: options.verbose || false },
+      logger,
+    );
   }
-
-  // Copy local template to project directory
-  await copyDirectory(localTemplatePath, projectDir);
-  logger.info(`Using local template from ${localTemplatePath}`);
 }
 
 /**
@@ -244,7 +311,7 @@ async function promptProjectName(): Promise<string> {
  */
 async function promptLanguage(): Promise<string> {
   return select({
-    message: "Select a language",
+    message: "Select language:",
     choices: PRIMARY_LANGUAGES,
   });
 }
