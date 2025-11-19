@@ -7,7 +7,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { load as loadYaml } from "js-yaml";
-import { getDirname } from "../../../../common/utils/dirname";
+import { getDirname } from "../utils/dirname";
 
 const __dirname = getDirname();
 

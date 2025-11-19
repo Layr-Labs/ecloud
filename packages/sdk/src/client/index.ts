@@ -13,7 +13,7 @@ import { getEnvironmentConfig } from "./common/config/environment";
 export * from "./common/types";
 
 // special case on createApp - we don't need the client to run it
-export { createApp, CreateAppOpts } from "./modules/app/create/create";
+export { createApp, CreateAppOpts } from "./modules/app/create";
 
 export type Environment = "sepolia" | "mainnet-alpha";
 
@@ -43,11 +43,21 @@ export interface ecloudClient {
 }
 
 export function createECloudClient(cfg: CreateClientConfig): ecloudClient {
-  const chain = CHAINS[cfg.environment];
+  // prefix private key with 0x if it doesn't have it
+  if (!cfg.privateKey.startsWith("0x")) {
+    cfg.privateKey = `0x${cfg.privateKey}`;
+  }
+
+  // convert private key to account
   const account = privateKeyToAccount(cfg.privateKey);
 
+  // get chain from environment
+  const chain = CHAINS[cfg.environment || "sepolia"];
+
+  // get environment config
   const environmentConfig = getEnvironmentConfig(cfg.environment || "sepolia");
 
+  // get rpc url from environment config or use provided rpc url
   let rpc = cfg.rpcUrl;
   if (!rpc) {
     rpc = process.env.RPC_URL ?? environmentConfig.defaultRPCURL;
@@ -58,14 +68,17 @@ export function createECloudClient(cfg: CreateClientConfig): ecloudClient {
     );
   }
 
+  // create wallet client
   const wallet = createWalletClient({
     account,
     chain,
     transport: http(rpc),
   }) as WalletClient<Transport, typeof chain, Account>;
 
+  // create public client
   const publicClient = createPublicClient({ chain, transport: http(rpc) });
 
+  // create core context
   const ctx: CoreContext = {
     chain,
     account,
@@ -77,6 +90,7 @@ export function createECloudClient(cfg: CreateClientConfig): ecloudClient {
     environment: cfg.environment,
   };
 
+  // return ecloud client modules
   return {
     app: createAppModule(ctx),
   };

@@ -5,7 +5,7 @@
 import * as child_process from "child_process";
 import { promisify } from "util";
 import { DOCKER_PLATFORM } from "../constants";
-import { Logger } from "../../../../common/types";
+import { Logger } from "../types";
 
 const exec = promisify(child_process.exec);
 

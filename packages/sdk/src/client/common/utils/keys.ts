@@ -4,7 +4,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import { getDirname } from "../../../../common/utils/dirname";
+import { getDirname } from "./dirname";
 
 const __dirname = getDirname();
 

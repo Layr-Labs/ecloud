@@ -18,9 +18,9 @@ import { hashAuthorization } from "viem/utils";
 import { sign } from "viem/accounts";
 
 import type { WalletClient, PublicClient } from "viem";
-import { EnvironmentConfig, Logger } from "../../../../common/types";
+import { EnvironmentConfig, Logger } from "../types";
 
-import ERC7702DelegatorABI from "../../../../common/abis/ERC7702Delegator.json";
+import ERC7702DelegatorABI from "../abis/ERC7702Delegator.json";
 
 export interface ExecuteBatchOptions {
   walletClient: WalletClient;

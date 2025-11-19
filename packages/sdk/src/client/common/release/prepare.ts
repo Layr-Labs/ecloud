@@ -12,9 +12,9 @@ import { encryptRSAOAEPAndAES256GCM } from "../encryption/kms"; // getAppProtect
 import { getKMSKeysForEnvironment } from "../utils/keys";
 import { REGISTRY_PROPAGATION_WAIT_SECONDS } from "../constants";
 
-import { parseAndValidateEnvFile } from "../../../../common/env/parser";
+import { parseAndValidateEnvFile } from "../env/parser";
 
-import { Release, EnvironmentConfig, Logger } from "../../../../common/types";
+import { Release, EnvironmentConfig, Logger } from "../types";
 
 export interface PrepareReleaseOptions {
   dockerfilePath?: string;

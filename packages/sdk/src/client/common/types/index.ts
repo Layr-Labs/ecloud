@@ -18,7 +18,16 @@ export interface DeployAppOpts {
 }
 
 export interface UpgradeAppOpts {
-  image: string;
+  /** Path to Dockerfile (if building from Dockerfile) */
+  dockerfile?: string;
+  /** Image reference (registry/path:tag) - optional, will prompt if not provided */
+  imageRef?: string;
+  /** Path to .env file - optional, will use .env if exists or prompt */
+  envFile?: string;
+  /** Instance type - optional, will prompt if not provided */
+  instanceType?: string;
+  /** Log visibility setting - optional, will prompt if not provided */
+  logVisibility?: logVisibility;
   gas?: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint };
 }
 

@@ -5,9 +5,9 @@
 import { Address, createPublicClient, http, PrivateKeyAccount } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
-import { getEnvironmentConfig } from "../../../../common/config/environment";
+import { getEnvironmentConfig } from "../config/environment";
 
-import { Logger, EnvironmentConfig } from "../../../../common/types";
+import { Logger, EnvironmentConfig } from "../types";
 
 export interface PreflightContext {
   privateKey: string;

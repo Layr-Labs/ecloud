@@ -6,9 +6,9 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import { Logger } from "../../../../common/types";
-import { LANGUAGE_FILES } from "../create";
-import { getDirname } from "../../../../common/utils/dirname";
+import { Logger } from "../types";
+import { LANGUAGE_FILES } from "../../modules/app/create";
+import { getDirname } from "../utils/dirname";
 
 // Config file paths
 const __dirname = getDirname();

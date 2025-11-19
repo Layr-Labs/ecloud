@@ -4,7 +4,7 @@
 
 import Docker from "dockerode";
 
-import { DockerImageConfig } from "../../../../common/types";
+import { DockerImageConfig } from "../types";
 
 /**
  * Extract image configuration (CMD, ENTRYPOINT, USER)
@@ -40,7 +40,7 @@ export async function extractImageConfig(
 /**
  * Check if image already has ecloud layering
  */
-export async function checkIfImageAlreadyLayeredForecloud(
+export async function checkIfImageAlreadyLayeredForECloud(
   docker: Docker,
   imageTag: string,
 ): Promise<boolean> {

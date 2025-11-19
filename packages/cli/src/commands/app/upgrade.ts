@@ -1,18 +1,20 @@
-import { Command, Flags } from "@oclif/core";
+import { Command, Args, Flags } from "@oclif/core";
 import { logVisibility } from "@ecloud/sdk";
 import { loadClient } from "../../client";
 import { commonFlags } from "../../flags";
 
-export default class AppDeploy extends Command {
-  static description = "Deploy new app";
+export default class AppUpgrade extends Command {
+  static description = "Upgrade existing deployment";
+
+  static args = {
+    "app-id": Args.string({
+      description: "App ID or name to upgrade",
+      required: false,
+    }),
+  };
 
   static flags = {
     ...commonFlags,
-    name: Flags.string({
-      required: false,
-      description: "Friendly name for the app",
-      env: "ECLOUD_NAME",
-    }),
     dockerfile: Flags.string({
       required: false,
       description: "Path to Dockerfile",
@@ -39,17 +41,15 @@ export default class AppDeploy extends Command {
       required: false,
       description:
         "Machine instance type to use e.g. g1-standard-4t, g1-standard-8t",
-      options: ["g1-standard-4t", "g1-standard-8t"],
       env: "ECLOUD_INSTANCE_TYPE",
     }),
   };
 
   async run() {
-    const { flags } = await this.parse(AppDeploy);
+    const { args, flags } = await this.parse(AppUpgrade);
     const client = loadClient(flags);
 
-    const res = await client.app.deploy({
-      name: flags.name,
+    const res = await client.app.upgrade(args["app-id"] as any, {
       dockerfile: flags.dockerfile,
       envFile: flags["env-file"],
       imageRef: flags["image-ref"],
@@ -60,3 +60,4 @@ export default class AppDeploy extends Command {
     this.log(JSON.stringify(res, null, 2));
   }
 }
+

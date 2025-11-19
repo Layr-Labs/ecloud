@@ -6,11 +6,11 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import { Logger } from "../../../common/types";
-import { defaultLogger } from "../../../common/utils";
-import { loadTemplateConfig, getTemplateURLs } from "./template/config";
-import { fetchTemplate, fetchTemplateSubdirectory } from "./template/git";
-import { postProcessTemplate } from "./template/postprocess";
+import { Logger } from "../../common/types";
+import { defaultLogger } from "../../common/utils";
+import { loadTemplateConfig, getTemplateURLs } from "../../common/templates/config";
+import { fetchTemplate, fetchTemplateSubdirectory } from "../../common/templates/git";
+import { postProcessTemplate } from "../../common/templates/postprocess";
 import { input, select } from "@inquirer/prompts";
 
 export interface CreateAppOpts {

@@ -5,11 +5,11 @@
  * It orchestrates all the steps: build, push, encrypt, and deploy on-chain.
  */
 
-import { DeployOptions, DeployResult, Logger } from "../../../common/types";
-import { ensureDockerIsRunning } from "./docker/build";
-import { prepareRelease } from "./release/prepare";
-import { deployApp, calculateAppID } from "./contract/caller";
-import { watchUntilRunning } from "./contract/watcher";
+import { DeployOptions, DeployResult, Logger } from "../../common/types";
+import { ensureDockerIsRunning } from "../../common/docker/build";
+import { prepareRelease } from "../../common/release/prepare";
+import { deployApp, calculateAppID } from "../../common/contract/caller";
+import { watchUntilRunning } from "../../common/contract/watcher";
 import {
   getDockerfileInteractive,
   getImageReferenceInteractive,
@@ -17,10 +17,10 @@ import {
   getEnvFileInteractive,
   getInstanceTypeInteractive,
   getLogSettingsInteractive,
-} from "./utils/prompts";
-import { doPreflightChecks, PreflightContext } from "./utils/preflight";
-import { UserApiClient } from "../../../common/utils/userapi";
-import { setAppName } from "./registry/appNames";
+} from "../../common/utils/prompts";
+import { doPreflightChecks, PreflightContext } from "../../common/utils/preflight";
+import { UserApiClient } from "../../common/utils/userapi";
+import { setAppName } from "../../common/registry/appNames";
 
 /**
  * Default logger (console-based)

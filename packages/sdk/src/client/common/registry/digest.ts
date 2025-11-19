@@ -6,7 +6,7 @@
 
 import * as child_process from "child_process";
 import { promisify } from "util";
-import { ImageDigestResult } from "../../../../common/types";
+import { ImageDigestResult } from "../types";
 import { DOCKER_PLATFORM } from "../constants";
 
 const exec = promisify(child_process.exec);
@@ -220,20 +220,6 @@ function extractRegistryName(imageRef: string): string {
   const digestIndex = name.indexOf("@");
   if (digestIndex !== -1) {
     name = name.substring(0, digestIndex);
-  }
-
-  // Extract registry (everything before last /)
-  const lastSlash = name.lastIndexOf("/");
-  if (lastSlash === -1) {
-    // No registry, just image name (e.g., "nginx")
-    return name;
-  }
-
-  // Check if it's a registry (contains . or : before the last /)
-  const beforeLastSlash = name.substring(0, lastSlash);
-  if (beforeLastSlash.includes(".") || beforeLastSlash.includes(":")) {
-    // This is a registry
-    return beforeLastSlash;
   }
 
   // Default registry (docker.io)
