@@ -8,7 +8,12 @@
 import { DeployOptions, DeployResult, Logger } from "../../common/types";
 import { ensureDockerIsRunning } from "../../common/docker/build";
 import { prepareRelease } from "../../common/release/prepare";
-import { deployApp, calculateAppID } from "../../common/contract/caller";
+import {
+  deployApp,
+  calculateAppID,
+  getMaxActiveAppsPerUser,
+  getActiveAppCount,
+} from "../../common/contract/caller";
 import { watchUntilRunning } from "../../common/contract/watcher";
 import {
   getDockerfileInteractive,
@@ -28,19 +33,20 @@ import { defaultLogger } from "../../common/utils";
  *
  * This function follows the exact same flow as the Go CLI deploy command:
  * 1. Preflight checks (auth, network, etc.)
- * 2. Ensure Docker is running
- * 3. Check for Dockerfile before asking for image reference
- * 4. Get image reference (context-aware based on Dockerfile decision)
- * 5. Get app name upfront (before any expensive operations)
- * 6. Get environment file configuration
- * 7. Get instance type selection
- * 8. Get log settings from flags or interactive prompt
- * 9. Generate random salt
- * 10. Get app ID (calculate from salt and address)
- * 11. Prepare the release (includes build/push if needed)
- * 12. Deploy the app
- * 13. Save the app name mapping
- * 14. Watch until app is running
+ * 2. Check quota availability
+ * 3. Ensure Docker is running
+ * 4. Check for Dockerfile before asking for image reference
+ * 5. Get image reference (context-aware based on Dockerfile decision)
+ * 6. Get app name upfront (before any expensive operations)
+ * 7. Get environment file configuration
+ * 8. Get instance type selection
+ * 9. Get log settings from flags or interactive prompt
+ * 10. Generate random salt
+ * 11. Get app ID (calculate from salt and address)
+ * 12. Prepare the release (includes build/push if needed)
+ * 13. Deploy the app
+ * 14. Save the app name mapping
+ * 15. Watch until app is running
  */
 export async function deploy(
   options: Partial<DeployOptions>,
@@ -50,21 +56,25 @@ export async function deploy(
   logger.debug("Performing preflight checks...");
   const preflightCtx = await doPreflightChecks(options, logger);
 
-  // 2. Check if docker is running, else try to start it
+  // 2. Check quota availability
+  logger.debug("Checking quota availability...");
+  await checkQuotaAvailable(preflightCtx, logger);
+
+  // 3. Check if docker is running, else try to start it
   logger.debug("Checking Docker...");
   await ensureDockerIsRunning();
 
-  // 3. Check for Dockerfile before asking for image reference
+  // 4. Check for Dockerfile before asking for image reference
   const dockerfilePath = await getDockerfileInteractive(options.dockerfilePath);
   const buildFromDockerfile = dockerfilePath !== "";
 
-  // 4. Get image reference (context-aware based on Dockerfile decision)
+  // 5. Get image reference (context-aware based on Dockerfile decision)
   const imageRef = await getImageReferenceInteractive(
     options.imageRef,
     buildFromDockerfile,
   );
 
-  // 5. Get app name upfront (before any expensive operations)
+  // 6. Get app name upfront (before any expensive operations)
   const environment = preflightCtx.environmentConfig.name;
   const appName = await getOrPromptAppName(
     options.appName,
@@ -72,10 +82,10 @@ export async function deploy(
     imageRef,
   );
 
-  // 6. Get environment file configuration
+  // 7. Get environment file configuration
   const envFilePath = await getEnvFileInteractive(options.envFilePath);
 
-  // 7. Get instance type selection (uses first from backend as default for new apps)
+  // 8. Get instance type selection (uses first from backend as default for new apps)
   const availableTypes = await fetchAvailableInstanceTypes(
     preflightCtx,
     logger,
@@ -86,17 +96,17 @@ export async function deploy(
     availableTypes,
   );
 
-  // 8. Get log settings from flags or interactive prompt
+  // 9. Get log settings from flags or interactive prompt
   const logSettings = await getLogSettingsInteractive(
     options.logVisibility as "public" | "private" | "off" | undefined,
   );
   const { logRedirect, publicLogs } = logSettings;
 
-  // 9. Generate random salt
+  // 10. Generate random salt
   const salt = generateRandomSalt();
   logger.debug(`Generated salt: ${Buffer.from(salt).toString("hex")}`);
 
-  // 10. Get app ID (calculate from salt and address)
+  // 11. Get app ID (calculate from salt and address)
   logger.debug("Calculating app ID...");
   const appIDToBeDeployed = await calculateAppID(
     preflightCtx.privateKey,
@@ -106,7 +116,7 @@ export async function deploy(
   );
   logger.info(`App ID: ${appIDToBeDeployed}`);
 
-  // 11. Prepare the release (includes build/push if needed, with automatic retry on permission errors)
+  // 12. Prepare the release (includes build/push if needed, with automatic retry on permission errors)
   logger.info("Preparing release...");
   const { release, finalImageRef } = await prepareRelease(
     {
@@ -121,7 +131,7 @@ export async function deploy(
     logger,
   );
 
-  // 12. Deploy the app
+  // 13. Deploy the app
   logger.info("Deploying on-chain...");
   const deployedAppID = await deployApp(
     {
@@ -136,7 +146,7 @@ export async function deploy(
     logger,
   );
 
-  // 13. Save the app name mapping
+  // 14. Save the app name mapping
   try {
     await setAppName(environment, deployedAppID.appAddress, appName);
     logger.info(`App saved with name: ${appName}`);
@@ -144,7 +154,7 @@ export async function deploy(
     logger.warn(`Failed to save app name: ${err.message}`);
   }
 
-  // 14. Watch until app is running
+  // 15. Watch until app is running
   logger.info("Waiting for app to start...");
   const ipAddress = await watchUntilRunning(
     {
@@ -163,6 +173,57 @@ export async function deploy(
     imageRef: finalImageRef,
     ipAddress,
   };
+}
+
+/**
+ * Check quota availability - verifies that the user has deployment quota available
+ * by checking their allowlist status on the contract
+ */
+async function checkQuotaAvailable(
+  preflightCtx: PreflightContext,
+  logger: Logger,
+): Promise<void> {
+  const rpcUrl = preflightCtx.rpcUrl;
+  const environmentConfig = preflightCtx.environmentConfig;
+  const userAddress = preflightCtx.selfAddress;
+
+  // Check user's quota limit from contract
+  let maxQuota: number;
+  try {
+    maxQuota = await getMaxActiveAppsPerUser(
+      rpcUrl,
+      environmentConfig,
+      userAddress,
+    );
+  } catch (err: any) {
+    throw new Error(`failed to get quota limit: ${err.message}`);
+  }
+
+  // If quota is 0, user needs to subscribe
+  if (maxQuota === 0) {
+    throw new Error(
+      "no app quota available. Run 'npx ecloud billing subscribe' to enable app deployment",
+    );
+  }
+
+  // Check current active app count from contract
+  let activeCount: number;
+  try {
+    activeCount = await getActiveAppCount(
+      rpcUrl,
+      environmentConfig,
+      userAddress,
+    );
+  } catch (err: any) {
+    throw new Error(`failed to get active app count: ${err.message}`);
+  }
+
+  // Check if quota is reached
+  if (activeCount >= maxQuota) {
+    throw new Error(
+      `app quota reached for ${environmentConfig.name} (${activeCount}/${maxQuota}). Please contact the Eigen team at eigencloud_support@eigenlabs.org for additional capacity`,
+    );
+  }
 }
 
 /**

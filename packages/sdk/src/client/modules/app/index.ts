@@ -2,15 +2,16 @@
  * Main App namespace entry point
  */
 
-import { parseAbi, encodeFunctionData } from "viem"; // decodeEventLog
+import chalk from "chalk";
+import { parseAbi, encodeFunctionData } from "viem";
 import { deploy as deployApp } from "./deploy";
 import { upgrade as upgradeApp } from "./upgrade";
 import { createApp, CreateAppOpts } from "./create";
 import { logs, LogsOptions } from "./logs";
-import { sendAndWaitForTransaction } from "../../common/contract/caller";
-import { getAppName } from "../../common/registry/appNames";
 
+import { getAppName } from "../../common/registry/appNames";
 import { getEnvironmentConfig } from "../../common/config/environment";
+import { sendAndWaitForTransaction } from "../../common/contract/caller";
 
 import type { CoreContext } from "../..";
 import type {
@@ -20,11 +21,9 @@ import type {
   UpgradeAppOpts,
 } from "../../common/types";
 import { getLogger } from "../../common/utils";
-import chalk from "chalk";
 
 // Minimal ABI
 const CONTROLLER_ABI = parseAbi([
-  // "function upgradeApp(address appId, string image)",
   "function startApp(address appId)",
   "function stopApp(address appId)",
   "function terminateApp(address appId)",
