@@ -33,6 +33,7 @@ export async function buildDockerImage(
   ];
 
   logger?.info(`Building Docker image: ${tag}`);
+  logger?.info(``);
 
   return new Promise<void>((resolve, reject) => {
     const process = child_process.spawn("docker", args, {

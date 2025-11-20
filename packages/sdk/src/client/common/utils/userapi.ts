@@ -2,7 +2,8 @@
  * UserAPI Client to manage interactions with the coordinator
  */
 
-import { request, Agent as UndiciAgent } from "undici";
+import axios, { AxiosResponse } from "axios";
+import FormData from "form-data";
 import {
   Address,
   Hex,
@@ -47,6 +48,7 @@ const MAX_ADDRESS_COUNT = 5;
 // Permission constants
 export const CanViewAppLogsPermission = "0x2fd3f2fe" as Hex;
 export const CanViewSensitiveAppInfoPermission = "0x0e67b22f" as Hex;
+export const CanUpdateAppProfilePermission = "0x036fef61" as Hex;
 
 export class UserApiClient {
   private readonly account?: ReturnType<typeof privateKeyToAccount>;
@@ -161,11 +163,127 @@ export class UserApiClient {
     }));
   }
 
+  /**
+   * Upload app profile information with optional image
+   */
+  async uploadAppProfile(
+    appAddress: Address,
+    name: string,
+    website?: string,
+    description?: string,
+    xURL?: string,
+    imagePath?: string,
+  ): Promise<{
+    name: string;
+    website?: string;
+    description?: string;
+    xURL?: string;
+    imageURL?: string;
+  }> {
+    const endpoint = `${this.config.userApiServerURL}/apps/${appAddress}/profile`;
+
+    // Build multipart form data using form-data package
+    const formData = new FormData();
+
+    // Add required name field
+    formData.append("name", name);
+
+    // Add optional text fields
+    if (website) {
+      formData.append("website", website);
+    }
+    if (description) {
+      formData.append("description", description);
+    }
+    if (xURL) {
+      formData.append("xURL", xURL);
+    }
+
+    // Add optional image file
+    if (imagePath) {
+      const fs = await import("fs");
+      const path = await import("path");
+      const fileName = path.basename(imagePath);
+      
+      // Read file into buffer
+      const fileBuffer = fs.readFileSync(imagePath);
+      formData.append("image", fileBuffer, fileName);
+    }
+
+    // Make authenticated POST request
+    const headers: Record<string, string> = {
+      "x-client-id": "ecloud-cli/v0.0.1",
+      ...formData.getHeaders(),
+    };
+
+    // Add auth headers (Authorization and X-eigenx-expiry)
+    if (this.account) {
+      const expiry = BigInt(Math.floor(Date.now() / 1000) + 5 * 60); // 5 minutes
+      const authHeaders = await this.generateAuthHeaders(
+        CanUpdateAppProfilePermission,
+        expiry,
+      );
+      Object.assign(headers, authHeaders);
+    }
+
+    try {
+      // Use axios to post req
+      const response: AxiosResponse = await axios.post(endpoint, formData, {
+        headers,
+        maxRedirects: 0,
+        validateStatus: () => true, // Don't throw on any status
+        maxContentLength: Infinity, // Allow large file uploads
+        maxBodyLength: Infinity, // Allow large file uploads
+      });
+
+      const status = response.status;
+
+      if (status !== 200 && status !== 201) {
+        const body = typeof response.data === "string" 
+          ? response.data 
+          : JSON.stringify(response.data);
+        
+        // Detect Cloudflare challenge page
+        if (status === 403 && body.includes("Cloudflare") && body.includes("challenge-platform")) {
+          throw new Error(
+            `Cloudflare protection is blocking the request. This is likely due to bot detection.\n` +
+            `Status: ${status}`
+          );
+        }
+        
+        throw new Error(
+          `UserAPI request failed: ${status} ${status >= 200 && status < 300 ? "OK" : "Error"} - ${body.substring(0, 500)}${body.length > 500 ? "..." : ""}`,
+        );
+      }
+
+      return response.data;
+    } catch (error: any) {
+      if (
+        error.message?.includes("fetch failed") ||
+        error.message?.includes("ECONNREFUSED") ||
+        error.message?.includes("ENOTFOUND") ||
+        error.cause
+      ) {
+        const cause = error.cause?.message || error.cause || error.message;
+        throw new Error(
+          `Failed to connect to UserAPI at ${endpoint}: ${cause}\n` +
+            `Please check:\n` +
+            `1. Your internet connection\n` +
+            `2. The API server is accessible: ${this.config.userApiServerURL}\n` +
+            `3. Firewall/proxy settings`,
+        );
+      }
+      throw error;
+    }
+  }
+
   private async makeAuthenticatedRequest(
     url: string,
     permission?: Hex,
-  ): Promise<Response> {
-    const headers: Record<string, string> = {};
+  ): Promise<{ json: () => Promise<any>; text: () => Promise<string> }> {
+    const headers: Record<string, string> = {
+      "x-client-id": "ecloud-cli/v0.0.1",
+    };
     // Add auth headers if permission is specified
     if (permission && this.account) {
       const expiry = BigInt(Math.floor(Date.now() / 1000) + 5 * 60); // 5 minutes
@@ -174,45 +292,30 @@ export class UserApiClient {
     }
 
     try {
-      // Use undici directly with TLS config that skips certificate verification
-      const insecureAgent = new UndiciAgent({
-        connect: {
-          rejectUnauthorized: false, // Skip TLS certificate verification
-        },
-      });
-
-      // Use undici's request directly instead of fetch
-      const response = await request(url, {
-        method: "GET",
+      // Use axios to match
+      const response: AxiosResponse = await axios.get(url, {
         headers,
-        dispatcher: insecureAgent,
-        headersTimeout: 30000, // 30 second timeout
+        maxRedirects: 0,
+        validateStatus: () => true, // Don't throw on any status
       });
 
-      // Convert undici response to fetch-like Response object
-      const status = response.statusCode;
+      const status = response.status;
       const statusText = status >= 200 && status < 300 ? "OK" : "Error";
 
       if (status < 200 || status >= 300) {
-        const body = await response.body.text();
+        const body = typeof response.data === "string" 
+          ? response.data 
+          : JSON.stringify(response.data);
         throw new Error(
           `UserAPI request failed: ${status} ${statusText} - ${body}`,
         );
       }
 
-      // Create a Response-like object that works with our code
+      // Return Response-like object for compatibility
       return {
-        ok: true,
-        status,
-        statusText,
-        json: async () => {
-          const text = await response.body.text();
-          return JSON.parse(text);
-        },
-        text: async () => {
-          return await response.body.text();
-        },
-      } as Response;
+        json: async () => response.data,
+        text: async () => typeof response.data === "string" ? response.data : JSON.stringify(response.data),
+      };
     } catch (error: any) {
       // Handle network errors (fetch failed, connection refused, etc.)
       if (

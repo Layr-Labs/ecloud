@@ -967,7 +967,7 @@ function getDefaultAppName(): string {
   }
 }
 
-function extractAppNameFromImage(imageRef: string): string {
+export function extractAppNameFromImage(imageRef: string): string {
   // Remove registry prefix if present
   const parts = imageRef.split("/");
   let imageName = parts.length > 1 ? parts[parts.length - 1] : imageRef;
@@ -1226,4 +1226,461 @@ export async function getPrivateKeyInteractive(
   });
 
   return key.trim();
+}
+
+/**
+ * Profile collection functions
+ */
+
+import { AppProfile } from "../types";
+
+const MAX_APP_NAME_LENGTH = 100;
+const MAX_DESCRIPTION_LENGTH = 1000;
+const MAX_IMAGE_SIZE = 4 * 1024 * 1024; // 4MB
+const VALID_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png"];
+const VALID_X_HOSTS = [
+  "twitter.com",
+  "www.twitter.com",
+  "x.com",
+  "www.x.com",
+];
+
+/**
+ * Collect app profile information interactively
+ * If defaultName is provided, it will be used as the suggested name
+ * If allowRetry is true, user can re-enter information on rejection (deploy flow)
+ * If allowRetry is false, rejection returns an error (profile set flow)
+ */
+export async function getAppProfileInteractive(
+  defaultName: string = "",
+  allowRetry: boolean = true,
+): Promise<AppProfile | null> {
+  while (true) {
+    // Collect name (required)
+    const name = await getAppNameForProfile(defaultName);
+
+    // Collect optional fields
+    const website = await getAppWebsiteInteractive();
+    const description = await getAppDescriptionInteractive();
+    const xURL = await getAppXURLInteractive();
+    const imagePath = await getAppImageInteractive();
+
+    const profile: AppProfile = {
+      name,
+      website,
+      description,
+      xURL,
+      imagePath,
+    };
+
+    // Display profile for confirmation
+    console.log("\n" + formatProfileForDisplay(profile));
+
+    const confirmed = await inquirerConfirm({
+      message: "Continue with this profile?",
+      default: true,
+    });
+
+    if (confirmed) {
+      return profile;
+    }
+
+    // User rejected the profile
+    if (!allowRetry) {
+      throw new Error("Profile confirmation cancelled");
+    }
+
+    // Deploy flow: ask if they want to re-enter
+    const retry = await inquirerConfirm({
+      message: "Would you like to re-enter the information?",
+      default: true,
+    });
+
+    if (!retry) {
+      // User doesn't want to set a profile - skip it entirely
+      return null;
+    }
+
+    // Loop back to re-collect information (keep the name)
+    defaultName = name;
+  }
+}
+
+/**
+ * Get app name for profile (reuses existing validation)
+ */
+async function getAppNameForProfile(defaultName: string): Promise<string> {
+  if (defaultName) {
+    validateAppName(defaultName);
+    return defaultName;
+  }
+
+  return await input({
+    message: "App name:",
+    default: "",
+    validate: (value: string) => {
+      if (!value.trim()) {
+        return "Name is required";
+      }
+      try {
+        validateAppName(value);
+        return true;
+      } catch (err: any) {
+        return err.message;
+      }
+    },
+  });
+}
+
+/**
+ * Get website URL interactively
+ */
+async function getAppWebsiteInteractive(): Promise<string | undefined> {
+  const website = await input({
+    message: "Website URL (optional):",
+    default: "",
+    validate: (value: string) => {
+      if (!value.trim()) {
+        return true; // Optional
+      }
+      const err = validateURL(value);
+      return err ? err : true;
+    },
+  });
+
+  if (!website.trim()) {
+    return undefined;
+  }
+
+  return sanitizeURL(website);
+}
+
+/**
+ * Get description interactively
+ */
+async function getAppDescriptionInteractive(): Promise<string | undefined> {
+  const description = await input({
+    message: "Description (optional):",
+    default: "",
+    validate: (value: string) => {
+      if (!value.trim()) {
+        return true; // Optional
+      }
+      const err = validateDescription(value);
+      return err ? err : true;
+    },
+  });
+
+  if (!description.trim()) {
+    return undefined;
+  }
+
+  return sanitizeString(description);
+}
+
+/**
+ * Get X (Twitter) URL interactively
+ */
+async function getAppXURLInteractive(): Promise<string | undefined> {
+  const xURL = await input({
+    message: "X (Twitter) URL (optional):",
+    default: "",
+    validate: (value: string) => {
+      if (!value.trim()) {
+        return true; // Optional
+      }
+      const err = validateXURL(value);
+      return err ? err : true;
+    },
+  });
+
+  if (!xURL.trim()) {
+    return undefined;
+  }
+
+  return sanitizeXURL(xURL);
+}
+
+/**
+ * Get app image interactively
+ */
+async function getAppImageInteractive(): Promise<string | undefined> {
+  const wantsImage = await inquirerConfirm({
+    message: "Would you like to upload an app icon/logo?",
+    default: false,
+  });
+
+  if (!wantsImage) {
+    return undefined;
+  }
+
+  const imagePath = await input({
+    message:
+      "Image path (drag & drop image file or enter path - JPG/PNG, max 4MB, square recommended):",
+    default: "",
+    validate: (value: string) => {
+      if (!value.trim()) {
+        return true; // Optional
+      }
+      const err = validateImagePath(value);
+      return err ? err : true;
+    },
+  });
+
+  if (!imagePath.trim()) {
+    return undefined;
+  }
+
+  // Validate and get image info
+  const cleanedPath = imagePath.trim().replace(/^["']|["']$/g, "");
+  const imgInfo = await getImageInfo(cleanedPath);
+  if (imgInfo) {
+    console.log(
+      `📸 Image: ${imgInfo.width}x${imgInfo.height} pixels, ${imgInfo.sizeKB.toFixed(1)} KB`,
+    );
+    if (!imgInfo.isSquare) {
+      const ratio = imgInfo.aspectRatio.toFixed(2);
+      console.log(
+        `⚠️  Note: Image is not square (${ratio}:1 ratio). Square images display best.`,
+      );
+    }
+  }
+
+  return cleanedPath;
+}
+
+/**
+ * Format profile for display
+ */
+function formatProfileForDisplay(profile: AppProfile): string {
+  let output = "\n📋 Profile Summary:\n";
+  output += `  Name:        ${profile.name}\n`;
+  if (profile.website) {
+    output += `  Website:     ${profile.website}\n`;
+  }
+  if (profile.description) {
+    output += `  Description: ${profile.description}\n`;
+  }
+  if (profile.xURL) {
+    output += `  X URL:       ${profile.xURL}\n`;
+  }
+  if (profile.imagePath) {
+    output += `  Image:       ${profile.imagePath}\n`;
+  }
+  return output;
+}
+
+/**
+ * Validation functions
+ */
+
+function validateURL(rawURL: string): string | undefined {
+  if (!rawURL.trim()) {
+    return "URL cannot be empty";
+  }
+
+  try {
+    const url = new URL(rawURL);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return "URL scheme must be http or https";
+    }
+  } catch {
+    return "Invalid URL format";
+  }
+
+  return undefined;
+}
+
+function validateXURL(rawURL: string): string | undefined {
+  // First validate as URL
+  const urlErr = validateURL(rawURL);
+  if (urlErr) {
+    return urlErr;
+  }
+
+  try {
+    const url = new URL(rawURL);
+    const host = url.hostname.toLowerCase();
+
+    // Accept twitter.com and x.com domains
+    if (!VALID_X_HOSTS.includes(host)) {
+      return "URL must be a valid X/Twitter URL (x.com or twitter.com)";
+    }
+
+    // Ensure it has a path (username/profile)
+    if (!url.pathname || url.pathname === "/") {
+      return "X URL must include a username or profile path";
+    }
+  } catch {
+    return "Invalid X URL format";
+  }
+
+  return undefined;
+}
+
+function validateDescription(description: string): string | undefined {
+  if (!description.trim()) {
+    return "Description cannot be empty";
+  }
+
+  if (description.length > MAX_DESCRIPTION_LENGTH) {
+    return `Description cannot exceed ${MAX_DESCRIPTION_LENGTH} characters`;
+  }
+
+  return undefined;
+}
+
+function validateImagePath(filePath: string): string | undefined {
+  // Strip quotes that may be added by terminal drag-and-drop
+  const cleanedPath = filePath.trim().replace(/^["']|["']$/g, "");
+
+  if (!cleanedPath) {
+    return "Image path cannot be empty";
+  }
+
+  // Check if file exists
+  if (!fs.existsSync(cleanedPath)) {
+    return `Image file not found: ${cleanedPath}`;
+  }
+
+  const stats = fs.statSync(cleanedPath);
+  if (stats.isDirectory()) {
+    return "Path is a directory, not a file";
+  }
+
+  // Check file size
+  if (stats.size > MAX_IMAGE_SIZE) {
+    const sizeMB = (stats.size / (1024 * 1024)).toFixed(2);
+    return `Image file size (${sizeMB} MB) exceeds maximum allowed size of 4 MB`;
+  }
+
+  // Check file extension
+  const ext = path.extname(cleanedPath).toLowerCase();
+  if (!VALID_IMAGE_EXTENSIONS.includes(ext)) {
+    return "Image must be JPG or PNG format";
+  }
+
+  return undefined;
+}
+
+interface ImageInfo {
+  width: number;
+  height: number;
+  sizeKB: number;
+  aspectRatio: number;
+  isSquare: boolean;
+}
+
+async function getImageInfo(
+  filePath: string,
+): Promise<ImageInfo | null> {
+  try {
+    const stats = fs.statSync(filePath);
+    const sizeKB = stats.size / 1024;
+
+    // Read file buffer to parse image dimensions
+    const buffer = fs.readFileSync(filePath);
+    const ext = path.extname(filePath).toLowerCase();
+
+    let width = 0;
+    let height = 0;
+
+    if (ext === ".png") {
+      // PNG format: width and height are at bytes 16-23 (4 bytes each, big-endian)
+      if (buffer.length >= 24) {
+        width = buffer.readUInt32BE(16);
+        height = buffer.readUInt32BE(20);
+      }
+    } else if (ext === ".jpg" || ext === ".jpeg") {
+      // JPEG format: dimensions are in SOF (Start of Frame) markers
+      // Look for SOF markers: 0xFFC0, 0xFFC1, 0xFFC2, etc.
+      let i = 0;
+      while (i < buffer.length - 1) {
+        if (buffer[i] === 0xff && buffer[i + 1] >= 0xc0 && buffer[i + 1] <= 0xc3) {
+          // Found SOF marker, height and width are at offset +5 and +7 (2 bytes each, big-endian)
+          if (i + 9 < buffer.length) {
+            height = buffer.readUInt16BE(i + 5);
+            width = buffer.readUInt16BE(i + 7);
+            break;
+          }
+        }
+        i++;
+      }
+    }
+
+    const aspectRatio = height > 0 ? width / height : 1;
+    const isSquare = aspectRatio >= 0.8 && aspectRatio <= 1.25;
+
+    return {
+      width,
+      height,
+      sizeKB,
+      aspectRatio,
+      isSquare,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Sanitization functions
+ */
+
+function sanitizeString(s: string): string {
+  // HTML escape and trim
+  return s
+    .trim()
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function sanitizeURL(rawURL: string): string {
+  rawURL = rawURL.trim();
+
+  // Add https:// if no scheme is present
+  if (!hasScheme(rawURL)) {
+    rawURL = "https://" + rawURL;
+  }
+
+  // Validate
+  const err = validateURL(rawURL);
+  if (err) {
+    throw new Error(err);
+  }
+
+  return rawURL;
+}
+
+function sanitizeXURL(rawURL: string): string {
+  rawURL = rawURL.trim();
+
+  // Handle username-only input (e.g., "@username" or "username")
+  if (!rawURL.includes("://") && !rawURL.includes(".")) {
+    // Remove @ if present
+    const username = rawURL.startsWith("@") ? rawURL.slice(1) : rawURL;
+    rawURL = `https://x.com/${username}`;
+  } else if (!hasScheme(rawURL)) {
+    // Add https:// if URL-like but missing scheme
+    rawURL = "https://" + rawURL;
+  }
+
+  // Normalize twitter.com to x.com
+  rawURL = rawURL.replace(/twitter\.com/g, "x.com");
+  rawURL = rawURL.replace(/www\.x\.com/g, "x.com");
+
+  // Validate
+  const err = validateXURL(rawURL);
+  if (err) {
+    throw new Error(err);
+  }
+
+  return rawURL;
+}
+
+function hasScheme(rawURL: string): boolean {
+  return rawURL.startsWith("http://") || rawURL.startsWith("https://");
 }
