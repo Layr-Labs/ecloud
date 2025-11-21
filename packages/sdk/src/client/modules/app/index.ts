@@ -1,18 +1,21 @@
+/**
+ * Main App namespace entry point
+ */
+
+import { parseAbi } from "viem"; // decodeEventLog
+import { deploy as deployApp } from "./deploy/deploy";
+import { createApp, CreateAppOpts } from "./create/create";
+
+import { getEnvironmentConfig } from "../../common/config/environment";
+
 import type { CoreContext } from "../..";
 import type {
   AppId,
   DeployAppOpts,
   LifecycleOpts,
   // UpgradeAppOpts,
-} from "./types";
-import { parseAbi, type Address } from "viem"; // decodeEventLog
-import { deploy as deployApp } from "./deploy/deploy";
-
-// TODO: source addresses (using zeus?)
-const ADDR: Record<number, { factory: Address; controller: Address }> = {
-  1: { factory: "0xFactoryMainnet", controller: "0xControllerMainnet" },
-  11155111: { factory: "0xFactorySepolia", controller: "0xControllerSepolia" },
-};
+} from "../../common/types";
+import { getLogger } from "../../common/utils";
 
 // Minimal ABI
 const CONTROLLER_ABI = parseAbi([
@@ -23,6 +26,7 @@ const CONTROLLER_ABI = parseAbi([
 ]);
 
 export interface AppModule {
+  create: (opts: CreateAppOpts) => Promise<void>;
   deploy: (opts: DeployAppOpts) => Promise<{ appId: AppId; tx: `0x${string}` }>;
   start: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: `0x${string}` }>;
   stop: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: `0x${string}` }>;
@@ -37,14 +41,14 @@ export interface AppModule {
 }
 
 export function createAppModule(ctx: CoreContext): AppModule {
-  const addresses = ADDR[ctx.chain.id];
-  if (!addresses)
-    throw new Error(`No contract addresses for chain ${ctx.chain.id}`);
-
-  const { wallet, publicClient } = ctx;
+  const { wallet } = ctx;
 
   const chain = wallet.chain!;
   const account = wallet.account!;
+
+  const environment = getEnvironmentConfig(ctx.environment);
+
+  const logger = getLogger(ctx.verbose);
 
   // Helper to merge user gas overrides
   const gas = (g?: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint }) =>
@@ -56,6 +60,9 @@ export function createAppModule(ctx: CoreContext): AppModule {
       : {};
 
   return {
+    async create(opts) {
+      return createApp(opts, logger);
+    },
     // Write operations
     async deploy(opts) {
       // Map DeployAppOpts to DeployOptions and call the deploy function
@@ -64,22 +71,14 @@ export function createAppModule(ctx: CoreContext): AppModule {
           privateKey: ctx.privateKey,
           rpcUrl: ctx.rpcUrl,
           environment: ctx.environment,
-          imageRef: opts.image,
-          instanceType: "standard", // Default instance type
-          logRedirect: "console", // Default log redirect
-          publicLogs: false, // Default to private logs
-          dockerfilePath: undefined,
-          envFilePath: undefined,
-          appName: undefined,
+          appName: opts.name,
+          instanceType: opts.instanceType,
+          dockerfilePath: opts.dockerfile,
+          envFilePath: opts.envFile,
+          imageRef: opts.imageRef,
+          logVisibility: opts.logVisibility,
         },
-        {
-          debug: () => {}, // Silent logger for SDK usage
-          info: () => {},
-          warn: () => {},
-          error: (msg: string, ...args: any[]) => {
-            console.error(msg, ...args);
-          },
-        }
+        logger,
       );
 
       return {
@@ -92,7 +91,7 @@ export function createAppModule(ctx: CoreContext): AppModule {
       const tx = await wallet.writeContract({
         chain,
         account,
-        address: addresses.controller,
+        address: environment.appControllerAddress as `0x${string}`,
         abi: CONTROLLER_ABI,
         functionName: "startApp",
         args: [appId],
@@ -105,7 +104,7 @@ export function createAppModule(ctx: CoreContext): AppModule {
       const tx = await wallet.writeContract({
         chain,
         account,
-        address: addresses.controller,
+        address: environment.appControllerAddress as `0x${string}`,
         abi: CONTROLLER_ABI,
         functionName: "stopApp",
         args: [appId],
@@ -118,7 +117,7 @@ export function createAppModule(ctx: CoreContext): AppModule {
       const tx = await wallet.writeContract({
         chain,
         account,
-        address: addresses.controller,
+        address: environment.appControllerAddress as `0x${string}`,
         abi: CONTROLLER_ABI,
         functionName: "terminateApp",
         args: [appId],
@@ -131,7 +130,7 @@ export function createAppModule(ctx: CoreContext): AppModule {
     //   const tx = await wallet.writeContract({
     //     chain,
     //     account,
-    //     address: addresses.controller,
+    //     address: environment.appControllerAddress as `0x${string}`,
     //     abi: CONTROLLER_ABI,
     //     functionName: "upgrade",
     //     args: [appId, opts.image],

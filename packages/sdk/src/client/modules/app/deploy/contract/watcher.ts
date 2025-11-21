@@ -1,12 +1,12 @@
 /**
  * Contract watcher
- * 
+ *
  * Watches app status until it reaches Running state using UserAPI
  */
 
-import { Address } from 'viem';
-import { EnvironmentConfig, Logger } from '../types';
-import { UserApiClient } from './userapi';
+import { Address } from "viem";
+import { EnvironmentConfig, Logger } from "../../../../common/types";
+import { UserApiClient } from "../../../../common/utils/userapi";
 
 export interface WatchUntilRunningOptions {
   privateKey: string;
@@ -16,21 +16,21 @@ export interface WatchUntilRunningOptions {
 }
 
 const WATCH_POLL_INTERVAL_SECONDS = 5;
-const APP_STATUS_RUNNING = 'Running';
-const APP_STATUS_FAILED = 'Failed';
-const APP_STATUS_DEPLOYING = 'Deploying';
+const APP_STATUS_RUNNING = "Running";
+const APP_STATUS_FAILED = "Failed";
+// const APP_STATUS_DEPLOYING = 'Deploying';
 
 /**
  * Watch app until it reaches Running status with IP address
  */
 export async function watchUntilRunning(
   options: WatchUntilRunningOptions,
-  logger: Logger
+  logger: Logger,
 ): Promise<string | undefined> {
-  const { environmentConfig, appID } = options;
+  const { environmentConfig, appID, privateKey } = options;
 
   // Create UserAPI client
-  const userApiClient = new UserApiClient(environmentConfig);
+  const userApiClient = new UserApiClient(environmentConfig, privateKey);
 
   // Track initial status and whether we've seen a change
   let initialStatus: string | undefined;
@@ -56,10 +56,10 @@ export async function watchUntilRunning(
     if (status === APP_STATUS_RUNNING && ip) {
       if (hasChanged || initialStatus !== APP_STATUS_RUNNING) {
         // Only log IP if we didn't have one initially
-        if (!initialIP || initialIP === 'No IP assigned') {
+        if (!initialIP || initialIP === "No IP assigned") {
           logger.info(`App is now running with IP: ${ip}`);
         } else {
-          logger.info('App is now running');
+          logger.info("App is now running");
         }
         return true;
       }
@@ -77,7 +77,7 @@ export async function watchUntilRunning(
   while (true) {
     try {
       // Fetch app info
-      const info = await userApiClient.getInfos([appID], 1);
+      const info = await userApiClient.getInfos([appID], 1, logger);
       if (info.length === 0) {
         await sleep(WATCH_POLL_INTERVAL_SECONDS * 1000);
         continue;
@@ -85,7 +85,7 @@ export async function watchUntilRunning(
 
       const appInfo = info[0];
       const currentStatus = appInfo.status;
-      const currentIP = appInfo.ip || '';
+      const currentIP = appInfo.ip || "";
 
       // Check stop condition
       if (stopCondition(currentStatus, currentIP)) {

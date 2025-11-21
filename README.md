@@ -64,7 +64,7 @@ The CLI is available via the `ecloud` command after building:
 
 ```bash
 # Deploy an application
-pnpm ecloud app deploy \
+npx ecloud app deploy \
   --private-key <your-private-key> \
   --environment sepolia \
   --image <docker-image-reference>
@@ -74,14 +74,12 @@ pnpm ecloud app deploy \
 - `--private-key`: Your Ethereum private key (or set `ECLOUD_PRIVATE_KEY` env var)
 - `--environment`: Target environment (`sepolia` or `mainnet-alpha`)
 - `--rpc-url`: Custom RPC URL (optional, or set `ECLOUD_RPC_URL` env var)
-- `--api-base-url`: API base URL (optional, or set `ECLOUD_API_BASE_URL` env var)
 
 **Example:**
 ```bash
-pnpm ecloud app deploy \
+npx ecloud app deploy \
   --private-key 0x... \
-  --environment sepolia \
-  --image myapp:latest
+  --environment sepolia
 ```
 
 ### SDK Usage

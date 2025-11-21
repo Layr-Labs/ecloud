@@ -1,12 +1,25 @@
 import { Flags } from "@oclif/core";
 
 export const commonFlags = {
-  privateKey: Flags.string({ required: true, env: "ECLOUD_PRIVATE_KEY" }),
   environment: Flags.string({
     required: true,
+    description: "Deployment environment to use",
     options: ["sepolia", "mainnet-alpha"],
     env: "ECLOUD_ENV",
   }),
-  rpcUrl: Flags.string({ required: false, env: "ECLOUD_RPC_URL" }),
-  apiBaseUrl: Flags.string({ required: false, env: "ECLOUD_API_BASE_URL" }),
+  "private-key": Flags.string({
+    required: true,
+    description: "Private key for signing transactions",
+    env: "ECLOUD_PRIVATE_KEY",
+  }),
+  "rpc-url": Flags.string({
+    required: false,
+    description: "RPC URL to connect to blockchain",
+    env: "ECLOUD_RPC_URL",
+  }),
+  verbose: Flags.boolean({
+    required: false,
+    description: "Enable verbose logging (default: false)",
+    default: false,
+  }),
 };

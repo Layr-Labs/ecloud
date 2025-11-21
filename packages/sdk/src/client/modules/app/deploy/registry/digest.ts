@@ -1,13 +1,13 @@
 /**
  * Image registry operations - digest extraction
- * 
+ *
  * Uses Docker API to extract image digest and validate platform
  */
 
-import * as child_process from 'child_process';
-import { promisify } from 'util';
-import { ImageDigestResult } from '../types';
-import { DOCKER_PLATFORM, SHA256_PREFIX } from '../constants';
+import * as child_process from "child_process";
+import { promisify } from "util";
+import { ImageDigestResult } from "../../../../common/types";
+import { DOCKER_PLATFORM } from "../constants";
 
 const exec = promisify(child_process.exec);
 
@@ -34,7 +34,7 @@ interface Manifest {
  * Uses docker manifest inspect to get the manifest
  */
 export async function getImageDigestAndName(
-  imageRef: string
+  imageRef: string,
 ): Promise<ImageDigestResult> {
   try {
     // Use docker manifest inspect to get the manifest
@@ -53,7 +53,7 @@ export async function getImageDigestAndName(
     }
   } catch (error: any) {
     throw new Error(
-      `Failed to get image digest for ${imageRef}: ${error.message}`
+      `Failed to get image digest for ${imageRef}: ${error.message}`,
     );
   }
 }
@@ -63,7 +63,7 @@ export async function getImageDigestAndName(
  */
 function extractDigestFromMultiPlatform(
   manifest: Manifest,
-  imageRef: string
+  imageRef: string,
 ): ImageDigestResult {
   if (!manifest.manifests) {
     throw new Error(`Invalid manifest for ${imageRef}: no manifests found`);
@@ -98,7 +98,7 @@ function extractDigestFromMultiPlatform(
  */
 async function extractDigestFromSinglePlatform(
   manifest: Manifest,
-  imageRef: string
+  imageRef: string,
 ): Promise<ImageDigestResult> {
   // For single-platform images, we need to get the config digest
   // and then inspect the image to get platform info
@@ -115,7 +115,7 @@ async function extractDigestFromSinglePlatform(
 
     const config = inspectData[0].Architecture
       ? {
-          os: inspectData[0].Os || 'linux',
+          os: inspectData[0].Os || "linux",
           architecture: inspectData[0].Architecture,
         }
       : null;
@@ -160,11 +160,11 @@ async function extractDigestFromSinglePlatform(
     // Platform mismatch
     throw createPlatformErrorMessage(imageRef, [platform]);
   } catch (error: any) {
-    if (error.message.includes('platform')) {
+    if (error.message.includes("platform")) {
       throw error;
     }
     throw new Error(
-      `Failed to extract digest from single-platform image ${imageRef}: ${error.message}`
+      `Failed to extract digest from single-platform image ${imageRef}: ${error.message}`,
     );
   }
 }
@@ -175,17 +175,15 @@ async function extractDigestFromSinglePlatform(
 function hexStringToBytes32(hexStr: string): Uint8Array {
   // Remove "sha256:" prefix if present
   let cleanHex = hexStr;
-  if (hexStr.includes(':')) {
-    cleanHex = hexStr.split(':')[1];
+  if (hexStr.includes(":")) {
+    cleanHex = hexStr.split(":")[1];
   }
 
   // Decode hex string
-  const bytes = Buffer.from(cleanHex, 'hex');
+  const bytes = Buffer.from(cleanHex, "hex");
 
   if (bytes.length !== 32) {
-    throw new Error(
-      `Digest must be exactly 32 bytes, got ${bytes.length}`
-    );
+    throw new Error(`Digest must be exactly 32 bytes, got ${bytes.length}`);
   }
 
   return new Uint8Array(bytes);
@@ -196,7 +194,7 @@ function hexStringToBytes32(hexStr: string): Uint8Array {
  * Format: "repo@sha256:xxxxx" -> returns 32-byte digest
  */
 function extractDigestFromRepoDigest(repoDigest: string): Uint8Array {
-  const prefix = '@sha256:';
+  const prefix = "@sha256:";
   const idx = repoDigest.lastIndexOf(prefix);
   if (idx === -1) {
     throw new Error(`Invalid repo digest format: ${repoDigest}`);
@@ -213,19 +211,19 @@ function extractDigestFromRepoDigest(repoDigest: string): Uint8Array {
 function extractRegistryName(imageRef: string): string {
   // Remove tag if present
   let name = imageRef;
-  const tagIndex = name.lastIndexOf(':');
-  if (tagIndex !== -1 && !name.substring(tagIndex + 1).includes('/')) {
+  const tagIndex = name.lastIndexOf(":");
+  if (tagIndex !== -1 && !name.substring(tagIndex + 1).includes("/")) {
     name = name.substring(0, tagIndex);
   }
 
   // Remove digest if present
-  const digestIndex = name.indexOf('@');
+  const digestIndex = name.indexOf("@");
   if (digestIndex !== -1) {
     name = name.substring(0, digestIndex);
   }
 
   // Extract registry (everything before last /)
-  const lastSlash = name.lastIndexOf('/');
+  const lastSlash = name.lastIndexOf("/");
   if (lastSlash === -1) {
     // No registry, just image name (e.g., "nginx")
     return name;
@@ -233,7 +231,7 @@ function extractRegistryName(imageRef: string): string {
 
   // Check if it's a registry (contains . or : before the last /)
   const beforeLastSlash = name.substring(0, lastSlash);
-  if (beforeLastSlash.includes('.') || beforeLastSlash.includes(':')) {
+  if (beforeLastSlash.includes(".") || beforeLastSlash.includes(":")) {
     // This is a registry
     return beforeLastSlash;
   }
@@ -247,12 +245,12 @@ function extractRegistryName(imageRef: string): string {
  */
 function createPlatformErrorMessage(
   imageRef: string,
-  platforms: string[]
+  platforms: string[],
 ): Error {
   const errorMsg = `ecloud requires linux/amd64 images for TEE deployment.
 
 Image: ${imageRef}
-Found platform(s): ${platforms.join(', ')}
+Found platform(s): ${platforms.join(", ")}
 Required platform: ${DOCKER_PLATFORM}
 
 To fix this issue:

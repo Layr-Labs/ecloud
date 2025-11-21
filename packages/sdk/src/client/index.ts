@@ -1,26 +1,37 @@
+/**
+ * Main SDK Client entry point
+ */
+
 import { createPublicClient, createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { sepolia, mainnet, type Chain } from "viem/chains";
 import { createAppModule, type AppModule } from "./modules/app";
 import type { WalletClient, Transport, Account } from "viem";
+import { getEnvironmentConfig } from "./common/config/environment";
+
+// Export all types
+export * from "./common/types";
+
+// special case on createApp - we don't need the client to run it
+export { createApp, CreateAppOpts } from "./modules/app/create/create";
 
 export type Environment = "sepolia" | "mainnet-alpha";
 
 const CHAINS: Record<string, Chain> = { sepolia, "mainnet-alpha": mainnet };
 
 export interface CreateClientConfig {
+  verbose: boolean;
   privateKey: `0x${string}`;
   environment: Environment | string;
   rpcUrl?: string;
-  apiBaseUrl?: string;
 }
 
 export interface CoreContext {
+  verbose: boolean;
   chain: Chain;
   account: ReturnType<typeof privateKeyToAccount>;
   wallet: ReturnType<typeof createWalletClient>;
   publicClient: ReturnType<typeof createPublicClient>;
-  apiBaseUrl?: string;
   privateKey: `0x${string}`;
   rpcUrl: string;
   environment: string;
@@ -33,8 +44,19 @@ export interface ecloudClient {
 
 export function createECloudClient(cfg: CreateClientConfig): ecloudClient {
   const chain = CHAINS[cfg.environment];
-  const rpc = cfg.rpcUrl ?? chain.rpcUrls.default.http[0];
   const account = privateKeyToAccount(cfg.privateKey);
+
+  const environmentConfig = getEnvironmentConfig(cfg.environment || "sepolia");
+
+  let rpc = cfg.rpcUrl;
+  if (!rpc) {
+    rpc = process.env.RPC_URL ?? environmentConfig.defaultRPCURL;
+  }
+  if (!rpc) {
+    throw new Error(
+      `RPC URL is required. Provide via options.rpcUrl, RPC_URL env var, or ensure environment has default RPC URL`,
+    );
+  }
 
   const wallet = createWalletClient({
     account,
@@ -49,7 +71,7 @@ export function createECloudClient(cfg: CreateClientConfig): ecloudClient {
     account,
     wallet,
     publicClient,
-    apiBaseUrl: cfg.apiBaseUrl,
+    verbose: cfg.verbose,
     privateKey: cfg.privateKey,
     rpcUrl: rpc,
     environment: cfg.environment,
