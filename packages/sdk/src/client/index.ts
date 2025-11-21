@@ -15,6 +15,9 @@ export * from "./common/types";
 // special case on createApp - we don't need the client to run it
 export { createApp, CreateAppOpts } from "./modules/app/create";
 
+// Export utility functions for CLI use
+export { getOrPromptAppID } from "./common/utils/prompts";
+
 export type Environment = "sepolia" | "mainnet-alpha";
 
 const CHAINS: Record<string, Chain> = { sepolia, "mainnet-alpha": mainnet };

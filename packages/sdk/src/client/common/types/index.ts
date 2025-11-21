@@ -4,7 +4,7 @@
 
 import { Address } from "viem";
 
-export type AppId = Address & { readonly __brand: unique symbol };
+export type AppId = Address;
 
 export type logVisibility = "public" | "private" | "off";
 
@@ -33,6 +33,7 @@ export interface UpgradeAppOpts {
 
 export interface LifecycleOpts {
   gas?: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint };
+  force?: boolean; // For terminate: skip confirmation if true
 }
 
 export interface AppRecord {

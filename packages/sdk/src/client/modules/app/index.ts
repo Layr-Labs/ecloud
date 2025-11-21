@@ -2,10 +2,12 @@
  * Main App namespace entry point
  */
 
-import { parseAbi } from "viem"; // decodeEventLog
+import { parseAbi, encodeFunctionData } from "viem"; // decodeEventLog
 import { deploy as deployApp } from "./deploy";
 import { upgrade as upgradeApp } from "./upgrade";
 import { createApp, CreateAppOpts } from "./create";
+import { sendAndWaitForTransaction } from "../../common/contract/caller";
+import { getAppName } from "../../common/registry/appNames";
 
 import { getEnvironmentConfig } from "../../common/config/environment";
 
@@ -33,12 +35,14 @@ export interface AppModule {
     appId: AppId,
     opts: UpgradeAppOpts,
   ) => Promise<{ tx: `0x${string}` }>;
-  start: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: `0x${string}` }>;
-  stop: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: `0x${string}` }>;
-  terminate: (
-    appId: AppId,
-    opts?: LifecycleOpts,
-  ) => Promise<{ tx: `0x${string}` }>;
+  lifecycle: {
+    start: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: `0x${string}` }>;
+    stop: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: `0x${string}` }>;
+    terminate: (
+      appId: AppId,
+      opts?: LifecycleOpts,
+    ) => Promise<{ tx: `0x${string}` }>;
+  }
 }
 
 export function createAppModule(ctx: CoreContext): AppModule {
@@ -110,43 +114,108 @@ export function createAppModule(ctx: CoreContext): AppModule {
       };
     },
 
-    async start(appId, opts) {
-      const tx = await wallet.writeContract({
-        chain,
-        account,
-        address: environment.appControllerAddress as `0x${string}`,
-        abi: CONTROLLER_ABI,
-        functionName: "startApp",
-        args: [appId],
-        ...gas(opts?.gas),
-      });
-      return { tx };
-    },
+    lifecycle: {
+      async start(appId, opts) {
+        // Get app name for confirmation prompt (matches Go implementation)
+        const appName = getAppName(ctx.environment, appId);
+        let confirmationPrompt = "Start app";
+        let pendingMessage = "Starting app...";
+        if (appName !== "") {
+          confirmationPrompt = `${confirmationPrompt} '${appName}'`;
+          pendingMessage = `Starting app '${appName}'...`;
+        }
 
-    async stop(appId, opts) {
-      const tx = await wallet.writeContract({
-        chain,
-        account,
-        address: environment.appControllerAddress as `0x${string}`,
-        abi: CONTROLLER_ABI,
-        functionName: "stopApp",
-        args: [appId],
-        ...gas(opts?.gas),
-      });
-      return { tx };
-    },
+        const data = encodeFunctionData({
+          abi: CONTROLLER_ABI,
+          functionName: "startApp",
+          args: [appId],
+        });
 
-    async terminate(appId, opts) {
-      const tx = await wallet.writeContract({
-        chain,
-        account,
-        address: environment.appControllerAddress as `0x${string}`,
-        abi: CONTROLLER_ABI,
-        functionName: "terminateApp",
-        args: [appId],
-        ...gas(opts?.gas),
-      });
-      return { tx };
-    },
+        const tx = await sendAndWaitForTransaction(
+          {
+            privateKey: ctx.privateKey,
+            rpcUrl: ctx.rpcUrl,
+            environmentConfig: environment,
+            to: environment.appControllerAddress as `0x${string}`,
+            data,
+            needsConfirmation: environment.chainID === 1n, // Mainnet needs confirmation
+            confirmationPrompt,
+            pendingMessage,
+            txDescription: "StartApp",
+          },
+          logger,
+        );
+        return { tx };
+      },
+
+      async stop(appId, opts) {
+        // Get app name for confirmation prompt (matches Go implementation)
+        const appName = getAppName(ctx.environment, appId);
+        let confirmationPrompt = "Stop app";
+        let pendingMessage = "Stopping app...";
+        if (appName !== "") {
+          confirmationPrompt = `${confirmationPrompt} '${appName}'`;
+          pendingMessage = `Stopping app '${appName}'...`;
+        }
+
+        const data = encodeFunctionData({
+          abi: CONTROLLER_ABI,
+          functionName: "stopApp",
+          args: [appId],
+        });
+
+        const tx = await sendAndWaitForTransaction(
+          {
+            privateKey: ctx.privateKey,
+            rpcUrl: ctx.rpcUrl,
+            environmentConfig: environment,
+            to: environment.appControllerAddress as `0x${string}`,
+            data,
+            needsConfirmation: environment.chainID === 1n, // Mainnet needs confirmation
+            confirmationPrompt,
+            pendingMessage,
+            txDescription: "StopApp",
+          },
+          logger,
+        );
+        return { tx };
+      },
+
+      async terminate(appId, opts) {
+        // Get app name for confirmation prompt (matches Go implementation)
+        const appName = getAppName(ctx.environment, appId);
+        let confirmationPrompt = "⚠️  **Permanently** destroy app";
+        let pendingMessage = "Terminating app...";
+        if (appName !== "") {
+          confirmationPrompt = `${confirmationPrompt} '${appName}'`;
+          pendingMessage = `Terminating app '${appName}'...`;
+        }
+
+        // Note: Terminate always needs confirmation unless force is specified
+        const force = opts?.force || false;
+
+        const data = encodeFunctionData({
+          abi: CONTROLLER_ABI,
+          functionName: "terminateApp",
+          args: [appId],
+        });
+
+        const tx = await sendAndWaitForTransaction(
+          {
+            privateKey: ctx.privateKey,
+            rpcUrl: ctx.rpcUrl,
+            environmentConfig: environment,
+            to: environment.appControllerAddress as `0x${string}`,
+            data,
+            needsConfirmation: !force, // Terminate always needs confirmation unless force is specified
+            confirmationPrompt,
+            pendingMessage,
+            txDescription: "TerminateApp",
+          },
+          logger,
+        );
+        return { tx };
+      },
+    }
   };
 }

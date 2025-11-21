@@ -414,6 +414,81 @@ interface RegistryInfo {
   URL: string;
 }
 
+/**
+ * Get credentials from Docker credential helper
+ */
+async function getCredentialsFromHelper(
+  registry: string,
+): Promise<{ username: string; password: string } | undefined> {
+  const dockerConfigPath = path.join(os.homedir(), ".docker", "config.json");
+
+  if (!fs.existsSync(dockerConfigPath)) {
+    return undefined;
+  }
+
+  try {
+    const config = JSON.parse(fs.readFileSync(dockerConfigPath, "utf-8"));
+    const credsStore = config.credsStore;
+
+    if (!credsStore) {
+      return undefined;
+    }
+
+    // Use Docker credential helper to get credentials
+    // Format: docker-credential-<helper> get <serverURL>
+    const { execSync } = await import("child_process");
+    const helper = `docker-credential-${credsStore}`;
+
+    try {
+      // Try multiple registry URL formats that credential helpers might expect
+      const registryVariants: string[] = [];
+
+      // For Docker Hub, try multiple formats
+      if (
+        registry.includes("index.docker.io") ||
+        registry.includes("docker.io")
+      ) {
+        registryVariants.push("https://index.docker.io/v1/");
+        registryVariants.push("https://index.docker.io/v1");
+        registryVariants.push("index.docker.io");
+        registryVariants.push("docker.io");
+      } else {
+        // For other registries, try with and without https://
+        const baseRegistry = registry
+          .replace(/^https?:\/\//, "")
+          .replace(/\/v1\/?$/, "")
+          .replace(/\/$/, "");
+        registryVariants.push(`https://${baseRegistry}`);
+        registryVariants.push(`https://${baseRegistry}/v1/`);
+        registryVariants.push(baseRegistry);
+      }
+
+      // Try each variant until one works
+      for (const variant of registryVariants) {
+        try {
+          const output = execSync(`echo "${variant}" | ${helper} get`, {
+            encoding: "utf-8",
+          });
+          const creds = JSON.parse(output);
+          if (creds.Username && creds.Secret) {
+            return { username: creds.Username, password: creds.Secret };
+          }
+        } catch {
+          // Try next variant
+          continue;
+        }
+      }
+    } catch {
+      // Credential helper failed, return undefined
+      return undefined;
+    }
+  } catch {
+    return undefined;
+  }
+
+  return undefined;
+}
+
 async function getAvailableRegistries(): Promise<RegistryInfo[]> {
   const dockerConfigPath = path.join(os.homedir(), ".docker", "config.json");
 
@@ -431,46 +506,68 @@ async function getAvailableRegistries(): Promise<RegistryInfo[]> {
     //     "https://index.docker.io/v1/": { "username": "...", "auth": "..." },
     //     "ghcr.io": { "username": "...", "auth": "..." },
     //     ...
-    //   }
+    //   },
+    //   "credsStore": "osxkeychain" (optional - credentials stored in helper)
     // }
     const auths = config.auths || {};
+    const credsStore = config.credsStore;
     const gcrProjects = new Map<string, RegistryInfo>();
     const registries: RegistryInfo[] = [];
 
     for (const [registry, auth] of Object.entries(auths)) {
       const authData = auth as { username?: string; auth?: string };
-      if (!authData.username) {
+
+      // Skip access-token and refresh-token entries for Docker Hub
+      if (
+        registry.includes("access-token") ||
+        registry.includes("refresh-token")
+      ) {
         continue;
       }
 
-      const info: RegistryInfo = {
-        URL: registry,
-        Username: authData.username,
-        Type: "other",
-      };
+      let username = authData.username;
+      let registryType = "other";
+      let normalizedURL = registry;
 
-      // Determine registry type
+      // Determine registry type and normalize URL
       if (
         registry.includes("index.docker.io") ||
         registry.includes("docker.io")
       ) {
-        // Skip access-token and refresh-token entries for Docker Hub
-        if (
-          registry.includes("access-token") ||
-          registry.includes("refresh-token")
-        ) {
-          continue;
-        }
-        info.Type = "dockerhub";
-        info.URL = "https://index.docker.io/v1/"; // Normalize
+        registryType = "dockerhub";
+        normalizedURL = "https://index.docker.io/v1/";
       } else if (registry.includes("ghcr.io")) {
-        info.Type = "ghcr";
+        registryType = "ghcr";
+        // Normalize ghcr.io variants
+        normalizedURL = registry.replace(/^https?:\/\//, "").replace(/\/v1\/?$/, "");
       } else if (registry.includes("gcr.io") || registry.includes(".gcr.io")) {
-        info.Type = "gcr";
-        // Deduplicate GCR registries - regional endpoints point to same storage
-        if (!gcrProjects.has(authData.username)) {
-          info.URL = "gcr.io"; // Normalize to canonical URL
-          gcrProjects.set(authData.username, info);
+        registryType = "gcr";
+        normalizedURL = "gcr.io"; // Normalize to canonical URL
+      }
+
+      // If no username in config but credsStore is configured, try to get from helper
+      if (!username && credsStore) {
+        const creds = await getCredentialsFromHelper(registry);
+        if (creds) {
+          username = creds.username;
+        }
+      }
+
+      // Skip if we still don't have a username
+      if (!username) {
+        continue;
+      }
+
+      const info: RegistryInfo = {
+        URL: normalizedURL,
+        Username: username,
+        Type: registryType,
+      };
+
+      // Handle GCR deduplication
+      if (registryType === "gcr") {
+        if (!gcrProjects.has(username)) {
+          gcrProjects.set(username, info);
         }
         continue; // Skip adding now, add deduplicated later
       }
