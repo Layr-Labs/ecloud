@@ -3,8 +3,9 @@
  */
 
 import { parseAbi } from "viem"; // decodeEventLog
-import { deploy as deployApp } from "./deploy/deploy";
-import { createApp, CreateAppOpts } from "./create/create";
+import { deploy as deployApp } from "./deploy";
+import { upgrade as upgradeApp } from "./upgrade";
+import { createApp, CreateAppOpts } from "./create";
 
 import { getEnvironmentConfig } from "../../common/config/environment";
 
@@ -13,7 +14,7 @@ import type {
   AppId,
   DeployAppOpts,
   LifecycleOpts,
-  // UpgradeAppOpts,
+  UpgradeAppOpts,
 } from "../../common/types";
 import { getLogger } from "../../common/utils";
 
@@ -28,16 +29,16 @@ const CONTROLLER_ABI = parseAbi([
 export interface AppModule {
   create: (opts: CreateAppOpts) => Promise<void>;
   deploy: (opts: DeployAppOpts) => Promise<{ appId: AppId; tx: `0x${string}` }>;
+  upgrade: (
+    appId: AppId,
+    opts: UpgradeAppOpts,
+  ) => Promise<{ tx: `0x${string}` }>;
   start: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: `0x${string}` }>;
   stop: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: `0x${string}` }>;
   terminate: (
     appId: AppId,
     opts?: LifecycleOpts,
   ) => Promise<{ tx: `0x${string}` }>;
-  // upgrade: (
-  //   appId: AppId,
-  //   opts: UpgradeAppOpts,
-  // ) => Promise<{ tx: `0x${string}` }>;
 }
 
 export function createAppModule(ctx: CoreContext): AppModule {
@@ -87,6 +88,28 @@ export function createAppModule(ctx: CoreContext): AppModule {
       };
     },
 
+    async upgrade(appId, opts) {
+      // Map UpgradeAppOpts to UpgradeOptions and call the upgrade function
+      const result = await upgradeApp(
+        {
+          appID: appId,
+          privateKey: ctx.privateKey,
+          rpcUrl: ctx.rpcUrl,
+          environment: ctx.environment,
+          instanceType: opts.instanceType,
+          dockerfilePath: opts.dockerfile,
+          envFilePath: opts.envFile,
+          imageRef: opts.imageRef,
+          logVisibility: opts.logVisibility,
+        },
+        logger,
+      );
+
+      return {
+        tx: result.txHash,
+      };
+    },
+
     async start(appId, opts) {
       const tx = await wallet.writeContract({
         chain,
@@ -125,18 +148,5 @@ export function createAppModule(ctx: CoreContext): AppModule {
       });
       return { tx };
     },
-
-    // async upgrade(appId, opts) {
-    //   const tx = await wallet.writeContract({
-    //     chain,
-    //     account,
-    //     address: environment.appControllerAddress as `0x${string}`,
-    //     abi: CONTROLLER_ABI,
-    //     functionName: "upgrade",
-    //     args: [appId, opts.image],
-    //     ...gas(opts.gas),
-    //   });
-    //   return { tx };
-    // },
   };
 }

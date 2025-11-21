@@ -6,6 +6,7 @@ import { input, select } from "@inquirer/prompts";
 import fs from "fs";
 import path from "path";
 import os from "os";
+import { Address, isAddress } from "viem";
 import { listApps } from "../registry/appNames";
 
 /**
@@ -226,6 +227,136 @@ export async function getInstanceTypeInteractive(
     defaultSKU,
     isCurrentType,
   );
+}
+
+/**
+ * Prompt for app ID (supports app name or address)
+ */
+export async function getOrPromptAppID(
+  appID: string | Address | undefined,
+  environment: string,
+): Promise<Address> {
+  // If provided, check if it's a name or address
+  if (appID) {
+    // Normalize the input
+    const normalized = typeof appID === "string" 
+      ? (appID.startsWith("0x") ? appID : `0x${appID}`)
+      : appID;
+
+    // Check if it's a valid address
+    if (isAddress(normalized)) {
+      return normalized as Address;
+    }
+
+    // If not a valid address, treat as app name and look it up
+    const apps = listApps(environment);
+    const foundAppID = apps[appID];
+    if (foundAppID) {
+      // Ensure it has 0x prefix
+      return foundAppID.startsWith("0x") 
+        ? (foundAppID as Address)
+        : (`0x${foundAppID}` as Address);
+    }
+
+    // Name not found, but user provided something - return as-is and let validation happen later
+    // Or we could throw an error here
+    throw new Error(`App name '${appID}' not found in environment '${environment}'`);
+  }
+
+  // No app ID provided, show interactive selection
+  return getAppIDInteractive(environment);
+}
+
+/**
+ * Get app ID interactively
+ */
+async function getAppIDInteractive(environment: string): Promise<Address> {
+  const apps = listApps(environment);
+
+  if (Object.keys(apps).length === 0) {
+    // No apps in registry, prompt for manual input
+    console.log("\nNo apps found in registry.");
+    console.log("You can enter an app ID (address) or app name.");
+    console.log();
+
+    const appIDInput = await input({
+      message: "Enter app ID or name:",
+      default: "",
+      validate: (value: string) => {
+        if (!value) {
+          return "App ID or name cannot be empty";
+        }
+        // Check if it's a valid address
+        const normalized = value.startsWith("0x") ? value : `0x${value}`;
+        if (isAddress(normalized)) {
+          return true;
+        }
+        // Since apps is empty, only addresses are valid
+        return "Invalid app ID address";
+      },
+    });
+
+    // Resolve the input (validation already ensured it's a valid address)
+    const normalized = appIDInput.startsWith("0x") ? appIDInput : `0x${appIDInput}`;
+    if (isAddress(normalized)) {
+      return normalized as Address;
+    }
+    // This shouldn't happen due to validation, but handle it anyway
+    throw new Error(`Invalid app ID address: ${appIDInput}`);
+  }
+
+  // Build choices from registry
+  const choices = Object.entries(apps).map(([name, appID]) => {
+    const displayName = `${name} (${appID})`;
+    return { name: displayName, value: appID };
+  });
+
+  // Add option to enter custom app ID
+  choices.push({ name: "Enter custom app ID or name", value: "custom" });
+
+  console.log("\nSelect an app to upgrade:");
+
+  const selected = await select({
+    message: "Choose app:",
+    choices,
+  });
+
+  if (selected === "custom") {
+    const appIDInput = await input({
+      message: "Enter app ID or name:",
+      default: "",
+      validate: (value: string) => {
+        if (!value) {
+          return "App ID or name cannot be empty";
+        }
+        const normalized = value.startsWith("0x") ? value : `0x${value}`;
+        if (isAddress(normalized)) {
+          return true;
+        }
+        if (apps[value]) {
+          return true;
+        }
+        return "Invalid app ID or name not found";
+      },
+    });
+
+    const normalized = appIDInput.startsWith("0x") ? appIDInput : `0x${appIDInput}`;
+    if (isAddress(normalized)) {
+      return normalized as Address;
+    }
+    const foundAppID = apps[appIDInput];
+    if (foundAppID) {
+      return foundAppID.startsWith("0x") 
+        ? (foundAppID as Address)
+        : (`0x${foundAppID}` as Address);
+    }
+    throw new Error(`Failed to resolve app ID from input: ${appIDInput}`);
+  }
+
+  // Ensure selected app ID has 0x prefix
+  return selected.startsWith("0x") 
+    ? (selected as Address)
+    : (`0x${selected}` as Address);
 }
 
 /**
@@ -575,7 +706,7 @@ async function selectInstanceTypeInteractively(
 
   // Build options
   const choices = availableTypes.map((it) => {
-    let name = `${it.sku} - ${it.Description}`;
+    let name = `${it.sku}`; // - ${it.Description}
     // Mark the default/current option
     if (it.sku === defaultSKU) {
       name += isCurrentType ? " (current)" : " (default)";

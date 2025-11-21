@@ -12,7 +12,7 @@ import * as path from "path";
 
 import {
   extractImageConfig,
-  checkIfImageAlreadyLayeredForecloud,
+  checkIfImageAlreadyLayeredForECloud,
   pullDockerImage,
 } from "./inspect";
 import { buildDockerImage } from "./build";
@@ -33,9 +33,9 @@ import {
   DOCKER_PLATFORM,
 } from "../constants";
 
-import { getDirname } from "../../../../common/utils/dirname";
+import { getDirname } from "../utils/dirname";
 
-import { EnvironmentConfig, Logger } from "../../../../common/types";
+import { EnvironmentConfig, Logger } from "../types";
 
 /**
  * Find binary file in tools directory
@@ -158,7 +158,7 @@ export async function layerRemoteImageIfNeeded(
   const docker = new Docker();
 
   // Check if image already has ecloud layering
-  const alreadyLayered = await checkIfImageAlreadyLayeredForecloud(
+  const alreadyLayered = await checkIfImageAlreadyLayeredForECloud(
     docker,
     imageRef,
   );

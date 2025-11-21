@@ -16,11 +16,11 @@ import {
   encodeFunctionData,
 } from "viem";
 
-import { EnvironmentConfig, Logger } from "../../../../common/types";
-import { Release } from "../../../../common/types";
+import { EnvironmentConfig, Logger } from "../types";
+import { Release } from "../types";
 
-import AppControllerABI from "../../../../common/abis/AppController.json";
-import PermissionControllerABI from "../../../../common/abis/PermissionController.json";
+import AppControllerABI from "../abis/AppController.json";
+import PermissionControllerABI from "../abis/PermissionController.json";
 
 export interface DeployAppOptions {
   privateKey: string; // Will be converted to Hex
@@ -62,7 +62,7 @@ export async function calculateAppID(
 
   // Ensure salt is properly formatted as hex string (32 bytes = 64 hex chars)
   const saltHexString = Buffer.from(salt).toString("hex");
-  // Pad to 64 characters if needed (shouldn't be needed for 32 bytes, but just in case)
+  // Pad to 64 characters if needed
   const paddedSaltHex = saltHexString.padStart(64, "0");
   const saltHex = `0x${paddedSaltHex}` as Hex;
 
@@ -235,4 +235,152 @@ export async function deployApp(
   );
 
   return { appAddress, txHash };
+}
+
+export interface UpgradeAppOptions {
+  privateKey: string; // Will be converted to Hex
+  rpcUrl: string;
+  environmentConfig: EnvironmentConfig;
+  appID: Address;
+  release: Release;
+  publicLogs: boolean;
+  needsPermissionChange: boolean;
+  imageRef: string;
+}
+
+/**
+ * Upgrade app on-chain
+ */
+export async function upgradeApp(
+  options: UpgradeAppOptions,
+  logger: Logger,
+): Promise<Hex> {
+  const {
+    privateKey,
+    rpcUrl,
+    environmentConfig,
+    appID,
+    release,
+    publicLogs,
+    needsPermissionChange,
+    imageRef,
+  } = options;
+
+  const privateKeyHex =
+    typeof privateKey === "string"
+      ? ((privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`) as Hex)
+      : privateKey;
+  const account = privateKeyToAccount(privateKeyHex);
+
+  // Map chainID to viem Chain
+  const chain =
+    environmentConfig.chainID === 11155111n
+      ? sepolia
+      : environmentConfig.chainID === 1n
+        ? mainnet
+        : sepolia; // Default to sepolia if unknown
+
+  const publicClient = createPublicClient({
+    chain,
+    transport: http(rpcUrl),
+  });
+  const walletClient = createWalletClient({
+    account,
+    chain,
+    transport: http(rpcUrl),
+  });
+
+  // 1. Pack upgrade app call
+  // Convert Release Uint8Array values to hex strings for viem
+  const releaseForViem = {
+    rmsRelease: {
+      artifacts: release.rmsRelease.artifacts.map((artifact) => ({
+        digest:
+          `0x${Buffer.from(artifact.digest).toString("hex").padStart(64, "0")}` as Hex,
+        registry: artifact.registry,
+      })),
+      upgradeByTime: release.rmsRelease.upgradeByTime,
+    },
+    publicEnv: `0x${Buffer.from(release.publicEnv).toString("hex")}` as Hex,
+    encryptedEnv:
+      `0x${Buffer.from(release.encryptedEnv).toString("hex")}` as Hex,
+  };
+
+  const upgradeData = encodeFunctionData({
+    abi: AppControllerABI,
+    functionName: "upgradeApp",
+    args: [appID, releaseForViem],
+  });
+
+  // 2. Start with upgrade execution
+  const executions: Array<{
+    target: Address;
+    value: bigint;
+    callData: Hex;
+  }> = [
+    {
+      target: environmentConfig.appControllerAddress as Address,
+      value: 0n,
+      callData: upgradeData,
+    },
+  ];
+
+  // 3. Add permission transaction if needed
+  if (needsPermissionChange) {
+    if (publicLogs) {
+      // Add public permission (private→public)
+      const addLogsData = encodeFunctionData({
+        abi: PermissionControllerABI,
+        functionName: "setAppointee",
+        args: [
+          appID,
+          "0x493219d9949348178af1f58740655951a8cd110c" as Address, // AnyoneCanCallAddress
+          "0x57ee1fb74c1087e26446abc4fb87fd8f07c43d8d" as Address, // ApiPermissionsTarget
+          "0x2fd3f2fe" as Hex, // CanViewAppLogsPermission
+        ],
+      });
+      executions.push({
+        target: environmentConfig.permissionControllerAddress as Address,
+        value: 0n,
+        callData: addLogsData,
+      });
+    } else {
+      // Remove public permission (public→private)
+      const removeLogsData = encodeFunctionData({
+        abi: PermissionControllerABI,
+        functionName: "removeAppointee",
+        args: [
+          appID,
+          "0x493219d9949348178af1f58740655951a8cd110c" as Address, // AnyoneCanCallAddress
+          "0x57ee1fb74c1087e26446abc4fb87fd8f07c43d8d" as Address, // ApiPermissionsTarget
+          "0x2fd3f2fe" as Hex, // CanViewAppLogsPermission
+        ],
+      });
+      executions.push({
+        target: environmentConfig.permissionControllerAddress as Address,
+        value: 0n,
+        callData: removeLogsData,
+      });
+    }
+  }
+
+  // 4. Execute batch via EIP-7702 delegator
+  const confirmationPrompt = `Upgrade app with image: ${imageRef}`;
+  const pendingMessage = "Upgrading app...";
+
+  const txHash = await executeBatch(
+    {
+      walletClient,
+      publicClient,
+      environmentConfig,
+      executions,
+      needsConfirmation: environmentConfig.chainID === 1n, // Mainnet needs confirmation
+      confirmationPrompt,
+      pendingMessage,
+      privateKey: privateKeyHex, // Pass private key for manual transaction signing
+    },
+    logger,
+  );
+
+  return txHash;
 }

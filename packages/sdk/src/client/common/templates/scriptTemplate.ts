@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import Handlebars from "handlebars";
 import { ENV_SOURCE_SCRIPT_TEMPLATE_PATH } from "../constants";
-import { getDirname } from "../../../../common/utils/dirname";
+import { getDirname } from "../utils/dirname";
 
 const __dirname = getDirname();
 
