@@ -1,4 +1,4 @@
-import { createECloudClient } from "@ecloud/sdk";
+import { createECloudClient } from "@layr-labs/ecloud-sdk";
 import { CommonFlags, validateCommonFlags } from "./flags";
 
 export async function loadClient(flags: CommonFlags) {

@@ -7,7 +7,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { sepolia, mainnet, type Chain } from "viem/chains";
 import { createAppModule, type AppModule } from "./modules/app";
 import type { WalletClient, Transport, Account } from "viem";
-import { getEnvironmentConfig } from "./common/config/environment";
+import { getEnvironmentConfig, isEnvironmentAvailable, getAvailableEnvironments } from "./common/config/environment";
 
 // Export all types
 export * from "./common/types";
@@ -21,7 +21,7 @@ export { logs, LogsOptions } from "./modules/app/logs";
 
 // Export utility functions for CLI use
 export { getOrPromptAppID } from "./common/utils/prompts";
-export { getEnvironmentConfig } from "./common/config/environment";
+export { getEnvironmentConfig, getAvailableEnvironments, isEnvironmentAvailable } from "./common/config/environment";
 
 export type Environment = "sepolia" | "sepolia-dev" | "mainnet-alpha";
 
@@ -56,14 +56,24 @@ export function createECloudClient(cfg: CreateClientConfig): ecloudClient {
     cfg.privateKey = `0x${cfg.privateKey}`;
   }
 
+  const environment = cfg.environment || "sepolia";
+  
+  // Validate environment is available in current build
+  if (!isEnvironmentAvailable(environment)) {
+    throw new Error(
+      `Environment "${environment}" is not available in this build type. ` +
+      `Available environments: ${getAvailableEnvironments().join(", ")}`
+    );
+  }
+
   // convert private key to account
   const account = privateKeyToAccount(cfg.privateKey);
 
   // get chain from environment
-  const chain = CHAINS[cfg.environment || "sepolia"];
+  const chain = CHAINS[environment];
 
   // get environment config
-  const environmentConfig = getEnvironmentConfig(cfg.environment || "sepolia");
+  const environmentConfig = getEnvironmentConfig(environment);
 
   // get rpc url from environment config or use provided rpc url
   let rpc = cfg.rpcUrl;
@@ -95,7 +105,7 @@ export function createECloudClient(cfg: CreateClientConfig): ecloudClient {
     verbose: cfg.verbose,
     privateKey: cfg.privateKey,
     rpcUrl: rpc,
-    environment: cfg.environment,
+    environment: environment,
   };
 
   // return ecloud client modules

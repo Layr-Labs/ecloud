@@ -9,7 +9,7 @@ import os from "os";
 import { Address, isAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { listApps, getAppName } from "../registry/appNames";
-import { getEnvironmentConfig } from "../config/environment";
+import { getEnvironmentConfig, getAvailableEnvironments, isEnvironmentAvailable } from "../config/environment";
 import { getAllAppsByDeveloper } from "../contract/caller";
 import { UserApiClient } from "./userapi";
 
@@ -1167,28 +1167,47 @@ export async function getEnvironmentInteractive(
   if (environment) {
     try {
       getEnvironmentConfig(environment);
+      // Also check if it's available in current build
+      if (!isEnvironmentAvailable(environment)) {
+        throw new Error(`Environment ${environment} is not available in this build`);
+      }
       return environment;
     } catch {
       // Invalid environment, continue to prompt
     }
   }
 
+  // Get available environments based on build type
+  const availableEnvs = getAvailableEnvironments();
+  
+  // Build choices based on available environments
+  const choices = [];
+  if (availableEnvs.includes("sepolia")) {
+    choices.push({
+      name: "sepolia - Ethereum Sepolia testnet",
+      value: "sepolia",
+    });
+  }
+  if (availableEnvs.includes("sepolia-dev")) {
+    choices.push({
+      name: "sepolia-dev - Ethereum Sepolia testnet (dev)",
+      value: "sepolia-dev",
+    });
+  }
+  if (availableEnvs.includes("mainnet-alpha")) {
+    choices.push({
+      name: "mainnet-alpha - Ethereum mainnet (⚠️  uses real funds)",
+      value: "mainnet-alpha",
+    });
+  }
+
+  if (choices.length === 0) {
+    throw new Error("No environments available in this build");
+  }
+
   const env = await select({
     message: "Select environment:",
-    choices: [
-      {
-        name: "sepolia - Ethereum Sepolia testnet",
-        value: "sepolia",
-      },
-      {
-        name: "sepolia-dev - Ethereum Sepolia testnet (dev)",
-        value: "sepolia-dev",
-      },
-      {
-        name: "mainnet-alpha - Ethereum mainnet (⚠️  uses real funds)",
-        value: "mainnet-alpha",
-      },
-    ],
+    choices,
   });
 
   return env;

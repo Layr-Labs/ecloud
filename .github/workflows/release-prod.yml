@@ -1,0 +1,154 @@
+name: Release Production
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "!v*-dev*"  # Exclude all dev tags
+
+permissions:
+  contents: write
+  id-token: write
+
+env:
+  NODE_VERSION: "20.x"
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Set version from tag
+        run: |
+          VERSION="${{ github.ref_name }}"
+          # Remove any -dev suffix for production version
+          PACKAGE_VERSION="${VERSION%-dev*}"
+          DEV_VERSION_PREFIX="$PACKAGE_VERSION-dev"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "PACKAGE_VERSION=$PACKAGE_VERSION" >> $GITHUB_ENV
+          echo "DEV_VERSION_PREFIX=$DEV_VERSION_PREFIX" >> $GITHUB_ENV
+          echo "Building production version: $PACKAGE_VERSION"
+          echo "Will verify dev tag exists: $DEV_VERSION_PREFIX"
+
+      - name: Verify dev testing occurred
+        run: |
+          echo "Looking for dev tag with prefix: ${{ env.DEV_VERSION_PREFIX }}"
+          
+          # Check if dev tag exists (with or without suffix)
+          DEV_TAGS=$(git tag -l "${DEV_VERSION_PREFIX}*" | head -10)
+          if [ -z "$DEV_TAGS" ]; then
+            echo "ERROR: No dev tag found with prefix ${DEV_VERSION_PREFIX}"
+            echo ""
+            echo "Available dev tags:"
+            git tag -l "*-dev*" | head -10 || echo "No dev tags found"
+            echo ""
+            echo "Must test in dev first: git tag ${DEV_VERSION_PREFIX} or ${DEV_VERSION_PREFIX}.1"
+            exit 1
+          fi
+          
+          echo "✅ Found dev tags:"
+          echo "$DEV_TAGS"
+          
+          # Verify dev and prod tags point to same commit
+          PROD_COMMIT=$(git rev-list -n 1 "${{ github.ref_name }}")
+          echo "Production tag ${{ github.ref_name }} points to commit: $PROD_COMMIT"
+          
+          for DEV_TAG in $DEV_TAGS; do
+            DEV_COMMIT=$(git rev-list -n 1 "$DEV_TAG")
+            echo "Dev tag $DEV_TAG points to commit: $DEV_COMMIT"
+            
+            if [ "$DEV_COMMIT" = "$PROD_COMMIT" ]; then
+              echo "✅ Dev tag $DEV_TAG verified - same commit as production tag"
+              echo "VERIFIED_DEV_TAG=$DEV_TAG" >> $GITHUB_ENV
+              exit 0
+            fi
+          done
+          
+          echo "ERROR: No dev tag points to the same commit as production tag ${{ github.ref_name }}"
+          echo "Production commit: $PROD_COMMIT"
+          echo "Dev tags and their commits:"
+          for DEV_TAG in $DEV_TAGS; do
+            DEV_COMMIT=$(git rev-list -n 1 "$DEV_TAG")
+            echo "  $DEV_TAG: $DEV_COMMIT"
+          done
+          echo ""
+          echo "Create a dev tag on the same commit: git tag ${DEV_VERSION_PREFIX} $PROD_COMMIT"
+          exit 1
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        working-directory: ./eigenx-sdk
+        run: pnpm install --frozen-lockfile
+
+      - name: Build SDK (prod) - dependency for CLI
+        working-directory: ./eigenx-sdk/packages/sdk
+        env:
+          BUILD_TYPE: prod
+        run: |
+          pnpm run build
+
+      - name: Build CLI (prod)
+        working-directory: ./eigenx-sdk/packages/cli
+        env:
+          BUILD_TYPE: prod
+        run: |
+          pnpm run build
+
+      - name: Update SDK package.json for publishing
+        working-directory: ./eigenx-sdk/packages/sdk
+        run: |
+          # Ensure SDK package name is prod namespace (default)
+          npm pkg set name="@layr-labs/ecloud-sdk"
+          npm pkg set version="${{ env.PACKAGE_VERSION }}"
+
+      - name: Publish SDK to npm (prod)
+        working-directory: ./eigenx-sdk/packages/sdk
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm publish --tag latest --access public
+
+      - name: Update CLI package.json for prod namespace
+        working-directory: ./eigenx-sdk/packages/cli
+        run: |
+          # Ensure package name is prod namespace (default)
+          npm pkg set name="@layr-labs/ecloud-cli"
+          npm pkg set version="${{ env.PACKAGE_VERSION }}"
+          # Update SDK dependency to use published prod version
+          npm pkg set "dependencies.@layr-labs/ecloud-sdk"="${{ env.PACKAGE_VERSION }}"
+          npm pkg delete 'dependencies.@layr-labs/ecloud-sdk-dev' || true
+          # Verify changes
+          cat package.json | grep -A 2 '"name"'
+          cat package.json | grep -A 1 '"@layr-labs/ecloud'
+
+      - name: Publish CLI to npm (prod)
+        working-directory: ./eigenx-sdk/packages/cli
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm publish --tag latest --access public
+
+      - name: Summary
+        run: |
+          echo "🚀 Production release published successfully!"
+          echo "📦 SDK Package: @layr-labs/ecloud-sdk@${{ env.PACKAGE_VERSION }}"
+          echo "📦 CLI Package: @layr-labs/ecloud-cli@${{ env.PACKAGE_VERSION }}"
+          echo "🏷️  Tag: latest"
+          echo "🔒 Verified dev testing completed with matching commit from ${{ env.VERIFIED_DEV_TAG }}"
+          echo "🔗 Install with: npm install -g @layr-labs/ecloud-cli@${{ env.PACKAGE_VERSION }}"
+

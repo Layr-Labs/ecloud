@@ -1,5 +1,5 @@
 import { Command, Flags } from "@oclif/core";
-import { createApp } from "@ecloud/sdk";
+import { createApp } from "@layr-labs/ecloud-sdk";
 
 export default class AppCreate extends Command {
   static description = "Create a new app";

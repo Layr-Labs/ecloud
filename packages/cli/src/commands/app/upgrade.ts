@@ -1,5 +1,5 @@
 import { Command, Args, Flags } from "@oclif/core";
-import { logVisibility } from "@ecloud/sdk";
+import { logVisibility } from "@layr-labs/ecloud-sdk";
 import { loadClient } from "../../client";
 import { commonFlags } from "../../flags";
 import chalk from "chalk";

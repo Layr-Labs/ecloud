@@ -76,6 +76,14 @@ export function getEnvironmentConfig(
   if (!env) {
     throw new Error(`Unknown environment: ${environment}`);
   }
+  
+  // Check if environment is available in current build
+  if (!isEnvironmentAvailable(environment)) {
+    throw new Error(
+      `Environment ${environment} is not available in this build type. ` +
+      `Available environments: ${getAvailableEnvironments().join(", ")}`
+    );
+  }
 
   // If chainID provided, validate it matches
   if (chainID) {
@@ -88,9 +96,12 @@ export function getEnvironmentConfig(
   }
 
   // Determine chain ID from environment if not provided
+  // Both "sepolia" and "sepolia-dev" use Sepolia chain ID
   const resolvedChainID =
     chainID ||
-    (environment === "sepolia" ? SEPOLIA_CHAIN_ID : MAINNET_CHAIN_ID);
+    (environment === "sepolia" || environment === "sepolia-dev"
+      ? SEPOLIA_CHAIN_ID
+      : MAINNET_CHAIN_ID);
 
   return {
     ...env,
@@ -105,4 +116,52 @@ export function detectEnvironmentFromChainID(
   chainID: bigint,
 ): string | undefined {
   return CHAIN_ID_TO_ENVIRONMENT[chainID.toString()];
+}
+
+/**
+ * Get build type from environment variable or build-time constant (defaults to 'prod')
+ * BUILD_TYPE_BUILD_TIME is replaced at build time by tsup's define option
+ */
+// @ts-ignore - BUILD_TYPE_BUILD_TIME is injected at build time by tsup
+declare const BUILD_TYPE_BUILD_TIME: string | undefined;
+
+function getBuildType(): "dev" | "prod" {
+  // First check build-time constant (set by tsup define)
+  // @ts-ignore - BUILD_TYPE_BUILD_TIME is injected at build time
+  const buildTimeType = typeof BUILD_TYPE_BUILD_TIME !== "undefined" 
+    ? BUILD_TYPE_BUILD_TIME?.toLowerCase() 
+    : undefined;
+  
+  // Fall back to runtime environment variable
+  const runtimeType = process.env.BUILD_TYPE?.toLowerCase();
+  
+  const buildType = buildTimeType || runtimeType;
+  
+  if (buildType === "dev") {
+    return "dev";
+  }
+  return "prod";
+}
+
+/**
+ * Get available environments based on build type
+ * - dev: only "sepolia-dev"
+ * - prod: "sepolia" and "mainnet-alpha"
+ */
+export function getAvailableEnvironments(): string[] {
+  const buildType = getBuildType();
+  
+  if (buildType === "dev") {
+    return ["sepolia-dev"];
+  }
+  
+  // prod build
+  return ["sepolia", "mainnet-alpha"];
+}
+
+/**
+ * Check if an environment is available in the current build
+ */
+export function isEnvironmentAvailable(environment: string): boolean {
+  return getAvailableEnvironments().includes(environment);
 }

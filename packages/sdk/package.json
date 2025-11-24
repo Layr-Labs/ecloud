@@ -1,6 +1,6 @@
 {
   "name": "@layr-labs/ecloud-sdk",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -15,6 +15,7 @@
   "scripts": {
     "build": "tsup && npm run build:copy-templates",
     "build:copy-templates": "node scripts/copy-templates.js",
+    "test:build-type": "node test-build-type.js",
     "lint": "eslint .",
     "format": "prettier --check .",
     "format:fix": "prettier --write ."
