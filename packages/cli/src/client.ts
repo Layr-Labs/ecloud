@@ -1,4 +1,10 @@
-import { createAppModule, createBillingModule, getPrivateKeyInteractive, getEnvironmentConfig } from "@layr-labs/ecloud-sdk";
+import {
+  createAppModule,
+  createBillingModule,
+  getPrivateKeyInteractive,
+  getEnvironmentConfig,
+  requirePrivateKey,
+} from "@layr-labs/ecloud-sdk";
 import { CommonFlags, validateCommonFlags } from "./flags";
 import { Hex } from "viem";
 
@@ -8,16 +14,26 @@ export async function createAppClient(flags: CommonFlags) {
   const environment = flags.environment!;
   const environmentConfig = getEnvironmentConfig(environment);
   const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
+  const { key: privateKey, source } = await requirePrivateKey({
+    privateKey: flags["private-key"],
+  });
+
+  if (flags.verbose) {
+    console.log(`Using private key from: ${source}`);
+  }
 
   return createAppModule({
     verbose: flags.verbose,
-    privateKey: flags["private-key"] as `0x${string}`,
+    privateKey,
     rpcUrl,
     environment,
   });
 }
 
-export async function createBillingClient(flags: { "private-key"?: string; verbose?: boolean }) {
+export async function createBillingClient(flags: {
+  "private-key"?: string;
+  verbose?: boolean;
+}) {
   const privateKey = await getPrivateKeyInteractive(flags["private-key"]);
 
   return createBillingModule({
