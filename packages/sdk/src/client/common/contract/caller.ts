@@ -20,6 +20,7 @@ import { hashAuthorization } from "viem/utils";
 import { sign } from "viem/accounts";
 
 import { confirm } from "../utils/prompts";
+import { addHexPrefix } from "../utils";
 
 import { EnvironmentConfig, Logger } from "../types";
 import { Release } from "../types";
@@ -49,10 +50,7 @@ export async function calculateAppID(
   environmentConfig: EnvironmentConfig,
   salt: Uint8Array,
 ): Promise<Address> {
-  const privateKeyHex =
-    typeof privateKey === "string"
-      ? ((privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`) as Hex)
-      : privateKey;
+  const privateKeyHex = addHexPrefix(privateKey);
   const account = privateKeyToAccount(privateKeyHex);
 
   // Map chainID to viem Chain
@@ -107,10 +105,7 @@ export async function deployApp(
     imageRef,
   } = options;
 
-  const privateKeyHex =
-    typeof privateKey === "string"
-      ? ((privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`) as Hex)
-      : privateKey;
+  const privateKeyHex = addHexPrefix(privateKey) as Hex;
   const account = privateKeyToAccount(privateKeyHex);
 
   // Map chainID to viem Chain
@@ -274,10 +269,7 @@ export async function upgradeApp(
     imageRef,
   } = options;
 
-  const privateKeyHex =
-    typeof privateKey === "string"
-      ? ((privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`) as Hex)
-      : privateKey;
+  const privateKeyHex = addHexPrefix(privateKey) as Hex;
   const account = privateKeyToAccount(privateKeyHex);
 
   // Map chainID to viem Chain
@@ -433,10 +425,7 @@ export async function sendAndWaitForTransaction(
     txDescription,
   } = options;
 
-  const privateKeyHex =
-    typeof privateKey === "string"
-      ? ((privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`) as Hex)
-      : privateKey;
+  const privateKeyHex = addHexPrefix(privateKey) as Hex;
   const account = privateKeyToAccount(privateKeyHex);
 
   const chain =
@@ -825,10 +814,7 @@ export async function undelegate(
 ): Promise<Hex> {
   const { privateKey, rpcUrl, environmentConfig } = options;
 
-  const privateKeyHex =
-    typeof privateKey === "string"
-      ? ((privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`) as Hex)
-      : privateKey;
+  const privateKeyHex = addHexPrefix(privateKey);
   const account = privateKeyToAccount(privateKeyHex);
 
   const chain =

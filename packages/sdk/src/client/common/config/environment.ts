@@ -2,7 +2,7 @@
  * Environment configuration for different networks
  */
 
-import { EnvironmentConfig } from "../types";
+import { BillingEnvironmentConfig, EnvironmentConfig } from "../types";
 
 // Chain IDs
 export const SEPOLIA_CHAIN_ID = 11155111;
@@ -23,7 +23,17 @@ export const ChainAddresses: Record<number, Record<string, string>> = {
   },
 };
 
-// Environment configurations
+// Billing environment configurations (separate from chain environments)
+const BILLING_ENVIRONMENTS: Record<"dev" | "prod", BillingEnvironmentConfig> = {
+  dev: {
+    billingApiServerURL: "http://136.110.145.244:8080",
+  },
+  prod: {
+    billingApiServerURL: "https://billingapi.eigencloud.xyz",
+  },
+};
+
+// Chain environment configurations
 const ENVIRONMENTS: Record<string, Omit<EnvironmentConfig, "chainID">> = {
   "sepolia-dev": {
     name: "sepolia",
@@ -90,12 +100,26 @@ export function getEnvironmentConfig(
   // Determine chain ID from environment if not provided
   const resolvedChainID =
     chainID ||
-    (environment === "sepolia" ? SEPOLIA_CHAIN_ID : MAINNET_CHAIN_ID);
+    (env.name === "sepolia" ? SEPOLIA_CHAIN_ID : MAINNET_CHAIN_ID);
 
   return {
     ...env,
     chainID: BigInt(resolvedChainID),
   };
+}
+
+/**
+ * Get billing environment configuration
+ * @param build - The build type ("dev" or "prod")
+ */
+export function getBillingEnvironmentConfig(
+  build: "dev" | "prod",
+): { billingApiServerURL: string } {
+  const config = BILLING_ENVIRONMENTS[build];
+  if (!config) {
+    throw new Error(`Unknown billing environment: ${build}`);
+  }
+  return config;
 }
 
 /**

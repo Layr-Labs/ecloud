@@ -1,5 +1,5 @@
 import { Command, Args, Flags } from "@oclif/core";
-import { loadClient } from "../../client";
+import { createAppClient } from "../../client";
 import { commonFlags } from "../../flags";
 import { getEnvironmentConfig, getOrPromptAppID } from "@ecloud/sdk";
 import chalk from "chalk";
@@ -26,7 +26,7 @@ export default class AppLifecycleTerminate extends Command {
 
   async run() {
     const { args, flags } = await this.parse(AppLifecycleTerminate);
-    const client = await loadClient(flags);
+    const app = await createAppClient(flags);
 
     // Get environment config
     const environment = flags.environment || "sepolia";
@@ -46,7 +46,7 @@ export default class AppLifecycleTerminate extends Command {
       }
     );
 
-    const res = await client.app.terminate(appId, {
+    const res = await app.terminate(appId, {
       force: flags.force,
     });
 

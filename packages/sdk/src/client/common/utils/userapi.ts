@@ -20,6 +20,7 @@ import AppControllerABI from "../abis/AppController.json";
 // import { getKMSKeysForEnvironment } from '../../modules/app/deploy/utils/keys';
 
 import { defaultLogger } from "./logger";
+import { addHexPrefix } from "./helpers";
 
 export interface AppInfo {
   address: Address;
@@ -61,12 +62,7 @@ export class UserApiClient {
     rpcUrl?: string,
   ) {
     if (privateKey) {
-      const privateKeyHex =
-        typeof privateKey === "string"
-          ? ((privateKey.startsWith("0x")
-              ? privateKey
-              : `0x${privateKey}`) as Hex)
-          : privateKey;
+      const privateKeyHex = addHexPrefix(privateKey);
       this.account = privateKeyToAccount(privateKeyHex);
       this.privateKey = privateKeyHex;
     }
