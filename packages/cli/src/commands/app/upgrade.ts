@@ -2,6 +2,7 @@ import { Command, Args, Flags } from "@oclif/core";
 import { logVisibility } from "@ecloud/sdk";
 import { loadClient } from "../../client";
 import { commonFlags } from "../../flags";
+import chalk from "chalk";
 
 export default class AppUpgrade extends Command {
   static description = "Upgrade existing deployment";
@@ -47,7 +48,7 @@ export default class AppUpgrade extends Command {
 
   async run() {
     const { args, flags } = await this.parse(AppUpgrade);
-    const client = loadClient(flags);
+    const client = await loadClient(flags);
 
     const res = await client.app.upgrade(args["app-id"] as any, {
       dockerfile: flags.dockerfile,
@@ -57,6 +58,11 @@ export default class AppUpgrade extends Command {
       instanceType: flags["instance-type"],
     });
 
+    if (!res.tx) {
+      this.log(`\n${chalk.gray(`Upgrade failed`)}`);
+    } else {
+      this.log(`\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${res.appID}, image: ${res.imageRef})`)}`)}`);
+    }
     this.log(JSON.stringify(res, null, 2));
   }
 }

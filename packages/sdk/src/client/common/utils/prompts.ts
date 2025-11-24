@@ -2,12 +2,16 @@
  * Interactive prompts using @inquirer/prompts
  */
 
-import { input, select } from "@inquirer/prompts";
+import { input, select, password, confirm as inquirerConfirm } from "@inquirer/prompts";
 import fs from "fs";
 import path from "path";
 import os from "os";
 import { Address, isAddress } from "viem";
-import { listApps } from "../registry/appNames";
+import { privateKeyToAccount } from "viem/accounts";
+import { listApps, getAppName } from "../registry/appNames";
+import { getEnvironmentConfig } from "../config/environment";
+import { getAppsByDeveloper } from "../contract/caller";
+import { UserApiClient } from "./userapi";
 
 /**
  * Prompt for Dockerfile selection
@@ -208,7 +212,7 @@ export async function getEnvFileInteractive(
 export async function getInstanceTypeInteractive(
   instanceType: string | undefined,
   defaultSKU: string,
-  availableTypes: Array<{ sku: string; Description: string }>,
+  availableTypes: Array<{ sku: string; description: string }>,
 ): Promise<string> {
   // Check if provided and validate it
   if (instanceType) {
@@ -232,16 +236,47 @@ export async function getInstanceTypeInteractive(
 /**
  * Prompt for app ID (supports app name or address)
  */
+export interface GetAppIDOptions {
+  appID?: string | Address;
+  environment: string;
+  privateKey?: string;
+  rpcUrl?: string;
+  action?: string; // e.g., "view logs for", "start", "stop", etc.
+}
+
+/**
+ * Prompt for app ID (supports app name or address)
+ */
 export async function getOrPromptAppID(
-  appID: string | Address | undefined,
-  environment: string,
+  appIDOrOptions: string | Address | GetAppIDOptions | undefined,
+  environment?: string,
 ): Promise<Address> {
+  // Handle backward compatibility: if first arg is string/Address and second is string
+  let options: GetAppIDOptions;
+  if (environment !== undefined) {
+    // Old signature: (appID, environment)
+    options = {
+      appID: appIDOrOptions as string | Address | undefined,
+      environment: environment,
+    };
+  } else if (appIDOrOptions && typeof appIDOrOptions === "object" && "environment" in appIDOrOptions) {
+    // New signature: (options)
+    options = appIDOrOptions as GetAppIDOptions;
+  } else {
+    // Old signature but only one arg - treat as appID with default environment
+    options = {
+      appID: appIDOrOptions as string | Address | undefined,
+      environment: "sepolia",
+    };
+  }
+
   // If provided, check if it's a name or address
-  if (appID) {
+  if (options.appID) {
     // Normalize the input
-    const normalized = typeof appID === "string" 
-      ? (appID.startsWith("0x") ? appID : `0x${appID}`)
-      : appID;
+    const normalized =
+      typeof options.appID === "string"
+        ? (options.appID.startsWith("0x") ? options.appID : `0x${options.appID}`)
+        : options.appID;
 
     // Check if it's a valid address
     if (isAddress(normalized)) {
@@ -249,28 +284,260 @@ export async function getOrPromptAppID(
     }
 
     // If not a valid address, treat as app name and look it up
-    const apps = listApps(environment);
-    const foundAppID = apps[appID];
+    const apps = listApps(options.environment);
+    const foundAppID = apps[options.appID];
     if (foundAppID) {
       // Ensure it has 0x prefix
-      return foundAppID.startsWith("0x") 
+      return foundAppID.startsWith("0x")
         ? (foundAppID as Address)
         : (`0x${foundAppID}` as Address);
     }
 
     // Name not found, but user provided something - return as-is and let validation happen later
     // Or we could throw an error here
-    throw new Error(`App name '${appID}' not found in environment '${environment}'`);
+    throw new Error(
+      `App name '${options.appID}' not found in environment '${options.environment}'`,
+    );
   }
 
   // No app ID provided, show interactive selection
-  return getAppIDInteractive(environment);
+  return getAppIDInteractive(options);
+}
+
+// Contract app status constants
+const ContractAppStatusNone = 0;
+const ContractAppStatusStarted = 1;
+const ContractAppStatusStopped = 2;
+const ContractAppStatusTerminated = 3;
+const ContractAppStatusSuspended = 4;
+
+/**
+ * Get status string from contract status
+ */
+function getStatusString(status: number): string {
+  switch (status) {
+    case ContractAppStatusStarted:
+      return "Started";
+    case ContractAppStatusStopped:
+      return "Stopped";
+    case ContractAppStatusTerminated:
+      return "Terminated";
+    case ContractAppStatusSuspended:
+      return "Suspended";
+    default:
+      return "Unknown";
+  }
+}
+
+/**
+ * Get status priority for sorting
+ * Lower number = higher priority
+ */
+function getStatusPriority(status: number, isExited: boolean): number {
+  if (isExited) {
+    return 1; // Exited apps have high priority
+  }
+  switch (status) {
+    case ContractAppStatusStarted:
+      return 0; // Highest priority
+    case ContractAppStatusStopped:
+      return 2;
+    case ContractAppStatusTerminated:
+      return 3;
+    default:
+      return 4;
+  }
+}
+
+/**
+ * Format app display
+ */
+function formatAppDisplay(
+  environmentName: string,
+  appID: Address,
+  profileName: string,
+): string {
+  if (profileName) {
+    return `${profileName} (${environmentName}:${appID})`;
+  }
+  return `${environmentName}:${appID}`;
 }
 
 /**
  * Get app ID interactively
+ * Queries contract and filters apps based on action
  */
-async function getAppIDInteractive(environment: string): Promise<Address> {
+async function getAppIDInteractive(
+  options: GetAppIDOptions,
+): Promise<Address> {
+  const action = options.action || "view";
+  const environment = options.environment || "sepolia";
+  const environmentConfig = getEnvironmentConfig(environment);
+
+  // If we don't have privateKey/rpcUrl, fall back to registry-based selection
+  if (!options.privateKey || !options.rpcUrl) {
+    return getAppIDInteractiveFromRegistry(environment, action);
+  }
+
+  console.log(`\nSelect an app to ${action}:\n`);
+
+  // Get developer address from private key
+  const privateKeyHex = options.privateKey.startsWith("0x")
+    ? (options.privateKey as `0x${string}`)
+    : (`0x${options.privateKey}` as `0x${string}`);
+  const account = privateKeyToAccount(privateKeyHex);
+  const developerAddr = account.address;
+
+  // Query contract for apps
+  const { apps, appConfigs } = await getAppsByDeveloper(
+    options.rpcUrl,
+    environmentConfig,
+    developerAddr,
+    0n,
+    50n,
+  );
+
+  if (apps.length === 0) {
+    throw new Error("no apps found for your address");
+  }
+
+  // Get profile names from API for better display
+  const profileNames: Record<string, string> = {};
+  try {
+    const userApiClient = new UserApiClient(
+      environmentConfig,
+      options.privateKey,
+      options.rpcUrl,
+    );
+    const infos = await userApiClient.getInfos(apps, 1);
+    for (const info of infos) {
+      // Try to get profile name from API (if available in future)
+      // For now, fall back to local registry
+      const localName = getAppName(environment, info.address);
+      if (localName) {
+        profileNames[info.address.toLowerCase()] = localName;
+      }
+    }
+  } catch (err) {
+    // If API call fails, continue with local registry names only
+  }
+
+  // Also check local registry for profile names
+  const localApps = listApps(environment);
+  for (const [name, appID] of Object.entries(localApps)) {
+    const normalizedID = appID.toLowerCase();
+    if (!profileNames[normalizedID]) {
+      profileNames[normalizedID] = name;
+    }
+  }
+
+  // Determine which apps are eligible for the action
+  const isEligible = (status: number): boolean => {
+    switch (action) {
+      case "view":
+      case "set profile for":
+        return true;
+      case "start":
+        return (
+          status === ContractAppStatusStopped ||
+          status === ContractAppStatusSuspended
+        );
+      case "stop":
+        return status === ContractAppStatusStarted;
+      default:
+        // Default: exclude Terminated and Suspended
+        return (
+          status !== ContractAppStatusTerminated &&
+          status !== ContractAppStatusSuspended
+        );
+    }
+  };
+
+  // Build app items with status
+  interface AppItem {
+    addr: Address;
+    display: string;
+    status: number;
+    index: number;
+  }
+
+  const appItems: AppItem[] = [];
+  for (let i = 0; i < apps.length; i++) {
+    const appAddr = apps[i];
+    const config = appConfigs[i];
+    const status = config.status;
+
+    if (!isEligible(status)) {
+      continue;
+    }
+
+    const statusStr = getStatusString(status);
+    const profileName = profileNames[appAddr.toLowerCase()] || "";
+    const displayName = formatAppDisplay(
+      environmentConfig.name,
+      appAddr,
+      profileName,
+    );
+
+    appItems.push({
+      addr: appAddr,
+      display: `${displayName} - ${statusStr}`,
+      status,
+      index: i,
+    });
+  }
+
+  // Sort by status priority: Started > Stopped > Terminated
+  // Within same status, show newest apps first (higher index = newer)
+  appItems.sort((a, b) => {
+    const aPriority = getStatusPriority(a.status, false);
+    const bPriority = getStatusPriority(b.status, false);
+
+    // First compare by status priority
+    if (aPriority !== bPriority) {
+      return aPriority - bPriority;
+    }
+
+    // If same status, sort by index descending (newer apps first)
+    return b.index - a.index;
+  });
+
+  if (appItems.length === 0) {
+    switch (action) {
+      case "start":
+        throw new Error(
+          "no startable apps found - only Stopped apps can be started",
+        );
+      case "stop":
+        throw new Error(
+          "no running apps found - only Running apps can be stopped",
+        );
+      default:
+        throw new Error("no active apps found");
+    }
+  }
+
+  // Build choices
+  const choices = appItems.map((item) => ({
+    name: item.display,
+    value: item.addr,
+  }));
+
+  const selected = await select({
+    message: "Select app:",
+    choices,
+  });
+
+  return selected as Address;
+}
+
+/**
+ * Fallback: Get app ID from local registry (used when contract query not available)
+ */
+async function getAppIDInteractiveFromRegistry(
+  environment: string,
+  action: string,
+): Promise<Address> {
   const apps = listApps(environment);
 
   if (Object.keys(apps).length === 0) {
@@ -314,7 +581,7 @@ async function getAppIDInteractive(environment: string): Promise<Address> {
   // Add option to enter custom app ID
   choices.push({ name: "Enter custom app ID or name", value: "custom" });
 
-  console.log("\nSelect an app to upgrade:");
+  console.log(`\nSelect an app to ${action}:`);
 
   const selected = await select({
     message: "Choose app:",
@@ -346,7 +613,7 @@ async function getAppIDInteractive(environment: string): Promise<Address> {
     }
     const foundAppID = apps[appIDInput];
     if (foundAppID) {
-      return foundAppID.startsWith("0x") 
+      return foundAppID.startsWith("0x")
         ? (foundAppID as Address)
         : (`0x${foundAppID}` as Address);
     }
@@ -354,7 +621,7 @@ async function getAppIDInteractive(environment: string): Promise<Address> {
   }
 
   // Ensure selected app ID has 0x prefix
-  return selected.startsWith("0x") 
+  return selected.startsWith("0x")
     ? (selected as Address)
     : (`0x${selected}` as Address);
 }
@@ -790,7 +1057,7 @@ function validateInstanceTypeSKU(
 }
 
 async function selectInstanceTypeInteractively(
-  availableTypes: Array<{ sku: string; Description: string }>,
+  availableTypes: Array<{ sku: string; description: string }>,
   defaultSKU: string,
   isCurrentType: boolean,
 ): Promise<string> {
@@ -803,7 +1070,7 @@ async function selectInstanceTypeInteractively(
 
   // Build options
   const choices = availableTypes.map((it) => {
-    let name = `${it.sku}`; // - ${it.Description}
+    let name = `${it.sku} - ${it.description}`;
     // Mark the default/current option
     if (it.sku === defaultSKU) {
       name += isCurrentType ? " (current)" : " (default)";
@@ -817,4 +1084,146 @@ async function selectInstanceTypeInteractively(
   });
 
   return choice;
+}
+
+/**
+ * Confirm prompts the user to confirm an action with a yes/no question.
+ */
+export async function confirm(prompt: string): Promise<boolean> {
+  return confirmWithDefault(prompt, false);
+}
+
+/**
+ * ConfirmWithDefault prompts the user to confirm an action with a yes/no question and a default value.
+ */
+export async function confirmWithDefault(
+  prompt: string,
+  defaultValue: boolean = false,
+): Promise<boolean> {
+  return await inquirerConfirm({
+    message: prompt,
+    default: defaultValue,
+  });
+}
+
+/**
+ * Validate private key format
+ * Matches Go's common.ValidatePrivateKey() function
+ */
+function validatePrivateKeyFormat(key: string): boolean {
+  // Remove 0x prefix if present
+  const keyWithoutPrefix = key.startsWith("0x") ? key.slice(2) : key;
+  
+  // Must be 64 hex characters (32 bytes)
+  if (!/^[0-9a-fA-F]{64}$/.test(keyWithoutPrefix)) {
+    return false;
+  }
+  
+  return true;
+}
+
+/**
+ * Prompt for RPC URL
+ * Matches Go's getRPCURL() behavior with interactive prompt
+ */
+export async function getRPCUrlInteractive(
+  rpcUrl?: string,
+  defaultRpcUrl?: string,
+): Promise<string> {
+  // If provided, return it
+  if (rpcUrl) {
+    return rpcUrl;
+  }
+
+  // Use default if available
+  const defaultValue = defaultRpcUrl || "";
+
+  const url = await input({
+    message: "Enter RPC URL:",
+    default: defaultValue,
+    validate: (value: string) => {
+      if (!value.trim()) {
+        return "RPC URL is required";
+      }
+      // Basic URL validation
+      try {
+        new URL(value);
+        return true;
+      } catch {
+        return "Invalid URL format";
+      }
+    },
+  });
+
+  return url.trim();
+}
+
+/**
+ * Prompt for environment selection
+ * Matches Go's GetEnvironmentConfig() behavior with interactive prompt
+ */
+export async function getEnvironmentInteractive(
+  environment?: string,
+): Promise<string> {
+  // If provided, validate and return it
+  if (environment) {
+    try {
+      getEnvironmentConfig(environment);
+      return environment;
+    } catch {
+      // Invalid environment, continue to prompt
+    }
+  }
+
+  const env = await select({
+    message: "Select environment:",
+    choices: [
+      {
+        name: "sepolia - Ethereum Sepolia testnet",
+        value: "sepolia",
+      },
+      {
+        name: "sepolia-dev - Ethereum Sepolia testnet (dev)",
+        value: "sepolia-dev",
+      },
+      {
+        name: "mainnet-alpha - Ethereum mainnet (⚠️  uses real funds)",
+        value: "mainnet-alpha",
+      },
+    ],
+  });
+
+  return env;
+}
+
+/**
+ * Prompt for private key with hidden input
+ * Matches Go's output.InputHiddenString() function
+ */
+export async function getPrivateKeyInteractive(
+  privateKey?: string,
+): Promise<string> {
+  // If provided, validate and return it
+  if (privateKey) {
+    if (!validatePrivateKeyFormat(privateKey)) {
+      throw new Error("Invalid private key format");
+    }
+    return privateKey;
+  }
+
+  const key = await password({
+    message: "Enter private key:",
+    mask: true,
+    validate: (value: string) => {
+      if (!value.trim()) {
+        return "Private key is required";
+      }
+      if (!validatePrivateKeyFormat(value)) {
+        return "Invalid private key format (must be 64 hex characters, optionally prefixed with 0x)";
+      }
+      return true;
+    },
+  });
+
+  return key.trim();
 }

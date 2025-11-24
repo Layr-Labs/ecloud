@@ -247,7 +247,6 @@ async function layerLocalImage(
 
   const scriptContent = processScriptTemplate({
     kmsServerURL: environmentConfig.kmsServerURL,
-    jwtFile: "/run/container_launcher/attestation_verifier_claims_token",
     userAPIURL: environmentConfig.userApiServerURL,
   });
 
@@ -311,12 +310,10 @@ async function setupLayeredBuildDirectory(
     fs.writeFileSync(scriptPath, scriptContent, { mode: 0o755 });
 
     // Copy KMS keys
-    const { encryptionKey, signingKey } = getKMSKeysForEnvironment(
+    const { signingKey } = getKMSKeysForEnvironment(
       environmentConfig.name,
+      environmentConfig.build
     );
-
-    const encryptionKeyPath = path.join(tempDir, KMS_ENCRYPTION_KEY_NAME);
-    fs.writeFileSync(encryptionKeyPath, encryptionKey, { mode: 0o644 });
 
     const signingKeyPath = path.join(tempDir, KMS_SIGNING_KEY_NAME);
     fs.writeFileSync(signingKeyPath, signingKey, { mode: 0o644 });

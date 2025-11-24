@@ -13,7 +13,6 @@ USER root
 # Copy core TEE components
 COPY compute-source-env.sh /usr/local/bin/
 COPY kms-client /usr/local/bin/
-COPY kms-encryption-public-key.pem /usr/local/bin/
 COPY kms-signing-public-key.pem /usr/local/bin/
 
 {{#if includeTLS}}
@@ -31,7 +30,6 @@ RUN chmod 755 /usr/local/bin/compute-source-env.sh \
     && chmod 755 /usr/local/bin/kms-client{{#if includeTLS}} \
     && chmod 755 /usr/local/bin/tls-keygen \
     && chmod 755 /usr/local/bin/caddy{{/if}} \
-    && chmod 644 /usr/local/bin/kms-encryption-public-key.pem \
     && chmod 644 /usr/local/bin/kms-signing-public-key.pem
 
 # Switch back to the original user from base image
@@ -49,6 +47,7 @@ LABEL tee.launch_policy.log_redirect={{logRedirect}}
 {{/if}}
 
 LABEL eigenx_cli_version={{ecloudCLIVersion}}
+LABEL eigenx_use_ita=True
 
 {{#if includeTLS}}
 # Expose both HTTP and HTTPS ports for Caddy

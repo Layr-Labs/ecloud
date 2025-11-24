@@ -81,6 +81,7 @@ export interface DeployResult {
 
 export interface EnvironmentConfig {
   name: string;
+  build: "dev" | "prod";
   chainID: bigint;
   appControllerAddress: string;
   permissionControllerAddress: string;

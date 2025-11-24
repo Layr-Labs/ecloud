@@ -25,8 +25,20 @@ export const ChainAddresses: Record<number, Record<string, string>> = {
 
 // Environment configurations
 const ENVIRONMENTS: Record<string, Omit<EnvironmentConfig, "chainID">> = {
-  sepolia: {
+  "sepolia-dev": {
     name: "sepolia",
+    build: "dev",
+    appControllerAddress: "0xa86DC1C47cb2518327fB4f9A1627F51966c83B92",
+    permissionControllerAddress:
+      ChainAddresses[SEPOLIA_CHAIN_ID].PermissionController,
+    erc7702DelegatorAddress: CommonAddresses.ERC7702Delegator,
+    kmsServerURL: "http://10.128.0.57:8080",
+    userApiServerURL: "https://userapi-compute-sepolia-dev.eigencloud.xyz",
+    defaultRPCURL: "https://ethereum-sepolia-rpc.publicnode.com",
+  },
+  "sepolia": {
+    name: "sepolia",
+    build: "prod",
     appControllerAddress: "0x0dd810a6ffba6a9820a10d97b659f07d8d23d4E2",
     permissionControllerAddress:
       ChainAddresses[SEPOLIA_CHAIN_ID].PermissionController,
@@ -37,6 +49,7 @@ const ENVIRONMENTS: Record<string, Omit<EnvironmentConfig, "chainID">> = {
   },
   "mainnet-alpha": {
     name: "mainnet-alpha",
+    build: "prod",
     appControllerAddress: "0xc38d35Fc995e75342A21CBd6D770305b142Fbe67",
     permissionControllerAddress:
       ChainAddresses[MAINNET_CHAIN_ID].PermissionController,

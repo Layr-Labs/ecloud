@@ -46,7 +46,7 @@ export async function checkIfImageAlreadyLayeredForECloud(
 ): Promise<boolean> {
   try {
     const config = await extractImageConfig(docker, imageTag);
-    return "ECLOUD_cli_version" in config.labels;
+    return "eigenx_cli_version" in config.labels;
   } catch {
     return false;
   }

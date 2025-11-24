@@ -6,7 +6,7 @@
 
 import { sepolia, mainnet } from "viem/chains";
 import { privateKeyToAccount } from "viem/accounts";
-import { executeBatch, checkERC7702Delegation } from "./eip7702";
+import { executeBatch } from "./eip7702";
 import {
   createWalletClient,
   createPublicClient,
@@ -19,12 +19,16 @@ import {
 import { hashAuthorization } from "viem/utils";
 import { sign } from "viem/accounts";
 
+import { confirm } from "../utils/prompts";
+
 import { EnvironmentConfig, Logger } from "../types";
 import { Release } from "../types";
 import { getAppName } from "../registry/appNames";
 
 import AppControllerABI from "../abis/AppController.json";
 import PermissionControllerABI from "../abis/PermissionController.json";
+import chalk from "chalk";
+
 
 export interface DeployAppOptions {
   privateKey: string; // Will be converted to Hex
@@ -369,7 +373,7 @@ export async function upgradeApp(
   }
 
   // 4. Execute batch via EIP-7702 delegator
-  // Get app name for confirmation prompt (matches Go implementation)
+  // Get app name for confirmation prompt
   const appName = getAppName(environmentConfig.name, appID);
   let confirmationPrompt = "Upgrade app";
   let pendingMessage = "Upgrading app...";
@@ -398,7 +402,6 @@ export async function upgradeApp(
 
 /**
  * Send and wait for transaction with confirmation support
- * This is a helper function similar to Go's SendAndWaitForTransaction
  */
 export interface SendTransactionOptions {
   privateKey: string;
@@ -416,7 +419,7 @@ export interface SendTransactionOptions {
 export async function sendAndWaitForTransaction(
   options: SendTransactionOptions,
   logger: Logger,
-): Promise<Hex> {
+): Promise<Hex | false> {
   const {
     privateKey,
     rpcUrl,
@@ -465,10 +468,14 @@ export async function sendAndWaitForTransaction(
       });
       const maxCostWei = gasEstimate * fees.maxFeePerGas;
       const costEth = formatETH(maxCostWei);
-      logger.info(
-        `${confirmationPrompt} on ${environmentConfig.name} (max cost: ${costEth} ETH)`,
-      );
-      // TODO: Add interactive confirmation prompt
+
+      // place an empty line for tidier output
+      logger.info("");
+      
+      // Interactive confirmation prompt
+      if (!(await confirm(`${confirmationPrompt} ${chalk.reset(`on ${environmentConfig.name} (max cost: ${costEth} ETH)`)}`))) {
+        return false;
+      }
     } catch (error: any) {
       // Try to parse custom contract errors
       const parsedErr = parseEstimateGasError(error, environmentConfig);
@@ -481,7 +488,7 @@ export async function sendAndWaitForTransaction(
 
   // Show pending message if provided
   if (pendingMessage) {
-    logger.info(pendingMessage);
+    logger.info(`\n${pendingMessage}`);
   }
 
   // Send transaction
@@ -533,7 +540,6 @@ export async function sendAndWaitForTransaction(
 
 /**
  * Parse estimate gas errors to extract contract-specific error messages
- * Similar to Go's parseEstimateGasError
  */
 function parseEstimateGasError(
   err: any,
@@ -578,7 +584,6 @@ function parseEstimateGasError(
 
 /**
  * Format AppController errors to user-friendly messages
- * Similar to Go's formatAppControllerError
  */
 function formatAppControllerError(decoded: any): Error {
   const errorName = decoded.errorName;
@@ -732,6 +737,42 @@ export async function getAppsByCreator(
 }
 
 /**
+ * Get apps by developer
+ */
+export async function getAppsByDeveloper(
+  rpcUrl: string,
+  environmentConfig: EnvironmentConfig,
+  developer: Address,
+  offset: bigint,
+  limit: bigint,
+): Promise<{ apps: Address[]; appConfigs: AppConfig[] }> {
+  const chain =
+    environmentConfig.chainID === 11155111n
+      ? sepolia
+      : environmentConfig.chainID === 1n
+        ? mainnet
+        : sepolia;
+
+  const publicClient = createPublicClient({
+    chain,
+    transport: http(rpcUrl),
+  });
+
+  const result = (await publicClient.readContract({
+    address: environmentConfig.appControllerAddress as Address,
+    abi: AppControllerABI,
+    functionName: "getAppsByDeveloper",
+    args: [developer, offset, limit],
+  })) as [Address[], AppConfig[]];
+
+  // Result is a tuple: [Address[], AppConfig[]]
+  return {
+    apps: result[0],
+    appConfigs: result[1],
+  };
+}
+
+/**
  * Suspend apps for an account
  */
 export async function suspend(
@@ -743,7 +784,7 @@ export async function suspend(
     apps: Address[];
   },
   logger: Logger,
-): Promise<Hex> {
+): Promise<Hex | false> {
   const { privateKey, rpcUrl, environmentConfig, account, apps } = options;
 
   const suspendData = encodeFunctionData({

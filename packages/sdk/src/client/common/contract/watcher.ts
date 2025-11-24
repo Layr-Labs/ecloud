@@ -27,10 +27,10 @@ export async function watchUntilRunning(
   options: WatchUntilRunningOptions,
   logger: Logger,
 ): Promise<string | undefined> {
-  const { environmentConfig, appID, privateKey } = options;
+  const { environmentConfig, appID, privateKey, rpcUrl } = options;
 
   // Create UserAPI client
-  const userApiClient = new UserApiClient(environmentConfig, privateKey);
+  const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl);
 
   // Track initial status and whether we've seen a change
   let initialStatus: string | undefined;
@@ -120,10 +120,10 @@ export async function watchUntilUpgradeComplete(
   options: WatchUntilUpgradeCompleteOptions,
   logger: Logger,
 ): Promise<void> {
-  const { environmentConfig, appID, privateKey } = options;
+  const { environmentConfig, appID, privateKey, rpcUrl } = options;
 
   // Create UserAPI client
-  const userApiClient = new UserApiClient(environmentConfig, privateKey);
+  const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl);
 
   // Track initial status and whether we've seen a change
   let initialStatus: string | undefined;
