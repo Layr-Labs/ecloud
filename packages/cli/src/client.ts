@@ -4,6 +4,7 @@ import {
   getPrivateKeyInteractive,
   getEnvironmentConfig,
   requirePrivateKey,
+  getPrivateKeyWithSource,
 } from "@layr-labs/ecloud-sdk";
 import { CommonFlags, validateCommonFlags } from "./flags";
 import { Hex } from "viem";
@@ -34,7 +35,10 @@ export async function createBillingClient(flags: {
   "private-key"?: string;
   verbose?: boolean;
 }) {
-  const privateKey = await getPrivateKeyInteractive(flags["private-key"]);
+  const result = await getPrivateKeyWithSource({
+    privateKey: flags["private-key"],
+  });
+  const privateKey = await getPrivateKeyInteractive(result?.key);
 
   return createBillingModule({
     verbose: flags.verbose ?? false,

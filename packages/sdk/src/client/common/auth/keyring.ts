@@ -101,7 +101,9 @@ export async function listStoredKeys(): Promise<StoredKey[]> {
         keys.push({ environment, address });
       } catch (err) {
         // Skip invalid keys (shouldn't happen, but be defensive)
-        console.warn(`Warning: Invalid key found for ${environment}, skipping`);
+        console.warn(
+          `Warning: Invalid key found for ${environment}, skipping: ${err}`
+        );
       }
     }
   }

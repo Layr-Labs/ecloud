@@ -72,9 +72,12 @@ export async function getPrivateKeyWithSource(options: {
  */
 export async function requirePrivateKey(options: {
   privateKey?: string;
-  environment: string;
+  environment?: string;
 }): Promise<PrivateKeySource> {
-  const result = await getPrivateKeyWithSource(options);
+  const result = await getPrivateKeyWithSource({
+    privateKey: options.privateKey,
+    environment: options.environment ?? "sepolia",
+  });
 
   if (!result) {
     throw new Error(

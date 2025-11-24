@@ -2,14 +2,23 @@
  * Interactive prompts using @inquirer/prompts
  */
 
-import { input, select, password, confirm as inquirerConfirm } from "@inquirer/prompts";
+import {
+  input,
+  select,
+  password,
+  confirm as inquirerConfirm,
+} from "@inquirer/prompts";
 import fs from "fs";
 import path from "path";
 import os from "os";
 import { Address, isAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { listApps, getAppName } from "../registry/appNames";
-import { getEnvironmentConfig, getAvailableEnvironments, isEnvironmentAvailable } from "../config/environment";
+import {
+  getEnvironmentConfig,
+  getAvailableEnvironments,
+  isEnvironmentAvailable,
+} from "../config/environment";
 import { getAllAppsByDeveloper } from "../contract/caller";
 import { UserApiClient } from "./userapi";
 import { addHexPrefix, stripHexPrefix } from "./helpers";
@@ -18,7 +27,7 @@ import { addHexPrefix, stripHexPrefix } from "./helpers";
  * Prompt for Dockerfile selection
  */
 export async function getDockerfileInteractive(
-  dockerfilePath?: string,
+  dockerfilePath?: string
 ): Promise<string> {
   // Check if provided via option
   if (dockerfilePath) {
@@ -57,7 +66,7 @@ export async function getDockerfileInteractive(
  */
 export async function getImageReferenceInteractive(
   imageRef?: string,
-  buildFromDockerfile: boolean = false,
+  buildFromDockerfile: boolean = false
 ): Promise<string> {
   // Check if provided
   if (imageRef) {
@@ -85,7 +94,7 @@ export async function getImageReferenceInteractive(
   } else {
     console.log("\n🐳 Docker Image Selection");
     console.log(
-      "Specify an existing Docker image from a registry to run in the TEE.",
+      "Specify an existing Docker image from a registry to run in the TEE."
     );
     console.log();
   }
@@ -108,7 +117,7 @@ export async function getImageReferenceInteractive(
 export async function getOrPromptAppName(
   appName: string | undefined,
   environment: string,
-  imageRef: string,
+  imageRef: string
 ): Promise<string> {
   // Check if provided
   if (appName) {
@@ -131,7 +140,7 @@ export async function getOrPromptAppName(
  */
 async function getAvailableAppNameInteractive(
   environment: string,
-  imageRef: string,
+  imageRef: string
 ): Promise<string> {
   // Start with a suggestion from the image
   const baseName = extractAppNameFromImage(imageRef);
@@ -168,7 +177,7 @@ async function getAvailableAppNameInteractive(
  * Prompt for environment file
  */
 export async function getEnvFileInteractive(
-  envFilePath?: string,
+  envFilePath?: string
 ): Promise<string> {
   // Check if provided via option and exists
   if (envFilePath && fs.existsSync(envFilePath)) {
@@ -213,7 +222,7 @@ export async function getEnvFileInteractive(
 export async function getInstanceTypeInteractive(
   instanceType: string | undefined,
   defaultSKU: string,
-  availableTypes: Array<{ sku: string; description: string }>,
+  availableTypes: Array<{ sku: string; description: string }>
 ): Promise<string> {
   // Check if provided and validate it
   if (instanceType) {
@@ -230,7 +239,7 @@ export async function getInstanceTypeInteractive(
   return selectInstanceTypeInteractively(
     availableTypes,
     defaultSKU,
-    isCurrentType,
+    isCurrentType
   );
 }
 
@@ -250,7 +259,7 @@ export interface GetAppIDOptions {
  */
 export async function getOrPromptAppID(
   appIDOrOptions: string | Address | GetAppIDOptions | undefined,
-  environment?: string,
+  environment?: string
 ): Promise<Address> {
   // Handle backward compatibility: if first arg is string/Address and second is string
   let options: GetAppIDOptions;
@@ -260,7 +269,11 @@ export async function getOrPromptAppID(
       appID: appIDOrOptions as string | Address | undefined,
       environment: environment,
     };
-  } else if (appIDOrOptions && typeof appIDOrOptions === "object" && "environment" in appIDOrOptions) {
+  } else if (
+    appIDOrOptions &&
+    typeof appIDOrOptions === "object" &&
+    "environment" in appIDOrOptions
+  ) {
     // New signature: (options)
     options = appIDOrOptions as GetAppIDOptions;
   } else {
@@ -274,7 +287,10 @@ export async function getOrPromptAppID(
   // If provided, check if it's a name or address
   if (options.appID) {
     // Normalize the input
-    const normalized = typeof options.appID === "string" ? addHexPrefix(options.appID) : options.appID;
+    const normalized =
+      typeof options.appID === "string"
+        ? addHexPrefix(options.appID)
+        : options.appID;
 
     // Check if it's a valid address
     if (isAddress(normalized)) {
@@ -292,7 +308,7 @@ export async function getOrPromptAppID(
     // Name not found, but user provided something - return as-is and let validation happen later
     // Or we could throw an error here
     throw new Error(
-      `App name '${options.appID}' not found in environment '${options.environment}'`,
+      `App name '${options.appID}' not found in environment '${options.environment}'`
     );
   }
 
@@ -351,7 +367,7 @@ function getStatusPriority(status: number, isExited: boolean): number {
 function formatAppDisplay(
   environmentName: string,
   appID: Address,
-  profileName: string,
+  profileName: string
 ): string {
   if (profileName) {
     return `${profileName} (${environmentName}:${appID})`;
@@ -363,9 +379,7 @@ function formatAppDisplay(
  * Get app ID interactively
  * Queries contract and filters apps based on action
  */
-async function getAppIDInteractive(
-  options: GetAppIDOptions,
-): Promise<Address> {
+async function getAppIDInteractive(options: GetAppIDOptions): Promise<Address> {
   const action = options.action || "view";
   const environment = options.environment || "sepolia";
   const environmentConfig = getEnvironmentConfig(environment);
@@ -386,7 +400,7 @@ async function getAppIDInteractive(
   const { apps, appConfigs } = await getAllAppsByDeveloper(
     options.rpcUrl,
     environmentConfig,
-    developerAddr,
+    developerAddr
   );
 
   if (apps.length === 0) {
@@ -399,7 +413,7 @@ async function getAppIDInteractive(
     const userApiClient = new UserApiClient(
       environmentConfig,
       options.privateKey,
-      options.rpcUrl,
+      options.rpcUrl
     );
     const infos = await userApiClient.getInfos(apps, 1);
     for (const info of infos) {
@@ -468,7 +482,7 @@ async function getAppIDInteractive(
     const displayName = formatAppDisplay(
       environmentConfig.name,
       appAddr,
-      profileName,
+      profileName
     );
 
     appItems.push({
@@ -498,11 +512,11 @@ async function getAppIDInteractive(
     switch (action) {
       case "start":
         throw new Error(
-          "no startable apps found - only Stopped apps can be started",
+          "no startable apps found - only Stopped apps can be started"
         );
       case "stop":
         throw new Error(
-          "no running apps found - only Running apps can be stopped",
+          "no running apps found - only Running apps can be stopped"
         );
       default:
         throw new Error("no active apps found");
@@ -528,7 +542,7 @@ async function getAppIDInteractive(
  */
 async function getAppIDInteractiveFromRegistry(
   environment: string,
-  action: string,
+  action: string
 ): Promise<Address> {
   const apps = listApps(environment);
 
@@ -618,7 +632,7 @@ async function getAppIDInteractiveFromRegistry(
  * Prompt for log settings
  */
 export async function getLogSettingsInteractive(
-  logVisibility?: "public" | "private" | "off",
+  logVisibility?: "public" | "private" | "off"
 ): Promise<{ logRedirect: string; publicLogs: boolean }> {
   // Check if flag is provided
   if (logVisibility) {
@@ -631,7 +645,7 @@ export async function getLogSettingsInteractive(
         return { logRedirect: "", publicLogs: false };
       default:
         throw new Error(
-          `invalid log-visibility value: ${logVisibility} (must be public, private, or off)`,
+          `invalid log-visibility value: ${logVisibility} (must be public, private, or off)`
         );
     }
   }
@@ -673,7 +687,7 @@ interface RegistryInfo {
  * Get credentials from Docker credential helper
  */
 async function getCredentialsFromHelper(
-  registry: string,
+  registry: string
 ): Promise<{ username: string; password: string } | undefined> {
   const dockerConfigPath = path.join(os.homedir(), ".docker", "config.json");
 
@@ -794,7 +808,9 @@ async function getAvailableRegistries(): Promise<RegistryInfo[]> {
       } else if (registry.includes("ghcr.io")) {
         registryType = "ghcr";
         // Normalize ghcr.io variants
-        normalizedURL = registry.replace(/^https?:\/\//, "").replace(/\/v1\/?$/, "");
+        normalizedURL = registry
+          .replace(/^https?:\/\//, "")
+          .replace(/\/v1\/?$/, "");
       } else if (registry.includes("gcr.io") || registry.includes(".gcr.io")) {
         registryType = "gcr";
         normalizedURL = "gcr.io"; // Normalize to canonical URL
@@ -851,7 +867,7 @@ async function getAvailableRegistries(): Promise<RegistryInfo[]> {
 
 function displayDetectedRegistries(
   registries: RegistryInfo[],
-  appName: string,
+  appName: string
 ): void {
   console.log("Detected authenticated registries:");
   for (const reg of registries) {
@@ -879,7 +895,7 @@ function displayRegistryExamples(appName: string): void {
 async function selectRegistryInteractive(
   registries: RegistryInfo[],
   imageName: string,
-  tag: string,
+  tag: string
 ): Promise<string> {
   if (registries.length === 1) {
     // Single registry - suggest it as default
@@ -917,7 +933,7 @@ async function selectRegistryInteractive(
 function suggestImageReference(
   registry: RegistryInfo,
   imageName: string,
-  tag: string,
+  tag: string
 ): string {
   // Clean up image name for use in image reference
   imageName = imageName.toLowerCase().replace(/_/g, "-");
@@ -1028,7 +1044,7 @@ function validateFilePath(value: string): boolean | string {
 
 function validateInstanceTypeSKU(
   sku: string,
-  availableTypes: Array<{ sku: string }>,
+  availableTypes: Array<{ sku: string }>
 ): string {
   // Check if SKU is valid
   for (const it of availableTypes) {
@@ -1040,14 +1056,14 @@ function validateInstanceTypeSKU(
   // Build helpful error message with valid options
   const validSKUs = availableTypes.map((it) => it.sku).join(", ");
   throw new Error(
-    `invalid instance-type value: ${sku} (must be one of: ${validSKUs})`,
+    `invalid instance-type value: ${sku} (must be one of: ${validSKUs})`
   );
 }
 
 async function selectInstanceTypeInteractively(
   availableTypes: Array<{ sku: string; description: string }>,
   defaultSKU: string,
-  isCurrentType: boolean,
+  isCurrentType: boolean
 ): Promise<string> {
   // Show header based on context
   if (isCurrentType && defaultSKU) {
@@ -1086,7 +1102,7 @@ export async function confirm(prompt: string): Promise<boolean> {
  */
 export async function confirmWithDefault(
   prompt: string,
-  defaultValue: boolean = false,
+  defaultValue: boolean = false
 ): Promise<boolean> {
   return await inquirerConfirm({
     message: prompt,
@@ -1116,7 +1132,7 @@ function validatePrivateKeyFormat(key: string): boolean {
  */
 export async function getRPCUrlInteractive(
   rpcUrl?: string,
-  defaultRpcUrl?: string,
+  defaultRpcUrl?: string
 ): Promise<string> {
   // If provided, return it
   if (rpcUrl) {
@@ -1151,7 +1167,7 @@ export async function getRPCUrlInteractive(
  * Matches Go's GetEnvironmentConfig() behavior with interactive prompt
  */
 export async function getEnvironmentInteractive(
-  environment?: string,
+  environment?: string
 ): Promise<string> {
   // If provided, validate and return it
   if (environment) {
@@ -1159,7 +1175,9 @@ export async function getEnvironmentInteractive(
       getEnvironmentConfig(environment);
       // Also check if it's available in current build
       if (!isEnvironmentAvailable(environment)) {
-        throw new Error(`Environment ${environment} is not available in this build`);
+        throw new Error(
+          `Environment ${environment} is not available in this build`
+        );
       }
       return environment;
     } catch {
@@ -1169,7 +1187,7 @@ export async function getEnvironmentInteractive(
 
   // Get available environments based on build type
   const availableEnvs = getAvailableEnvironments();
-  
+
   // Build choices based on available environments
   const choices = [];
   if (availableEnvs.includes("sepolia")) {
@@ -1208,7 +1226,7 @@ export async function getEnvironmentInteractive(
  * Matches Go's output.InputHiddenString() function
  */
 export async function getPrivateKeyInteractive(
-  privateKey?: string,
+  privateKey?: string
 ): Promise<string> {
   // If provided, validate and return it
   if (privateKey) {
@@ -1245,12 +1263,7 @@ const MAX_APP_NAME_LENGTH = 100;
 const MAX_DESCRIPTION_LENGTH = 1000;
 const MAX_IMAGE_SIZE = 4 * 1024 * 1024; // 4MB
 const VALID_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png"];
-const VALID_X_HOSTS = [
-  "twitter.com",
-  "www.twitter.com",
-  "x.com",
-  "www.x.com",
-];
+const VALID_X_HOSTS = ["twitter.com", "www.twitter.com", "x.com", "www.x.com"];
 
 /**
  * Collect app profile information interactively
@@ -1260,7 +1273,7 @@ const VALID_X_HOSTS = [
  */
 export async function getAppProfileInteractive(
   defaultName: string = "",
-  allowRetry: boolean = true,
+  allowRetry: boolean = true
 ): Promise<AppProfile | null> {
   while (true) {
     // Collect name (required)
@@ -1443,12 +1456,12 @@ async function getAppImageInteractive(): Promise<string | undefined> {
   const imgInfo = await getImageInfo(cleanedPath);
   if (imgInfo) {
     console.log(
-      `📸 Image: ${imgInfo.width}x${imgInfo.height} pixels, ${imgInfo.sizeKB.toFixed(1)} KB`,
+      `📸 Image: ${imgInfo.width}x${imgInfo.height} pixels, ${imgInfo.sizeKB.toFixed(1)} KB`
     );
     if (!imgInfo.isSquare) {
       const ratio = imgInfo.aspectRatio.toFixed(2);
       console.log(
-        `⚠️  Note: Image is not square (${ratio}:1 ratio). Square images display best.`,
+        `⚠️  Note: Image is not square (${ratio}:1 ratio). Square images display best.`
       );
     }
   }
@@ -1578,9 +1591,7 @@ interface ImageInfo {
   isSquare: boolean;
 }
 
-async function getImageInfo(
-  filePath: string,
-): Promise<ImageInfo | null> {
+async function getImageInfo(filePath: string): Promise<ImageInfo | null> {
   try {
     const stats = fs.statSync(filePath);
     const sizeKB = stats.size / 1024;
@@ -1603,7 +1614,11 @@ async function getImageInfo(
       // Look for SOF markers: 0xFFC0, 0xFFC1, 0xFFC2, etc.
       let i = 0;
       while (i < buffer.length - 1) {
-        if (buffer[i] === 0xff && buffer[i + 1] >= 0xc0 && buffer[i + 1] <= 0xc3) {
+        if (
+          buffer[i] === 0xff &&
+          buffer[i + 1] >= 0xc0 &&
+          buffer[i + 1] <= 0xc3
+        ) {
           // Found SOF marker, height and width are at offset +5 and +7 (2 bytes each, big-endian)
           if (i + 9 < buffer.length) {
             height = buffer.readUInt16BE(i + 5);
