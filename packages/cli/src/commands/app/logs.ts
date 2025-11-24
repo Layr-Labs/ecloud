@@ -1,5 +1,5 @@
 import { Command, Args, Flags } from "@oclif/core";
-import { loadClient } from "../../client";
+import { createAppClient } from "../../client";
 import { commonFlags } from "../../flags";
 
 export default class AppLogs extends Command {
@@ -23,9 +23,9 @@ export default class AppLogs extends Command {
 
   async run() {
     const { args, flags } = await this.parse(AppLogs);
-    const client = await loadClient(flags);
+    const app = await createAppClient(flags);
 
-    await client.app.logs({
+    await app.logs({
       appID: args["app-id"],
       watch: flags.watch,
     });

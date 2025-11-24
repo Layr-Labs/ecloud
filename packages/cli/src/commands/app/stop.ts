@@ -1,5 +1,5 @@
 import { Command, Args } from "@oclif/core";
-import { loadClient } from "../../client";
+import { createAppClient } from "../../client";
 import { commonFlags } from "../../flags";
 import { getEnvironmentConfig, getOrPromptAppID } from "@layr-labs/ecloud-sdk";
 import chalk from "chalk";
@@ -20,7 +20,7 @@ export default class AppLifecycleStop extends Command {
 
   async run() {
     const { args, flags } = await this.parse(AppLifecycleStop);
-    const client = await loadClient(flags);
+    const app = await createAppClient(flags);
 
     // Get environment config
     const environment = flags.environment || "sepolia";
@@ -40,7 +40,7 @@ export default class AppLifecycleStop extends Command {
       }
     );
 
-    const res = await client.app.stop(appId);
+    const res = await app.stop(appId);
 
     if (!res.tx) {
       this.log(`\n${chalk.gray(`Stop aborted`)}`);
