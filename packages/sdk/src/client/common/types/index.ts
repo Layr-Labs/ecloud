@@ -127,3 +127,30 @@ export interface Logger {
   warn(message: string, ...args: any[]): void;
   error(message: string, ...args: any[]): void;
 }
+
+/**
+ * Profile information for an app
+ */
+export interface AppProfile {
+  /** App name (required) */
+  name: string;
+  /** Website URL (optional) */
+  website?: string;
+  /** Description (optional) */
+  description?: string;
+  /** X (Twitter) URL (optional) */
+  xURL?: string;
+  /** Path to image file (optional) */
+  imagePath?: string;
+}
+
+/**
+ * Profile response from API
+ */
+export interface AppProfileResponse {
+  name: string;
+  website?: string;
+  description?: string;
+  xURL?: string;
+  imageURL?: string;
+}

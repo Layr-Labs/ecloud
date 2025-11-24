@@ -22,6 +22,8 @@ import {
   getEnvFileInteractive,
   getInstanceTypeInteractive,
   getLogSettingsInteractive,
+  getAppProfileInteractive,
+  extractAppNameFromImage,
 } from "../../common/utils/prompts";
 import { doPreflightChecks, PreflightContext } from "../../common/utils/preflight";
 import { UserApiClient } from "../../common/utils/userapi";
@@ -114,7 +116,9 @@ export async function deploy(
     preflightCtx.environmentConfig,
     salt,
   );
+  logger.info(``)
   logger.info(`App ID: ${appIDToBeDeployed}`);
+  logger.info(``)
 
   // 12. Prepare the release (includes build/push if needed, with automatic retry on permission errors)
   logger.info("Preparing release...");
@@ -146,7 +150,45 @@ export async function deploy(
     logger,
   );
 
-  // 14. Save the app name mapping
+  // 14. Collect app profile while deployment is in progress (optional)
+  logger.info(
+    "Deployment confirmed onchain. While your instance provisions, set up a public profile",
+  );
+  let profile = null;
+  try {
+    // Extract suggested name from image reference
+    const suggestedName = extractAppNameFromImage(finalImageRef) || appName;
+    profile = await getAppProfileInteractive(suggestedName, true);
+  } catch (err: any) {
+    logger.warn(`Failed to collect profile: ${err.message}`);
+    profile = null;
+  }
+
+  // 15. Upload profile if provided (non-blocking - warn on failure but don't fail deployment)
+  if (profile) {
+    logger.info("Uploading app profile...");
+    try {
+      const userApiClient = new UserApiClient(
+        preflightCtx.environmentConfig,
+        preflightCtx.privateKey,
+        preflightCtx.rpcUrl,
+      );
+
+      await userApiClient.uploadAppProfile(
+        deployedAppID.appAddress,
+        profile.name,
+        profile.website,
+        profile.description,
+        profile.xURL,
+        profile.imagePath,
+      );
+      logger.info("✓ Profile uploaded successfully");
+    } catch (err: any) {
+      logger.warn(`Failed to upload profile: ${err.message}`);
+    }
+  }
+
+  // 16. Save the app name mapping
   try {
     await setAppName(environment, deployedAppID.appAddress, appName);
     logger.info(`App saved with name: ${appName}`);
@@ -154,7 +196,7 @@ export async function deploy(
     logger.warn(`Failed to save app name: ${err.message}`);
   }
 
-  // 15. Watch until app is running
+  // 17. Watch until app is running
   logger.info("Waiting for app to start...");
   const ipAddress = await watchUntilRunning(
     {
