@@ -64,11 +64,6 @@ export default class AuthLogin extends Command {
       this.error("Invalid private key format. Please check and try again.");
     }
 
-    // Add 0x prefix if missing
-    if (!privateKey.startsWith("0x")) {
-      privateKey = `0x${privateKey}`;
-    }
-
     // Derive address for confirmation
     const address = getAddressFromPrivateKey(privateKey);
 

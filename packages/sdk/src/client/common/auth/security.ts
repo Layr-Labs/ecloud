@@ -101,8 +101,22 @@ function runPager(pager: string, content: string): Promise<void> {
       }
     });
 
-    child.stdin.write(content);
-    child.stdin.end();
+    try {
+      const written = child.stdin.write(content);
+      if (!written) {
+        child.stdin.once("drain", () => {
+          try {
+            child.stdin.end();
+          } catch (err) {
+            reject(err);
+          }
+        });
+      } else {
+        child.stdin.end();
+      }
+    } catch (err) {
+      reject(err);
+    }
   });
 }
 

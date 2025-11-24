@@ -33,7 +33,13 @@ export async function storePrivateKey(
 
   const account = KEY_PREFIX + environment;
   const entry = new AsyncEntry(SERVICE_NAME, account);
-  await entry.setPassword(normalizedKey);
+  try {
+    await entry.setPassword(normalizedKey);
+  } catch (err: any) {
+    throw new Error(
+      `Failed to store key in OS keyring: ${err?.message ?? err}. Ensure keyring service is available.`
+    );
+  }
 }
 
 /**
@@ -44,23 +50,36 @@ export async function getPrivateKey(
 ): Promise<string | null> {
   const account = KEY_PREFIX + environment;
   const entry = new AsyncEntry(SERVICE_NAME, account);
-  const key = await entry.getPassword();
-
-  if (!key) {
+  try {
+    const key = await entry.getPassword();
+    if (!key) {
+      return null;
+    }
+    return key;
+  } catch (err: any) {
+    console.warn(
+      `Failed to retrieve key from keyring for environment "${environment}": ${err?.message ?? err}`
+    );
     return null;
   }
-
-  return key;
 }
 
 /**
  * Delete a private key from OS keyring
+ * Returns true if deletion was successful, false otherwise
  */
 export async function deletePrivateKey(environment: string): Promise<boolean> {
   const account = KEY_PREFIX + environment;
   const entry = new AsyncEntry(SERVICE_NAME, account);
-  await entry.deletePassword();
-  return true;
+  try {
+    await entry.deletePassword();
+    return true;
+  } catch (err: any) {
+    console.warn(
+      `Failed to delete key from keyring for environment "${environment}": ${err?.message ?? err}`
+    );
+    return false;
+  }
 }
 
 /**
