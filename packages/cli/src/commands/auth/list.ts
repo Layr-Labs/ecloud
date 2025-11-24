@@ -18,7 +18,7 @@ export default class AuthList extends Command {
     // Get all stored keys
     const keys = await listStoredKeys();
 
-    if (keys.size === 0) {
+    if (keys.length === 0) {
       this.log("No keys stored in keyring");
       this.log("");
       this.log("To store a key, use:");
@@ -27,8 +27,8 @@ export default class AuthList extends Command {
     }
 
     // Sort keys by environment name for consistent output
-    const sortedEntries = Array.from(keys.entries()).sort((a, b) =>
-      a[0].localeCompare(b[0]),
+    const sortedKeys = keys.sort((a, b) =>
+      a.environment.localeCompare(b.environment),
     );
 
     // Display header
@@ -36,7 +36,7 @@ export default class AuthList extends Command {
     this.log("");
 
     // Display each key
-    for (const [environment, address] of sortedEntries) {
+    for (const { environment, address } of sortedKeys) {
       this.log(`  ${environment.padEnd(15)} ${address}`);
     }
 

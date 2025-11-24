@@ -7,7 +7,7 @@
  * 3. OS keyring (stored via `ecloud auth login`)
  */
 
-import { getPrivateKey } from "./keyring";
+import { getPrivateKey, validatePrivateKey } from "./keyring";
 
 export interface PrivateKeySource {
   key: string;
@@ -24,14 +24,17 @@ export interface PrivateKeySource {
  *
  * Returns null if no key found
  */
-export async function getPrivateKeyWithSource(
-  options: {
-    privateKey?: string; // From flag
-    environment: string; // Current environment
-  },
-): Promise<PrivateKeySource | null> {
+export async function getPrivateKeyWithSource(options: {
+  privateKey?: string; // From flag
+  environment: string; // Current environment
+}): Promise<PrivateKeySource | null> {
   // 1. Check direct parameter (flag)
   if (options.privateKey) {
+    if (!validatePrivateKey(options.privateKey)) {
+      throw new Error(
+        "Invalid private key format provided via command flag. Please check and try again."
+      );
+    }
     return {
       key: options.privateKey,
       source: "command flag",
@@ -41,6 +44,11 @@ export async function getPrivateKeyWithSource(
   // 2. Check environment variable
   const envKey = process.env.ECLOUD_PRIVATE_KEY;
   if (envKey) {
+    if (!validatePrivateKey(envKey)) {
+      throw new Error(
+        "Invalid private key format provided via environment variable. Please check and try again."
+      );
+    }
     return {
       key: envKey,
       source: "environment variable (ECLOUD_PRIVATE_KEY)",
@@ -62,20 +70,18 @@ export async function getPrivateKeyWithSource(
 /**
  * Get private key with source or throw error
  */
-export async function requirePrivateKey(
-  options: {
-    privateKey?: string;
-    environment: string;
-  },
-): Promise<PrivateKeySource> {
+export async function requirePrivateKey(options: {
+  privateKey?: string;
+  environment: string;
+}): Promise<PrivateKeySource> {
   const result = await getPrivateKeyWithSource(options);
 
   if (!result) {
     throw new Error(
       `Private key required. Please provide it via:\n` +
-      `  • Keyring: ecloud auth login\n` +
-      `  • Flag: --private-key YOUR_KEY\n` +
-      `  • Environment: export ECLOUD_PRIVATE_KEY=YOUR_KEY`
+        `  • Keyring: ecloud auth login\n` +
+        `  • Flag: --private-key YOUR_KEY\n` +
+        `  • Environment: export ECLOUD_PRIVATE_KEY=YOUR_KEY`
     );
   }
 

@@ -5,7 +5,7 @@
  */
 
 import { password, select } from "@inquirer/prompts";
-import { spawn } from "child_process";
+import { spawn, execSync } from "child_process";
 import { platform } from "os";
 
 /**
@@ -64,7 +64,11 @@ export async function showPrivateKey(content: string): Promise<boolean> {
 function detectPager(): string | null {
   // Check PAGER env var first
   if (process.env.PAGER) {
-    return process.env.PAGER;
+    const pager = process.env.PAGER.trim();
+    // Only allow simple command names without arguments or special characters
+    if (/^[a-zA-Z0-9_-]+$/.test(pager)) {
+      return pager;
+    }
   }
 
   // Try common pagers
@@ -107,7 +111,6 @@ function runPager(pager: string, content: string): Promise<void> {
  */
 function commandExists(command: string): boolean {
   try {
-    const { execSync } = require("child_process");
     const cmd =
       platform() === "win32" ? `where ${command}` : `which ${command}`;
     execSync(cmd, { stdio: "ignore" });
@@ -142,7 +145,8 @@ export async function getHiddenInput(message: string): Promise<string> {
  * Display multi-line warning for destructive operations
  */
 export function displayWarning(lines: string[]): void {
-  const width = Math.max(...lines.map((l) => l.length)) + 4;
+  const width =
+    lines.length > 0 ? Math.max(...lines.map((l) => l.length)) + 4 : 4;
   const border = "⚠".repeat(width);
 
   console.log("");

@@ -97,7 +97,9 @@ Private key: ${privateKey}
         });
 
         if (!confirmReplace) {
-          this.log("\nKey not stored. Your new key is shown above (if you saved it).");
+          this.log(
+            "\nKey not stored. If you did not save your new key when it was displayed, it is now lost and cannot be recovered."
+          );
           return;
         }
       }
@@ -107,7 +109,9 @@ Private key: ${privateKey}
         await storePrivateKey(environment, privateKey);
         this.log(`\n✓ Private key stored in OS keyring for '${environment}'`);
         this.log(`✓ Address: ${address}`);
-        this.log("\nYou can now use ecloud commands without --private-key flag.");
+        this.log(
+          "\nYou can now use ecloud commands without --private-key flag."
+        );
       } catch (err: any) {
         this.error(`Failed to store key: ${err.message}`);
       }

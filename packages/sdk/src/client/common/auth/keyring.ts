@@ -13,13 +13,6 @@ import { privateKeyToAddress } from "viem/accounts";
 const KEY_PREFIX = "ecloud-";
 const SERVICE_NAME = "ecloud";
 
-export class KeyNotFoundError extends Error {
-  constructor(environment: string) {
-    super(`No key found for environment: ${environment}`);
-    this.name = "KeyNotFoundError";
-  }
-}
-
 export interface StoredKey {
   environment: string;
   address: string;
@@ -72,11 +65,11 @@ export async function deletePrivateKey(environment: string): Promise<boolean> {
 
 /**
  * List all stored keys
- * Returns a map of environment -> address
+ * Returns an array of stored keys with environment and address
  */
-export async function listStoredKeys(): Promise<Map<string, string>> {
+export async function listStoredKeys(): Promise<StoredKey[]> {
   const credentials = findCredentials(SERVICE_NAME);
-  const keys = new Map<string, string>();
+  const keys: StoredKey[] = [];
 
   for (const cred of credentials) {
     // Only include keys with our prefix
@@ -86,7 +79,7 @@ export async function listStoredKeys(): Promise<Map<string, string>> {
       try {
         // Derive address from stored key
         const address = privateKeyToAddress(cred.password as `0x${string}`);
-        keys.set(environment, address);
+        keys.push({ environment, address });
       } catch (err) {
         // Skip invalid keys (shouldn't happen, but be defensive)
         console.warn(`Warning: Invalid key found for ${environment}, skipping`);
