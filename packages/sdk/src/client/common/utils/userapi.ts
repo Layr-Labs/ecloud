@@ -4,23 +4,14 @@
 
 import axios, { AxiosResponse } from "axios";
 import FormData from "form-data";
-import {
-  Address,
-  Hex,
-  concat,
-  createPublicClient,
-  http,
-  keccak256,
-  toBytes,
-} from "viem";
-import { privateKeyToAccount, sign } from "viem/accounts";
+import { Address, Hex, createPublicClient, http } from "viem";
+import { calculatePermissionSignature } from "./auth";
+import { privateKeyToAccount } from "viem/accounts";
 import { sepolia, mainnet } from "viem/chains";
 import { EnvironmentConfig } from "../types";
-import AppControllerABI from "../abis/AppController.json";
-// import { getKMSKeysForEnvironment } from '../../modules/app/deploy/utils/keys';
 
 import { defaultLogger } from "./logger";
-import { addHexPrefix } from "./helpers";
+import { addHexPrefix, stripHexPrefix } from "./helpers";
 
 export interface AppInfo {
   address: Address;
@@ -53,7 +44,6 @@ export const CanUpdateAppProfilePermission = "0x036fef61" as Hex;
 
 export class UserApiClient {
   private readonly account?: ReturnType<typeof privateKeyToAccount>;
-  private readonly privateKey?: Hex;
   private readonly rpcUrl?: string;
 
   constructor(
@@ -64,7 +54,6 @@ export class UserApiClient {
     if (privateKey) {
       const privateKeyHex = addHexPrefix(privateKey);
       this.account = privateKeyToAccount(privateKeyHex);
-      this.privateKey = privateKeyHex;
     }
     this.rpcUrl = rpcUrl;
   }
@@ -363,40 +352,18 @@ export class UserApiClient {
       transport: http(this.rpcUrl),
     });
 
-    // Call the contract to calculate the digest hash
-    const digestHash = (await publicClient.readContract({
-      address: this.config.appControllerAddress as Address,
-      abi: AppControllerABI,
-      functionName: "calculateApiPermissionDigestHash",
-      args: [permission, expiry],
-    })) as Hex;
-
-    // Apply EIP-191 message signing prefix ("\x19Ethereum Signed Message:\n" + length)
-    // Keccak256 concatenates the two byte arrays before hashing
-    const messagePrefix = "\x19Ethereum Signed Message:\n32";
-    const prefixBytes = toBytes(messagePrefix);
-    const digestBytes = toBytes(digestHash);
-    const prefixedHash = keccak256(concat([prefixBytes, digestBytes]));
-
-    // Sign the EIP-191 prefixed hash
-    if (!this.privateKey) {
-      throw new Error("Private key required for signing");
-    }
-    const signature = await sign({
-      hash: prefixedHash,
-      privateKey: this.privateKey,
+    // Calculate permission signature using shared auth utility
+    const { signature } = await calculatePermissionSignature({
+      permission,
+      expiry,
+      appControllerAddress: this.config.appControllerAddress as Address,
+      publicClient,
+      account: this.account,
     });
-
-    // Convert signature to hex string format (r + s + v)
-    // viem's sign returns {r, s, v} object, we need to convert to 65-byte hex string
-    const r = signature.r.slice(2); // Remove 0x
-    const s = signature.s.slice(2); // Remove 0x
-    const v = Number(signature.v).toString(16).padStart(2, "0");
-    const signatureHex = `0x${r}${s}${v}`;
 
     // Return auth headers
     return {
-      Authorization: `Bearer ${signatureHex.slice(2)}`, // Remove 0x prefix
+      Authorization: `Bearer ${stripHexPrefix(signature)}`,
       "X-eigenx-expiry": expiry.toString(),
     };
   }
