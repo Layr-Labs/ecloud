@@ -57,6 +57,8 @@ Private key: ${privateKey}
    • Never share it or commit it to version control
    • Store it in a secure password manager
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Press 'q' to exit and continue...
 `;
 
     const displayed = await showPrivateKey(content);
