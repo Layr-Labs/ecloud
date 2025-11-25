@@ -92,39 +92,39 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        working-directory: ./eigenx-sdk
+        working-directory: .
         run: pnpm install --frozen-lockfile
 
       - name: Build SDK (prod) - dependency for CLI
-        working-directory: ./eigenx-sdk/packages/sdk
+        working-directory: ./packages/sdk
         env:
           BUILD_TYPE: prod
         run: |
           pnpm run build
 
       - name: Build CLI (prod)
-        working-directory: ./eigenx-sdk/packages/cli
+        working-directory: ./packages/cli
         env:
           BUILD_TYPE: prod
         run: |
           pnpm run build
 
       - name: Update SDK package.json for publishing
-        working-directory: ./eigenx-sdk/packages/sdk
+        working-directory: ./packages/sdk
         run: |
           # Ensure SDK package name is prod namespace (default)
           npm pkg set name="@layr-labs/ecloud-sdk"
           npm pkg set version="${{ env.PACKAGE_VERSION }}"
 
       - name: Publish SDK to npm (prod)
-        working-directory: ./eigenx-sdk/packages/sdk
+        working-directory: ./packages/sdk
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           npm publish --tag latest --access public
 
       - name: Update CLI package.json for prod namespace
-        working-directory: ./eigenx-sdk/packages/cli
+        working-directory: ./packages/cli
         run: |
           # Ensure package name is prod namespace (default)
           npm pkg set name="@layr-labs/ecloud-cli"
@@ -137,7 +137,7 @@ jobs:
           cat package.json | grep -A 1 '"@layr-labs/ecloud'
 
       - name: Publish CLI to npm (prod)
-        working-directory: ./eigenx-sdk/packages/cli
+        working-directory: ./packages/cli
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
