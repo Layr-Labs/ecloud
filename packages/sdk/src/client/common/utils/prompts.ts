@@ -10,7 +10,7 @@ import { Address, isAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { listApps, getAppName } from "../registry/appNames";
 import { getEnvironmentConfig } from "../config/environment";
-import { getAppsByDeveloper } from "../contract/caller";
+import { getAllAppsByDeveloper } from "../contract/caller";
 import { UserApiClient } from "./userapi";
 
 /**
@@ -389,12 +389,10 @@ async function getAppIDInteractive(
   const developerAddr = account.address;
 
   // Query contract for apps
-  const { apps, appConfigs } = await getAppsByDeveloper(
+  const { apps, appConfigs } = await getAllAppsByDeveloper(
     options.rpcUrl,
     environmentConfig,
     developerAddr,
-    0n,
-    50n,
   );
 
   if (apps.length === 0) {

@@ -132,7 +132,7 @@ export async function setAppName(
 
   // Find and remove any existing names for this app ID
   for (const [name, app] of Object.entries(registry.apps)) {
-    if (app.app_id.toLowerCase() === targetAppIDLower) {
+    if (app?.app_id?.toLowerCase() === targetAppIDLower) {
       delete registry.apps[name];
     }
   }
@@ -163,7 +163,7 @@ export function getAppName(environment: string, appID: string): string {
 
   // Search for the app ID in the registry
   for (const [name, app] of Object.entries(registry.apps)) {
-    if (app.app_id.toLowerCase() === normalizedAppID) {
+    if (app?.app_id?.toLowerCase() === normalizedAppID) {
       return name;
     }
   }

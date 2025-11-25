@@ -773,6 +773,45 @@ export async function getAppsByDeveloper(
 }
 
 /**
+ * Fetch all apps by a developer by auto-pagination
+ */
+export async function getAllAppsByDeveloper(
+  rpcUrl: string,
+  env: EnvironmentConfig,
+  developer: Address,
+  pageSize: bigint = 100n
+): Promise<{ apps: Address[]; appConfigs: AppConfig[] }> {
+
+  let offset = 0n;
+  const allApps: Address[] = [];
+  const allConfigs: AppConfig[] = [];
+
+  while (true) {
+    const { apps, appConfigs } = await getAppsByDeveloper(
+      rpcUrl,
+      env,
+      developer,
+      offset,
+      pageSize
+    );
+
+    if (apps.length === 0) break;
+
+    allApps.push(...apps);
+    allConfigs.push(...appConfigs);
+
+    if (apps.length < Number(pageSize)) break;
+
+    offset += pageSize;
+  }
+
+  return {
+    apps: allApps,
+    appConfigs: allConfigs,
+  };
+}
+
+/**
  * Suspend apps for an account
  */
 export async function suspend(
