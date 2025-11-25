@@ -5,34 +5,36 @@
  * - macOS: Keychain
  * - Linux: Secret Service API (libsecret/gnome-keyring)
  * - Windows: Credential Manager
+ *
+ * Uses a single key for all environments.
  */
 
 import { AsyncEntry, findCredentials } from "@napi-rs/keyring";
 import { privateKeyToAddress } from "viem/accounts";
 
-const KEY_PREFIX = "ecloud-";
+// ecloud keyring identifiers
 const SERVICE_NAME = "ecloud";
+const ACCOUNT_NAME = "key"; // Single key for all environments
 
 export interface StoredKey {
-  environment: string;
   address: string;
 }
 
 /**
  * Store a private key in OS keyring
+ *
+ * Note: Stores a single key for all environments.
+ * The environment parameter is kept for API compatibility but is ignored.
  */
-export async function storePrivateKey(
-  environment: string,
-  privateKey: string
-): Promise<void> {
+export async function storePrivateKey(privateKey: string): Promise<void> {
   // Validate private key format
   const normalizedKey = normalizePrivateKey(privateKey);
 
   // Validate by deriving address (will throw if invalid)
   privateKeyToAddress(normalizedKey);
 
-  const account = KEY_PREFIX + environment;
-  const entry = new AsyncEntry(SERVICE_NAME, account);
+  // Store in single-key format
+  const entry = new AsyncEntry(SERVICE_NAME, ACCOUNT_NAME);
   try {
     await entry.setPassword(normalizedKey);
   } catch (err: any) {
@@ -44,66 +46,57 @@ export async function storePrivateKey(
 
 /**
  * Get a private key from OS keyring
+ *
+ * Note: Returns the single stored key for all environments.
+ * The environment parameter is kept for API compatibility but is ignored.
  */
-export async function getPrivateKey(
-  environment: string
-): Promise<string | null> {
-  const account = KEY_PREFIX + environment;
-  const entry = new AsyncEntry(SERVICE_NAME, account);
+export async function getPrivateKey(): Promise<string | null> {
+  const entry = new AsyncEntry(SERVICE_NAME, ACCOUNT_NAME);
   try {
     const key = await entry.getPassword();
-    if (!key) {
-      return null;
+    if (key && validatePrivateKey(key)) {
+      return key;
     }
-    return key;
-  } catch (err: any) {
-    console.warn(
-      `Failed to retrieve key from keyring for environment "${environment}": ${err?.message ?? err}`
-    );
-    return null;
+  } catch {
+    // Key not found
   }
+
+  return null;
 }
 
 /**
  * Delete a private key from OS keyring
  * Returns true if deletion was successful, false otherwise
+ *
+ * Note: Deletes the single stored key.
+ * The environment parameter is kept for API compatibility but is ignored.
  */
-export async function deletePrivateKey(environment: string): Promise<boolean> {
-  const account = KEY_PREFIX + environment;
-  const entry = new AsyncEntry(SERVICE_NAME, account);
+export async function deletePrivateKey(): Promise<boolean> {
+  const entry = new AsyncEntry(SERVICE_NAME, ACCOUNT_NAME);
   try {
     await entry.deletePassword();
     return true;
-  } catch (err: any) {
-    console.warn(
-      `Failed to delete key from keyring for environment "${environment}": ${err?.message ?? err}`
-    );
+  } catch {
+    console.warn("No key found in keyring");
     return false;
   }
 }
 
 /**
  * List all stored keys
- * Returns an array of stored keys with environment and address
+ * Returns an array with the single stored key (if it exists)
  */
 export async function listStoredKeys(): Promise<StoredKey[]> {
-  const credentials = findCredentials(SERVICE_NAME);
   const keys: StoredKey[] = [];
 
-  for (const cred of credentials) {
-    // Only include keys with our prefix
-    if (cred.account.startsWith(KEY_PREFIX)) {
-      const environment = cred.account.slice(KEY_PREFIX.length);
-
+  const creds = findCredentials(SERVICE_NAME);
+  for (const cred of creds) {
+    if (cred.account === ACCOUNT_NAME) {
       try {
-        // Derive address from stored key
         const address = privateKeyToAddress(cred.password as `0x${string}`);
-        keys.push({ environment, address });
+        keys.push({ address });
       } catch (err) {
-        // Skip invalid keys (shouldn't happen, but be defensive)
-        console.warn(
-          `Warning: Invalid key found for ${environment}, skipping: ${err}`
-        );
+        console.warn(`Warning: Invalid key found, skipping: ${err}`);
       }
     }
   }
@@ -112,10 +105,13 @@ export async function listStoredKeys(): Promise<StoredKey[]> {
 }
 
 /**
- * Check if a key exists for an environment
+ * Check if a key exists
+ *
+ * Note: Checks for the single stored key.
+ * The environment parameter is kept for API compatibility but is ignored.
  */
-export async function keyExists(environment: string): Promise<boolean> {
-  const key = await getPrivateKey(environment);
+export async function keyExists(): Promise<boolean> {
+  const key = await getPrivateKey();
   return key !== null;
 }
 

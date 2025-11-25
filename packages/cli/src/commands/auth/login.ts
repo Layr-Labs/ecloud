@@ -19,31 +19,21 @@ import { commonFlags } from "../../flags";
 export default class AuthLogin extends Command {
   static description = "Store your private key in OS keyring";
 
-  static examples = [
-    "<%= config.bin %> <%= command.id %>",
-    "<%= config.bin %> <%= command.id %> --environment sepolia",
-  ];
-
-  static flags = {
-    environment: commonFlags.environment,
-  };
+  static examples = ["<%= config.bin %> <%= command.id %>"];
 
   async run(): Promise<void> {
-    const { flags } = await this.parse(AuthLogin);
-    const environment = flags.environment;
-
     // Check if key already exists
-    const exists = await keyExists(environment);
+    const exists = await keyExists();
 
     if (exists) {
       displayWarning([
-        `WARNING: A private key for '${environment}' already exists!`,
+        "WARNING: A private key already exists!",
         "Replacing it will cause PERMANENT DATA LOSS if not backed up.",
         "The previous key will be lost forever.",
       ]);
 
       const confirmReplace = await confirm({
-        message: `Replace existing key for '${environment}'?`,
+        message: "Replace existing key?",
         default: false,
       });
 
@@ -70,7 +60,7 @@ export default class AuthLogin extends Command {
     this.log(`\nAddress: ${address}`);
 
     const confirmStore = await confirm({
-      message: `Store this key for '${environment}'?`,
+      message: "Store this key in OS keyring?",
       default: true,
     });
 
@@ -81,10 +71,13 @@ export default class AuthLogin extends Command {
 
     // Store in keyring
     try {
-      await storePrivateKey(environment, privateKey);
-      this.log(`\n✓ Private key stored in OS keyring for '${environment}'`);
+      await storePrivateKey(privateKey);
+      this.log("\n✓ Private key stored in OS keyring");
       this.log(`✓ Address: ${address}`);
-      this.log("\nYou can now use ecloud commands without --private-key flag.");
+      this.log(
+        "\nNote: This key will be used for all environments (mainnet, sepolia, etc.)"
+      );
+      this.log("You can now use ecloud commands without --private-key flag.");
     } catch (err: any) {
       this.error(`Failed to store key: ${err.message}`);
     }

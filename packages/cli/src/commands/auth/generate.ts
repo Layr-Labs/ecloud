@@ -23,11 +23,9 @@ export default class AuthGenerate extends Command {
   static examples = [
     "<%= config.bin %> <%= command.id %>",
     "<%= config.bin %> <%= command.id %> --store",
-    "<%= config.bin %> <%= command.id %> --environment sepolia --store",
   ];
 
   static flags = {
-    environment: commonFlags.environment,
     store: Flags.boolean({
       description: "Automatically store in OS keyring",
       default: false,
@@ -79,14 +77,12 @@ Press 'q' to exit and continue...
     }
 
     if (shouldStore) {
-      const environment = flags.environment;
-
       // Check if key already exists
-      const exists = await keyExists(environment);
+      const exists = await keyExists();
 
       if (exists) {
         displayWarning([
-          `WARNING: A private key for '${environment}' already exists!`,
+          `WARNING: A private key for ecloud already exists!`,
           "If you continue, the existing key will be PERMANENTLY REPLACED.",
           "This cannot be undone!",
           "",
@@ -94,7 +90,7 @@ Press 'q' to exit and continue...
         ]);
 
         const confirmReplace = await confirm({
-          message: `Replace existing key for '${environment}'?`,
+          message: `Replace existing key for ecloud?`,
           default: false,
         });
 
@@ -108,8 +104,8 @@ Press 'q' to exit and continue...
 
       // Store the key
       try {
-        await storePrivateKey(environment, privateKey);
-        this.log(`\n✓ Private key stored in OS keyring for '${environment}'`);
+        await storePrivateKey(privateKey);
+        this.log(`\n✓ Private key stored in OS keyring`);
         this.log(`✓ Address: ${address}`);
         this.log(
           "\nYou can now use ecloud commands without --private-key flag."

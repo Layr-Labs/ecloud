@@ -20,13 +20,12 @@ export interface PrivateKeySource {
  * Priority order:
  * 1. Direct parameter (from --private-key flag)
  * 2. Environment variable (ECLOUD_PRIVATE_KEY)
- * 3. OS keyring for current environment
+ * 3. OS keyring (single key for all environments)
  *
  * Returns null if no key found
  */
 export async function getPrivateKeyWithSource(options: {
   privateKey?: string; // From flag
-  environment: string; // Current environment
 }): Promise<PrivateKeySource | null> {
   // 1. Check direct parameter (flag)
   if (options.privateKey) {
@@ -55,12 +54,12 @@ export async function getPrivateKeyWithSource(options: {
     };
   }
 
-  // 3. Check OS keyring
-  const keyringKey = await getPrivateKey(options.environment);
+  // 3. Check OS keyring (single key for all environments)
+  const keyringKey = await getPrivateKey();
   if (keyringKey) {
     return {
       key: keyringKey,
-      source: `stored credentials (${options.environment})`,
+      source: "stored credentials",
     };
   }
 
@@ -72,11 +71,9 @@ export async function getPrivateKeyWithSource(options: {
  */
 export async function requirePrivateKey(options: {
   privateKey?: string;
-  environment?: string;
 }): Promise<PrivateKeySource> {
   const result = await getPrivateKeyWithSource({
     privateKey: options.privateKey,
-    environment: options.environment ?? "sepolia",
   });
 
   if (!result) {
