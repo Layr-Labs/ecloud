@@ -16,8 +16,19 @@ import { privateKeyToAddress } from "viem/accounts";
 const SERVICE_NAME = "ecloud";
 const ACCOUNT_NAME = "key"; // Single key for all environments
 
+// eigenx-cli keyring identifiers (for legacy key detection)
+const EIGENX_SERVICE_NAME = "eigenx-cli";
+const EIGENX_DEV_SERVICE_NAME = "eigenx-cli-dev";
+const EIGENX_ACCOUNT_PREFIX = "eigenx-"; // eigenx-cli prefixes account names
+
 export interface StoredKey {
   address: string;
+}
+
+export interface LegacyKey {
+  environment: string;
+  address: string;
+  source: "eigenx" | "eigenx-dev";
 }
 
 /**
@@ -113,6 +124,116 @@ export async function listStoredKeys(): Promise<StoredKey[]> {
 export async function keyExists(): Promise<boolean> {
   const key = await getPrivateKey();
   return key !== null;
+}
+
+/**
+ * Get legacy keys from eigenx-cli
+ * Returns an array of keys found in eigenx-cli keyring formats
+ */
+export async function getLegacyKeys(): Promise<LegacyKey[]> {
+  const keys: LegacyKey[] = [];
+
+  // 1. Check eigenx-cli production keys
+  try {
+    const eigenxCreds = findCredentials(EIGENX_SERVICE_NAME);
+    for (const cred of eigenxCreds) {
+      // eigenx-cli stores keys with account name "eigenx-<environment>"
+      // Strip the prefix to get the environment name
+      const accountName = cred.account;
+      if (!accountName.startsWith(EIGENX_ACCOUNT_PREFIX)) {
+        continue; // Skip if it doesn't have the expected prefix
+      }
+      const environment = accountName.substring(EIGENX_ACCOUNT_PREFIX.length);
+
+      try {
+        const address = privateKeyToAddress(cred.password as `0x${string}`);
+        keys.push({ environment, address, source: "eigenx" });
+      } catch (err) {
+        console.warn(
+          `Warning: Invalid key found for ${environment} (eigenx-cli), skipping: ${err}`
+        );
+      }
+    }
+  } catch {
+    // eigenx-cli service not found, that's ok
+  }
+
+  // 2. Check eigenx-cli dev keys
+  try {
+    const eigenxDevCreds = findCredentials(EIGENX_DEV_SERVICE_NAME);
+    for (const cred of eigenxDevCreds) {
+      // eigenx-cli stores keys with account name "eigenx-<environment>"
+      // Strip the prefix to get the environment name
+      const accountName = cred.account;
+      if (!accountName.startsWith(EIGENX_ACCOUNT_PREFIX)) {
+        continue; // Skip if it doesn't have the expected prefix
+      }
+      const environment = accountName.substring(EIGENX_ACCOUNT_PREFIX.length);
+
+      try {
+        const address = privateKeyToAddress(cred.password as `0x${string}`);
+        keys.push({ environment, address, source: "eigenx-dev" });
+      } catch (err) {
+        console.warn(
+          `Warning: Invalid key found for ${environment} (eigenx-dev), skipping: ${err}`
+        );
+      }
+    }
+  } catch {
+    // eigenx-dev service not found, that's ok
+  }
+
+  return keys;
+}
+
+/**
+ * Get a specific legacy private key from eigenx-cli keyring
+ */
+export async function getLegacyPrivateKey(
+  environment: string,
+  source: "eigenx" | "eigenx-dev"
+): Promise<string | null> {
+  const serviceName =
+    source === "eigenx" ? EIGENX_SERVICE_NAME : EIGENX_DEV_SERVICE_NAME;
+
+  // eigenx-cli stores keys with account name "eigenx-<environment>"
+  const accountName = EIGENX_ACCOUNT_PREFIX + environment;
+
+  const entry = new AsyncEntry(serviceName, accountName);
+  try {
+    const key = await entry.getPassword();
+    if (key && validatePrivateKey(key)) {
+      return key;
+    }
+  } catch {
+    // Key not found
+  }
+
+  return null;
+}
+
+/**
+ * Delete a specific legacy private key from eigenx-cli keyring
+ * Returns true if deletion was successful, false otherwise
+ */
+export async function deleteLegacyPrivateKey(
+  environment: string,
+  source: "eigenx" | "eigenx-dev"
+): Promise<boolean> {
+  const serviceName =
+    source === "eigenx" ? EIGENX_SERVICE_NAME : EIGENX_DEV_SERVICE_NAME;
+
+  // eigenx-cli stores keys with account name "eigenx-<environment>"
+  const accountName = EIGENX_ACCOUNT_PREFIX + environment;
+
+  const entry = new AsyncEntry(serviceName, accountName);
+  try {
+    await entry.deletePassword();
+    return true;
+  } catch {
+    console.warn(`No key found for ${environment} in ${source}`);
+    return false;
+  }
 }
 
 /**

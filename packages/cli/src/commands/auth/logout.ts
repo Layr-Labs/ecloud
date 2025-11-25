@@ -11,7 +11,6 @@ import {
   getPrivateKey,
   getAddressFromPrivateKey,
 } from "@ecloud/sdk";
-import { commonFlags } from "../../flags";
 
 export default class AuthLogout extends Command {
   static description = "Remove private key from OS keyring";

@@ -13,7 +13,6 @@ import {
   showPrivateKey,
   displayWarning,
 } from "@ecloud/sdk";
-import { commonFlags } from "../../flags";
 
 export default class AuthGenerate extends Command {
   static description = "Generate a new private key";
