@@ -46,7 +46,10 @@ export async function storePrivateKey(privateKey: string): Promise<void> {
   const normalizedKey = normalizePrivateKey(privateKey);
 
   // Validate by deriving address (will throw if invalid)
-  privateKeyToAddress(normalizedKey);
+  const isValid = validatePrivateKey(normalizedKey);
+  if (!isValid) {
+    throw new Error("Invalid private key format");
+  }
 
   // Store in single-key format
   const entry = new AsyncEntry(SERVICE_NAME, ACCOUNT_NAME);
@@ -108,7 +111,9 @@ export async function listStoredKeys(): Promise<StoredKey[]> {
   for (const cred of creds) {
     if (cred.account === ACCOUNT_NAME) {
       try {
-        const address = privateKeyToAddress(cred.password as `0x${string}`);
+        const address = getAddressFromPrivateKey(
+          cred.password as `0x${string}`
+        );
         keys.push({ address });
       } catch (err) {
         console.warn(`Warning: Invalid key found, skipping: ${err}`);
@@ -152,7 +157,7 @@ export async function getLegacyKeys(): Promise<LegacyKey[]> {
       try {
         // Decode go-keyring encoding (used on macOS)
         const decodedKey = decodeGoKeyringValue(cred.password);
-        const address = privateKeyToAddress(decodedKey as `0x${string}`);
+        const address = getAddressFromPrivateKey(decodedKey as `0x${string}`);
         keys.push({ environment, address, source: "eigenx" });
       } catch (err) {
         console.warn(
@@ -179,7 +184,7 @@ export async function getLegacyKeys(): Promise<LegacyKey[]> {
       try {
         // Decode go-keyring encoding (used on macOS)
         const decodedKey = decodeGoKeyringValue(cred.password);
-        const address = privateKeyToAddress(decodedKey as `0x${string}`);
+        const address = getAddressFromPrivateKey(decodedKey as `0x${string}`);
         keys.push({ environment, address, source: "eigenx-dev" });
       } catch (err) {
         console.warn(
@@ -253,8 +258,7 @@ export async function deleteLegacyPrivateKey(
  */
 export function validatePrivateKey(privateKey: string): boolean {
   try {
-    const normalized = normalizePrivateKey(privateKey);
-    privateKeyToAddress(normalized);
+    getAddressFromPrivateKey(privateKey);
     return true;
   } catch {
     return false;
