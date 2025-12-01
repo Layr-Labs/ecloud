@@ -2,12 +2,10 @@
  * Main SDK Client entry point
  */
 
-import { createPublicClient, createWalletClient, http } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
-import { sepolia, mainnet, type Chain } from "viem/chains";
 import { createAppModule, type AppModule } from "./modules/app";
-import type { WalletClient, Transport, Account } from "viem";
-import { getEnvironmentConfig } from "./common/config/environment";
+import { getEnvironmentConfig, isEnvironmentAvailable, getAvailableEnvironments } from "./common/config/environment";
+import { createBillingModule, type BillingModule } from "./modules/billing";
+import { addHexPrefix } from "./common/utils";
 
 // Export all types
 export * from "./common/types";
@@ -19,87 +17,66 @@ export * from "./common/utils/prompts";
 export { createApp, CreateAppOpts } from "./modules/app/create";
 export { logs, LogsOptions } from "./modules/app/logs";
 
+// Export modules for standalone use
+export { createAppModule, type AppModuleConfig } from "./modules/app";
+export { createBillingModule, type BillingModuleConfig } from "./modules/billing";
+
 // Export utility functions for CLI use
 export { getOrPromptAppID } from "./common/utils/prompts";
-export { getEnvironmentConfig } from "./common/config/environment";
+export { getEnvironmentConfig, getAvailableEnvironments, isEnvironmentAvailable } from "./common/config/environment";
+export { isSubscriptionActive } from "./common/utils/billing";
 
 export type Environment = "sepolia" | "sepolia-dev" | "mainnet-alpha";
 
-const CHAINS: Record<string, Chain> = { sepolia, "sepolia-dev": sepolia, "mainnet-alpha": mainnet };
-
-export interface CreateClientConfig {
+export interface ClientConfig {
   verbose: boolean;
   privateKey: `0x${string}`;
   environment: Environment | string;
   rpcUrl?: string;
 }
 
-export interface CoreContext {
-  verbose: boolean;
-  chain: Chain;
-  account: ReturnType<typeof privateKeyToAccount>;
-  wallet: ReturnType<typeof createWalletClient>;
-  publicClient: ReturnType<typeof createPublicClient>;
-  privateKey: `0x${string}`;
-  rpcUrl: string;
-  environment: string;
-}
-
-export interface ecloudClient {
+export interface ECloudClient {
   app: AppModule;
-  // add other namespaces later
+  billing: BillingModule;
 }
 
-export function createECloudClient(cfg: CreateClientConfig): ecloudClient {
-  // prefix private key with 0x if it doesn't have it
-  if (!cfg.privateKey.startsWith("0x")) {
-    cfg.privateKey = `0x${cfg.privateKey}`;
+export function createECloudClient(cfg: ClientConfig): ECloudClient {
+  cfg.privateKey = addHexPrefix(cfg.privateKey);
+
+
+  // Validate environment is available in current build
+  const environment = cfg.environment || "sepolia";
+  if (!isEnvironmentAvailable(environment)) {
+    throw new Error(
+      `Environment "${environment}" is not available in this build type. ` +
+      `Available environments: ${getAvailableEnvironments().join(", ")}`
+    );
   }
 
-  // convert private key to account
-  const account = privateKeyToAccount(cfg.privateKey);
+  // Get environment config
+  const environmentConfig = getEnvironmentConfig(environment);
 
-  // get chain from environment
-  const chain = CHAINS[cfg.environment || "sepolia"];
-
-  // get environment config
-  const environmentConfig = getEnvironmentConfig(cfg.environment || "sepolia");
-
-  // get rpc url from environment config or use provided rpc url
-  let rpc = cfg.rpcUrl;
-  if (!rpc) {
-    rpc = process.env.RPC_URL ?? environmentConfig.defaultRPCURL;
+  // Get rpc url from environment config or use provided rpc url
+  let rpcUrl = cfg.rpcUrl;
+  if (!rpcUrl) {
+    rpcUrl = process.env.RPC_URL ?? environmentConfig.defaultRPCURL;
   }
-  if (!rpc) {
+  if (!rpcUrl) {
     throw new Error(
       `RPC URL is required. Provide via options.rpcUrl, RPC_URL env var, or ensure environment has default RPC URL`,
     );
   }
 
-  // create wallet client
-  const wallet = createWalletClient({
-    account,
-    chain,
-    transport: http(rpc),
-  }) as WalletClient<Transport, typeof chain, Account>;
-
-  // create public client
-  const publicClient = createPublicClient({ chain, transport: http(rpc) });
-
-  // create core context
-  const ctx: CoreContext = {
-    chain,
-    account,
-    wallet,
-    publicClient,
-    verbose: cfg.verbose,
-    privateKey: cfg.privateKey,
-    rpcUrl: rpc,
-    environment: cfg.environment,
-  };
-
-  // return ecloud client modules
   return {
-    app: createAppModule(ctx),
+    app: createAppModule({
+      rpcUrl,
+      verbose: cfg.verbose,
+      privateKey: cfg.privateKey,
+      environment: cfg.environment,
+    }),
+    billing: createBillingModule({
+      verbose: cfg.verbose,
+      privateKey: cfg.privateKey,
+    }),
   };
 }

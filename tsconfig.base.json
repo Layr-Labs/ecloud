@@ -1,8 +1,5 @@
 {
   "compilerOptions": {
-    "baseUrl": ".",
-    "paths": {
-      "@ecloud/sdk": ["packages/sdk/src"]
-    }
+    "baseUrl": "."
   }
 }

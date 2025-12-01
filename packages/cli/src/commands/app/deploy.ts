@@ -1,6 +1,6 @@
 import { Command, Flags } from "@oclif/core";
-import { logVisibility } from "@ecloud/sdk";
-import { loadClient } from "../../client";
+import { logVisibility } from "@layr-labs/ecloud-sdk";
+import { createAppClient } from "../../client";
 import { commonFlags } from "../../flags";
 import chalk from "chalk";
 
@@ -47,9 +47,9 @@ export default class AppDeploy extends Command {
 
   async run() {
     const { flags } = await this.parse(AppDeploy);
-    const client = await loadClient(flags);
+    const app = await createAppClient(flags);
 
-    const res = await client.app.deploy({
+    const res = await app.deploy({
       name: flags.name,
       dockerfile: flags.dockerfile,
       envFile: flags["env-file"],

@@ -1,6 +1,6 @@
 import { Command, Args, Flags } from "@oclif/core";
-import { logVisibility } from "@ecloud/sdk";
-import { loadClient } from "../../client";
+import { logVisibility } from "@layr-labs/ecloud-sdk";
+import { createAppClient } from "../../client";
 import { commonFlags } from "../../flags";
 import chalk from "chalk";
 
@@ -48,9 +48,9 @@ export default class AppUpgrade extends Command {
 
   async run() {
     const { args, flags } = await this.parse(AppUpgrade);
-    const client = await loadClient(flags);
+    const app = await createAppClient(flags);
 
-    const res = await client.app.upgrade(args["app-id"] as any, {
+    const res = await app.upgrade(args["app-id"] as any, {
       dockerfile: flags.dockerfile,
       envFile: flags["env-file"],
       imageRef: flags["image-ref"],

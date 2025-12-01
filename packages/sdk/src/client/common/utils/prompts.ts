@@ -9,9 +9,10 @@ import os from "os";
 import { Address, isAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { listApps, getAppName } from "../registry/appNames";
-import { getEnvironmentConfig } from "../config/environment";
+import { getEnvironmentConfig, getAvailableEnvironments, isEnvironmentAvailable } from "../config/environment";
 import { getAllAppsByDeveloper } from "../contract/caller";
 import { UserApiClient } from "./userapi";
+import { addHexPrefix, stripHexPrefix } from "./helpers";
 
 /**
  * Prompt for Dockerfile selection
@@ -273,10 +274,7 @@ export async function getOrPromptAppID(
   // If provided, check if it's a name or address
   if (options.appID) {
     // Normalize the input
-    const normalized =
-      typeof options.appID === "string"
-        ? (options.appID.startsWith("0x") ? options.appID : `0x${options.appID}`)
-        : options.appID;
+    const normalized = typeof options.appID === "string" ? addHexPrefix(options.appID) : options.appID;
 
     // Check if it's a valid address
     if (isAddress(normalized)) {
@@ -288,9 +286,7 @@ export async function getOrPromptAppID(
     const foundAppID = apps[options.appID];
     if (foundAppID) {
       // Ensure it has 0x prefix
-      return foundAppID.startsWith("0x")
-        ? (foundAppID as Address)
-        : (`0x${foundAppID}` as Address);
+      return addHexPrefix(foundAppID) as Address;
     }
 
     // Name not found, but user provided something - return as-is and let validation happen later
@@ -382,9 +378,7 @@ async function getAppIDInteractive(
   console.log(`\nSelect an app to ${action}:\n`);
 
   // Get developer address from private key
-  const privateKeyHex = options.privateKey.startsWith("0x")
-    ? (options.privateKey as `0x${string}`)
-    : (`0x${options.privateKey}` as `0x${string}`);
+  const privateKeyHex = addHexPrefix(options.privateKey);
   const account = privateKeyToAccount(privateKeyHex);
   const developerAddr = account.address;
 
@@ -552,7 +546,7 @@ async function getAppIDInteractiveFromRegistry(
           return "App ID or name cannot be empty";
         }
         // Check if it's a valid address
-        const normalized = value.startsWith("0x") ? value : `0x${value}`;
+        const normalized = addHexPrefix(value);
         if (isAddress(normalized)) {
           return true;
         }
@@ -562,7 +556,7 @@ async function getAppIDInteractiveFromRegistry(
     });
 
     // Resolve the input (validation already ensured it's a valid address)
-    const normalized = appIDInput.startsWith("0x") ? appIDInput : `0x${appIDInput}`;
+    const normalized = addHexPrefix(appIDInput);
     if (isAddress(normalized)) {
       return normalized as Address;
     }
@@ -594,7 +588,7 @@ async function getAppIDInteractiveFromRegistry(
         if (!value) {
           return "App ID or name cannot be empty";
         }
-        const normalized = value.startsWith("0x") ? value : `0x${value}`;
+        const normalized = addHexPrefix(value);
         if (isAddress(normalized)) {
           return true;
         }
@@ -605,23 +599,19 @@ async function getAppIDInteractiveFromRegistry(
       },
     });
 
-    const normalized = appIDInput.startsWith("0x") ? appIDInput : `0x${appIDInput}`;
+    const normalized = addHexPrefix(appIDInput);
     if (isAddress(normalized)) {
       return normalized as Address;
     }
     const foundAppID = apps[appIDInput];
     if (foundAppID) {
-      return foundAppID.startsWith("0x")
-        ? (foundAppID as Address)
-        : (`0x${foundAppID}` as Address);
+      return addHexPrefix(foundAppID) as Address;
     }
     throw new Error(`Failed to resolve app ID from input: ${appIDInput}`);
   }
 
   // Ensure selected app ID has 0x prefix
-  return selected.startsWith("0x")
-    ? (selected as Address)
-    : (`0x${selected}` as Address);
+  return addHexPrefix(selected) as Address;
 }
 
 /**
@@ -1110,13 +1100,13 @@ export async function confirmWithDefault(
  */
 function validatePrivateKeyFormat(key: string): boolean {
   // Remove 0x prefix if present
-  const keyWithoutPrefix = key.startsWith("0x") ? key.slice(2) : key;
-  
+  const keyWithoutPrefix = stripHexPrefix(key);
+
   // Must be 64 hex characters (32 bytes)
   if (!/^[0-9a-fA-F]{64}$/.test(keyWithoutPrefix)) {
     return false;
   }
-  
+
   return true;
 }
 
@@ -1167,28 +1157,47 @@ export async function getEnvironmentInteractive(
   if (environment) {
     try {
       getEnvironmentConfig(environment);
+      // Also check if it's available in current build
+      if (!isEnvironmentAvailable(environment)) {
+        throw new Error(`Environment ${environment} is not available in this build`);
+      }
       return environment;
     } catch {
       // Invalid environment, continue to prompt
     }
   }
 
+  // Get available environments based on build type
+  const availableEnvs = getAvailableEnvironments();
+  
+  // Build choices based on available environments
+  const choices = [];
+  if (availableEnvs.includes("sepolia")) {
+    choices.push({
+      name: "sepolia - Ethereum Sepolia testnet",
+      value: "sepolia",
+    });
+  }
+  if (availableEnvs.includes("sepolia-dev")) {
+    choices.push({
+      name: "sepolia-dev - Ethereum Sepolia testnet (dev)",
+      value: "sepolia-dev",
+    });
+  }
+  if (availableEnvs.includes("mainnet-alpha")) {
+    choices.push({
+      name: "mainnet-alpha - Ethereum mainnet (⚠️  uses real funds)",
+      value: "mainnet-alpha",
+    });
+  }
+
+  if (choices.length === 0) {
+    throw new Error("No environments available in this build");
+  }
+
   const env = await select({
     message: "Select environment:",
-    choices: [
-      {
-        name: "sepolia - Ethereum Sepolia testnet",
-        value: "sepolia",
-      },
-      {
-        name: "sepolia-dev - Ethereum Sepolia testnet (dev)",
-        value: "sepolia-dev",
-      },
-      {
-        name: "mainnet-alpha - Ethereum mainnet (⚠️  uses real funds)",
-        value: "mainnet-alpha",
-      },
-    ],
+    choices,
   });
 
   return env;

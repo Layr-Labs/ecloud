@@ -6,6 +6,7 @@ import { Address, createPublicClient, http, PrivateKeyAccount } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
 import { getEnvironmentConfig } from "../config/environment";
+import { addHexPrefix, stripHexPrefix } from "./helpers";
 
 import { Logger, EnvironmentConfig } from "../types";
 
@@ -70,9 +71,7 @@ export async function doPreflightChecks(
   }
 
   // 6. Create account from private key
-  const privateKeyHex = privateKey.startsWith("0x")
-    ? (privateKey as `0x${string}`)
-    : (`0x${privateKey}` as `0x${string}`);
+  const privateKeyHex = addHexPrefix(privateKey);
   const account = privateKeyToAccount(privateKeyHex);
   const selfAddress = account.address;
 
@@ -115,7 +114,7 @@ async function getPrivateKeyOrFail(privateKey?: string): Promise<string> {
  * Validate private key format
  */
 function validatePrivateKey(key: string): void {
-  const cleaned = key.startsWith("0x") ? key.substring(2) : key;
+  const cleaned = stripHexPrefix(key);
   if (!/^[0-9a-fA-F]{64}$/.test(cleaned)) {
     throw new Error("Invalid private key format (must be 64 hex characters)");
   }

@@ -79,6 +79,10 @@ export interface DeployResult {
   txHash: `0x${string}`;
 }
 
+export interface BillingEnvironmentConfig {
+  billingApiServerURL: string;
+}
+
 export interface EnvironmentConfig {
   name: string;
   build: "dev" | "prod";
@@ -153,4 +157,90 @@ export interface AppProfileResponse {
   description?: string;
   xURL?: string;
   imageURL?: string;
+}
+
+// Billing types
+export type ProductID = "compute";
+export type ChainID = "ethereum-mainnet" | "ethereum-sepolia";
+
+export type SubscriptionStatus =
+  | "incomplete"
+  | "incomplete_expired"
+  | "trialing"
+  | "active"
+  | "past_due"
+  | "canceled"
+  | "unpaid"
+  | "paused"
+  | "inactive";
+
+export interface SubscriptionLineItem {
+  description: string;
+  price: number;
+  quantity: number;
+  currency: string;
+  subtotal: number;
+}
+
+export interface CreateSubscriptionResponse {
+  checkoutUrl: string;
+}
+
+export interface CheckoutCreatedResponse {
+  type: "checkout_created";
+  checkoutUrl: string;
+}
+
+export interface AlreadyActiveResponse {
+  type: "already_active";
+  status: SubscriptionStatus;
+}
+
+export interface PaymentIssueResponse {
+  type: "payment_issue";
+  status: SubscriptionStatus;
+  portalUrl?: string;
+}
+
+export type SubscribeResponse =
+  | CheckoutCreatedResponse
+  | AlreadyActiveResponse
+  | PaymentIssueResponse;
+
+export interface CancelSuccessResponse {
+  type: "canceled";
+}
+
+export interface NoActiveSubscriptionResponse {
+  type: "no_active_subscription";
+  status: SubscriptionStatus;
+}
+
+export type CancelResponse =
+  | CancelSuccessResponse
+  | NoActiveSubscriptionResponse;
+
+export interface ProductSubscriptionResponse {
+  productId: ProductID;
+  subscriptionStatus: SubscriptionStatus;
+  currentPeriodStart?: string;
+  currentPeriodEnd?: string;
+  lineItems?: SubscriptionLineItem[];
+  upcomingInvoiceSubtotal?: number;
+  upcomingInvoiceTotal?: number;
+  creditsApplied?: number;
+  remainingCredits?: number;
+  nextCreditExpiry?: number;
+  cancelAtPeriodEnd?: boolean;
+  canceledAt?: string;
+  portalUrl?: string;
+}
+
+export interface SubscriptionOpts {
+  productId?: ProductID;
+}
+
+// Billing environment configuration
+export interface BillingEnvironmentConfig {
+  billingApiServerURL: string;
 }

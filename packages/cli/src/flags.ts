@@ -1,4 +1,4 @@
-import { getEnvironmentInteractive, getPrivateKeyInteractive, getRPCUrlInteractive } from "@ecloud/sdk";
+import { getEnvironmentInteractive, getPrivateKeyInteractive, getRPCUrlInteractive, getAvailableEnvironments } from "@layr-labs/ecloud-sdk";
 import { Flags } from "@oclif/core";
 
 export type CommonFlags = {
@@ -8,11 +8,21 @@ export type CommonFlags = {
   "rpc-url"?: string;
 };
 
+// Get available environments dynamically from SDK based on build type
+const getEnvironmentOptions = (): string[] => {
+  try {
+    return getAvailableEnvironments();
+  } catch {
+    // Fallback to all environments if SDK not available
+    return ["sepolia", "sepolia-dev", "mainnet-alpha"];
+  }
+};
+
 export const commonFlags = {
   environment: Flags.string({
     required: false,
     description: "Deployment environment to use",
-    options: ["sepolia", "sepolia-dev", "mainnet-alpha"],
+    options: getEnvironmentOptions(),
     env: "ECLOUD_ENV",
   }),
   "private-key": Flags.string({
