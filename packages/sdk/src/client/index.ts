@@ -26,6 +26,9 @@ export { getOrPromptAppID } from "./common/utils/prompts";
 export { getEnvironmentConfig, getAvailableEnvironments, isEnvironmentAvailable } from "./common/config/environment";
 export { isSubscriptionActive } from "./common/utils/billing";
 
+// Export auth utilities
+export * from "./common/auth";
+
 export type Environment = "sepolia" | "sepolia-dev" | "mainnet-alpha";
 
 export interface ClientConfig {

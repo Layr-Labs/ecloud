@@ -1,4 +1,8 @@
-import { getEnvironmentInteractive, getPrivateKeyInteractive, getRPCUrlInteractive, getAvailableEnvironments } from "@layr-labs/ecloud-sdk";
+import {
+  getEnvironmentInteractive,
+  getPrivateKeyInteractive,
+  getAvailableEnvironments,
+} from "@layr-labs/ecloud-sdk";
 import { Flags } from "@oclif/core";
 
 export type CommonFlags = {
@@ -48,4 +52,4 @@ export async function validateCommonFlags(flags: CommonFlags) {
   flags["private-key"] = await getPrivateKeyInteractive(flags["private-key"]);
 
   return flags;
-};
+}

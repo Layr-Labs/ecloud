@@ -7,6 +7,7 @@
   "dependencies": {
     "@inquirer/prompts": "^7.10.1",
     "@layr-labs/ecloud-sdk": "workspace:*",
+    "@napi-rs/keyring": "^1.0.5",
     "@oclif/core": "^4.8.0",
     "axios": "^1.13.2",
     "chalk": "^5.6.2",
