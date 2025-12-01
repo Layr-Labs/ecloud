@@ -17,7 +17,7 @@ import {
   getLegacyPrivateKey,
   deleteLegacyPrivateKey,
   type LegacyKey,
-} from "@ecloud/sdk";
+} from "@layr-labs/ecloud-sdk";
 
 export default class AuthLogin extends Command {
   static description = "Store your private key in OS keyring";

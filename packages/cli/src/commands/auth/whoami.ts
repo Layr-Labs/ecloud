@@ -9,7 +9,7 @@ import {
   getPrivateKeyWithSource,
   getAddressFromPrivateKey,
   getPrivateKey,
-} from "@ecloud/sdk";
+} from "@layr-labs/ecloud-sdk";
 import { commonFlags } from "../../flags";
 
 export default class AuthWhoami extends Command {

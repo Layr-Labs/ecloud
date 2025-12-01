@@ -10,7 +10,7 @@ import {
   deletePrivateKey,
   getPrivateKey,
   getAddressFromPrivateKey,
-} from "@ecloud/sdk";
+} from "@layr-labs/ecloud-sdk";
 
 export default class AuthLogout extends Command {
   static description = "Remove private key from OS keyring";
