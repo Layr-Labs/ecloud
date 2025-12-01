@@ -226,7 +226,11 @@ export interface ProductSubscriptionResponse {
   currentPeriodStart?: string;
   currentPeriodEnd?: string;
   lineItems?: SubscriptionLineItem[];
+  upcomingInvoiceSubtotal?: number;
   upcomingInvoiceTotal?: number;
+  creditsApplied?: number;
+  remainingCredits?: number;
+  nextCreditExpiry?: number;
   cancelAtPeriodEnd?: boolean;
   canceledAt?: string;
   portalUrl?: string;

@@ -26,6 +26,9 @@ export default class BillingStatus extends Command {
       productId: flags.product as "compute",
     });
 
+    const formatExpiry = (timestamp?: number) =>
+      timestamp ? ` (expires ${new Date(timestamp * 1000).toLocaleDateString()})` : "";
+
     // Format status with appropriate color and symbol
     const formatStatus = (status: string) => {
       switch (status) {
@@ -63,14 +66,6 @@ export default class BillingStatus extends Command {
       this.log(`  Current Period: ${startDate} - ${endDate}`);
     }
 
-    // Display pricing information
-    if (result.upcomingInvoiceTotal !== undefined) {
-      const currency = result.lineItems?.[0]?.currency?.toUpperCase() || "USD";
-      this.log(
-        `  Upcoming Invoice: ${currency} $${result.upcomingInvoiceTotal.toFixed(2)}`
-      );
-    }
-
     // Display line items if available
     if (result.lineItems && result.lineItems.length > 0) {
       this.log(`\n${chalk.bold("  Line Items:")}`);
@@ -78,8 +73,29 @@ export default class BillingStatus extends Command {
         const product = `${flags.product.charAt(0).toUpperCase()}${flags.product.slice(1)}`;
         const chain = item.description.toLowerCase().includes("sepolia") ? "Sepolia" : "Mainnet";
         this.log(
-          `    • ${product} (${chain}): $${item.subtotal.toFixed(2)} (${item.quantity} × $${item.price.toFixed(3)}/vCPU hour)`
+          `    • ${product} (${chain}): $${item.subtotal.toFixed(2)} (${item.quantity} vCPU hours × $${item.price.toFixed(3)}/vCPU hour)`
         );
+      }
+    }
+
+    // Display invoice summary with credits
+    if (result.creditsApplied !== undefined && result.creditsApplied > 0) {
+      this.log(`\n${chalk.bold("  Invoice Summary:")}`);
+      const subtotal = result.upcomingInvoiceSubtotal ?? result.upcomingInvoiceTotal ?? 0;
+      this.log(`    Subtotal:         $${subtotal.toFixed(2)}`);
+      this.log(`    Credits Applied: ${chalk.green(`-$${result.creditsApplied.toFixed(2)}`)}`);
+      this.log(`    ${"─".repeat(21)}`);
+      this.log(`    Total Due:        $${(result.upcomingInvoiceTotal ?? 0).toFixed(2)}`);
+
+      if (result.remainingCredits !== undefined) {
+        this.log(`\n  ${chalk.bold("Remaining Credits:")} ${chalk.cyan(`$${result.remainingCredits.toFixed(2)}`)}${formatExpiry(result.nextCreditExpiry)}`);
+      }
+    } else if (result.upcomingInvoiceTotal !== undefined) {
+      this.log(
+        `\n  Upcoming Invoice: $${result.upcomingInvoiceTotal.toFixed(2)}`
+      );
+      if (result.remainingCredits !== undefined && result.remainingCredits > 0) {
+        this.log(`  ${chalk.bold("Available Credits:")} ${chalk.cyan(`$${result.remainingCredits.toFixed(2)}`)}${formatExpiry(result.nextCreditExpiry)}`);
       }
     }
 
