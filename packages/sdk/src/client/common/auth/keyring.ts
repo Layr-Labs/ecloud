@@ -21,6 +21,10 @@ const EIGENX_SERVICE_NAME = "eigenx-cli";
 const EIGENX_DEV_SERVICE_NAME = "eigenx-cli-dev";
 const EIGENX_ACCOUNT_PREFIX = "eigenx-"; // eigenx-cli prefixes account names
 
+// go-keyring encoding constants (used by eigenx-cli on macOS)
+const GO_KEYRING_BASE64_PREFIX = "go-keyring-base64:";
+const GO_KEYRING_ENCODED_PREFIX = "go-keyring-encoded:"; // legacy hex encoding
+
 export interface StoredKey {
   address: string;
 }
@@ -146,7 +150,9 @@ export async function getLegacyKeys(): Promise<LegacyKey[]> {
       const environment = accountName.substring(EIGENX_ACCOUNT_PREFIX.length);
 
       try {
-        const address = privateKeyToAddress(cred.password as `0x${string}`);
+        // Decode go-keyring encoding (used on macOS)
+        const decodedKey = decodeGoKeyringValue(cred.password);
+        const address = privateKeyToAddress(decodedKey as `0x${string}`);
         keys.push({ environment, address, source: "eigenx" });
       } catch (err) {
         console.warn(
@@ -171,7 +177,9 @@ export async function getLegacyKeys(): Promise<LegacyKey[]> {
       const environment = accountName.substring(EIGENX_ACCOUNT_PREFIX.length);
 
       try {
-        const address = privateKeyToAddress(cred.password as `0x${string}`);
+        // Decode go-keyring encoding (used on macOS)
+        const decodedKey = decodeGoKeyringValue(cred.password);
+        const address = privateKeyToAddress(decodedKey as `0x${string}`);
         keys.push({ environment, address, source: "eigenx-dev" });
       } catch (err) {
         console.warn(
@@ -201,9 +209,13 @@ export async function getLegacyPrivateKey(
 
   const entry = new AsyncEntry(serviceName, accountName);
   try {
-    const key = await entry.getPassword();
-    if (key && validatePrivateKey(key)) {
-      return key;
+    const rawKey = await entry.getPassword();
+    if (rawKey) {
+      // Decode go-keyring encoding (used on macOS)
+      const decodedKey = decodeGoKeyringValue(rawKey);
+      if (validatePrivateKey(decodedKey)) {
+        return decodedKey;
+      }
     }
   } catch {
     // Key not found
@@ -255,6 +267,46 @@ export function validatePrivateKey(privateKey: string): boolean {
 export function getAddressFromPrivateKey(privateKey: string): string {
   const normalized = normalizePrivateKey(privateKey);
   return privateKeyToAddress(normalized);
+}
+
+/**
+ * Decode go-keyring encoded values
+ *
+ * go-keyring (used by eigenx-cli) stores values with special encoding on macOS:
+ * - "go-keyring-base64:" prefix + base64-encoded value
+ * - "go-keyring-encoded:" prefix + hex-encoded value (legacy)
+ *
+ * This function detects and decodes these formats.
+ */
+function decodeGoKeyringValue(rawValue: string): string {
+  // Check for base64 encoding (primary format)
+  if (rawValue.startsWith(GO_KEYRING_BASE64_PREFIX)) {
+    const encoded = rawValue.substring(GO_KEYRING_BASE64_PREFIX.length);
+    try {
+      // Decode base64
+      const decoded = Buffer.from(encoded, "base64").toString("utf8");
+      return decoded;
+    } catch (err) {
+      console.warn(`Warning: Failed to decode go-keyring base64 value: ${err}`);
+      return rawValue; // Return as-is if decoding fails
+    }
+  }
+
+  // Check for hex encoding (legacy format)
+  if (rawValue.startsWith(GO_KEYRING_ENCODED_PREFIX)) {
+    const encoded = rawValue.substring(GO_KEYRING_ENCODED_PREFIX.length);
+    try {
+      // Decode hex
+      const decoded = Buffer.from(encoded, "hex").toString("utf8");
+      return decoded;
+    } catch (err) {
+      console.warn(`Warning: Failed to decode go-keyring hex value: ${err}`);
+      return rawValue; // Return as-is if decoding fails
+    }
+  }
+
+  // No encoding detected, return as-is
+  return rawValue;
 }
 
 /**
