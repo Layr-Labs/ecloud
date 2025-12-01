@@ -2,7 +2,7 @@
  * Environment configuration for different networks
  */
 
-import { EnvironmentConfig } from "../types";
+import { BillingEnvironmentConfig, EnvironmentConfig } from "../types";
 
 // Chain IDs
 export const SEPOLIA_CHAIN_ID = 11155111;
@@ -23,7 +23,17 @@ export const ChainAddresses: Record<number, Record<string, string>> = {
   },
 };
 
-// Environment configurations
+// Billing environment configurations (separate from chain environments)
+const BILLING_ENVIRONMENTS: Record<"dev" | "prod", BillingEnvironmentConfig> = {
+  dev: {
+    billingApiServerURL: "http://136.110.145.244",
+  },
+  prod: {
+    billingApiServerURL: "https://billingapi.eigencloud.xyz",
+  },
+};
+
+// Chain environment configurations
 const ENVIRONMENTS: Record<string, Omit<EnvironmentConfig, "chainID">> = {
   "sepolia-dev": {
     name: "sepolia",
@@ -110,6 +120,20 @@ export function getEnvironmentConfig(
 }
 
 /**
+ * Get billing environment configuration
+ * @param build - The build type ("dev" or "prod")
+ */
+export function getBillingEnvironmentConfig(
+  build: "dev" | "prod",
+): { billingApiServerURL: string } {
+  const config = BILLING_ENVIRONMENTS[build];
+  if (!config) {
+    throw new Error(`Unknown billing environment: ${build}`);
+  }
+  return config;
+}
+
+/**
  * Detect environment from chain ID
  */
 export function detectEnvironmentFromChainID(
@@ -125,7 +149,7 @@ export function detectEnvironmentFromChainID(
 // @ts-ignore - BUILD_TYPE_BUILD_TIME is injected at build time by tsup
 declare const BUILD_TYPE_BUILD_TIME: string | undefined;
 
-function getBuildType(): "dev" | "prod" {
+export function getBuildType(): "dev" | "prod" {
   // First check build-time constant (set by tsup define)
   // @ts-ignore - BUILD_TYPE_BUILD_TIME is injected at build time
   const buildTimeType = typeof BUILD_TYPE_BUILD_TIME !== "undefined" 

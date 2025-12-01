@@ -13,14 +13,13 @@ import { getAppName } from "../../common/registry/appNames";
 import { getEnvironmentConfig } from "../../common/config/environment";
 import { sendAndWaitForTransaction } from "../../common/contract/caller";
 
-import type { CoreContext } from "../..";
 import type {
   AppId,
   DeployAppOpts,
   LifecycleOpts,
   UpgradeAppOpts,
 } from "../../common/types";
-import { getLogger } from "../../common/utils";
+import { getLogger, addHexPrefix } from "../../common/utils";
 
 // Minimal ABI
 const CONTROLLER_ABI = parseAbi([
@@ -45,7 +44,16 @@ export interface AppModule {
   ) => Promise<{ tx: `0x${string}` | false }>;
 }
 
-export function createAppModule(ctx: CoreContext): AppModule {
+export interface AppModuleConfig {
+    verbose?: boolean;
+    privateKey: `0x${string}`;
+    rpcUrl: string;
+    environment: string;
+}
+
+export function createAppModule(ctx: AppModuleConfig): AppModule {
+  const privateKey = addHexPrefix(ctx.privateKey);
+
   // Pull config for selected Environment
   const environment = getEnvironmentConfig(ctx.environment);
 
@@ -61,7 +69,7 @@ export function createAppModule(ctx: CoreContext): AppModule {
       // Map DeployAppOpts to DeployOptions and call the deploy function
       const result = await deployApp(
         {
-          privateKey: ctx.privateKey,
+          privateKey,
           rpcUrl: ctx.rpcUrl,
           environment: ctx.environment,
           appName: opts.name,
@@ -88,7 +96,7 @@ export function createAppModule(ctx: CoreContext): AppModule {
       const result = await upgradeApp(
         {
           appID: appID,
-          privateKey: ctx.privateKey,
+          privateKey,
           rpcUrl: ctx.rpcUrl,
           environment: ctx.environment,
           instanceType: opts.instanceType,
@@ -110,10 +118,10 @@ export function createAppModule(ctx: CoreContext): AppModule {
     async logs(opts) {
       return logs(
         {
+          privateKey,
           appID: opts.appID,
           watch: opts.watch,
           environment: ctx.environment,
-          privateKey: ctx.privateKey,
         },
         logger,
       );
@@ -137,7 +145,7 @@ export function createAppModule(ctx: CoreContext): AppModule {
 
       const tx = await sendAndWaitForTransaction(
         {
-          privateKey: ctx.privateKey,
+          privateKey,
           rpcUrl: ctx.rpcUrl,
           environmentConfig: environment,
           to: environment.appControllerAddress as `0x${string}`,
@@ -170,7 +178,7 @@ export function createAppModule(ctx: CoreContext): AppModule {
 
       const tx = await sendAndWaitForTransaction(
         {
-          privateKey: ctx.privateKey,
+          privateKey,
           rpcUrl: ctx.rpcUrl,
           environmentConfig: environment,
           to: environment.appControllerAddress as `0x${string}`,
@@ -206,7 +214,7 @@ export function createAppModule(ctx: CoreContext): AppModule {
 
       const tx = await sendAndWaitForTransaction(
         {
-          privateKey: ctx.privateKey,
+          privateKey,
           rpcUrl: ctx.rpcUrl,
           environmentConfig: environment,
           to: environment.appControllerAddress as `0x${string}`,

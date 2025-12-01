@@ -1,5 +1,5 @@
 import { Command, Args } from "@oclif/core";
-import { loadClient } from "../../client";
+import { createAppClient } from "../../client";
 import { commonFlags } from "../../flags";
 import { getEnvironmentConfig, getOrPromptAppID } from "@layr-labs/ecloud-sdk";
 import chalk from "chalk";
@@ -20,7 +20,7 @@ export default class AppLifecycleStart extends Command {
 
   async run() {
     const { args, flags } = await this.parse(AppLifecycleStart);
-    const client = await loadClient(flags);
+    const app = await createAppClient(flags);
 
 
     // Get environment config
@@ -41,7 +41,7 @@ export default class AppLifecycleStart extends Command {
       }
     );
 
-    const res = await client.app.start(appId);
+    const res = await app.start(appId);
 
     if (!res.tx) {
       this.log(`\n${chalk.gray(`Start aborted`)}`);
