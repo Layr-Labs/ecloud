@@ -68,12 +68,12 @@ export async function storePrivateKey(privateKey: string): Promise<void> {
  * Note: Returns the single stored key for all environments.
  * The environment parameter is kept for API compatibility but is ignored.
  */
-export async function getPrivateKey(): Promise<string | null> {
+export async function getPrivateKey(): Promise<`0x${string}` | null> {
   const entry = new AsyncEntry(SERVICE_NAME, ACCOUNT_NAME);
   try {
     const key = await entry.getPassword();
     if (key && validatePrivateKey(key)) {
-      return key;
+      return key as `0x${string}`;
     }
   } catch {
     // Key not found

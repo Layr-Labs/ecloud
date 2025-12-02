@@ -10,7 +10,7 @@
 import { getPrivateKey, validatePrivateKey } from "./keyring";
 
 export interface PrivateKeySource {
-  key: string;
+  key: `0x${string}`;
   source: string;
 }
 
@@ -35,13 +35,13 @@ export async function getPrivateKeyWithSource(options: {
       );
     }
     return {
-      key: options.privateKey,
+      key: options.privateKey as `0x${string}`,
       source: "command flag",
     };
   }
 
   // 2. Check environment variable
-  const envKey = process.env.ECLOUD_PRIVATE_KEY;
+  const envKey = process.env.ECLOUD_PRIVATE_KEY as `0x${string}`;
   if (envKey) {
     if (!validatePrivateKey(envKey)) {
       throw new Error(

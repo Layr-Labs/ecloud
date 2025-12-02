@@ -25,9 +25,12 @@ jobs:
       - name: Set version from tag
         run: |
           VERSION="${{ github.ref_name }}"
-          # Remove any -dev suffix for production version
-          PACKAGE_VERSION="${VERSION%-dev*}"
-          DEV_VERSION_PREFIX="$PACKAGE_VERSION-dev"
+          # Clean leading v from provided version
+          PACKAGE_VERSION="${VERSION#v}"
+          BASE_VERSION="${VERSION%%-*}"
+          TAG_VERSION="${VERSION#"$BASE_VERSION"}"
+          # Insert dev after the base and before the tag
+          DEV_VERSION_PREFIX="${BASE_VERSION}-dev${TAG_VERSION}"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "PACKAGE_VERSION=$PACKAGE_VERSION" >> $GITHUB_ENV
           echo "DEV_VERSION_PREFIX=$DEV_VERSION_PREFIX" >> $GITHUB_ENV
@@ -112,8 +115,7 @@ jobs:
       - name: Update SDK package.json for publishing
         working-directory: ./packages/sdk
         run: |
-          # Ensure SDK package name is prod namespace (default)
-          npm pkg set name="@layr-labs/ecloud-sdk"
+          # Update version (keep default package name)
           npm pkg set version="${{ env.PACKAGE_VERSION }}"
 
       - name: Publish SDK to npm (prod)
@@ -123,18 +125,16 @@ jobs:
         run: |
           npm publish --tag latest --access public
 
-      - name: Update CLI package.json for prod namespace
+      - name: Update CLI package.json for publishing
         working-directory: ./packages/cli
         run: |
-          # Ensure package name is prod namespace (default)
-          npm pkg set name="@layr-labs/ecloud-cli"
+          # Update version (keep default package name)
           npm pkg set version="${{ env.PACKAGE_VERSION }}"
-          # Update SDK dependency to use published prod version
+          # Update SDK dependency to match published version
           npm pkg set "dependencies.@layr-labs/ecloud-sdk"="${{ env.PACKAGE_VERSION }}"
-          npm pkg delete 'dependencies.@layr-labs/ecloud-sdk-dev' || true
           # Verify changes
           cat package.json | grep -A 2 '"name"'
-          cat package.json | grep -A 1 '"@layr-labs/ecloud'
+          cat package.json | grep -A 1 '"@layr-labs/ecloud-sdk"'
 
       - name: Publish CLI to npm (prod)
         working-directory: ./packages/cli
@@ -146,9 +146,9 @@ jobs:
       - name: Summary
         run: |
           echo "🚀 Production release published successfully!"
-          echo "📦 SDK Package: @layr-labs/ecloud-sdk@${{ env.PACKAGE_VERSION }}"
-          echo "📦 CLI Package: @layr-labs/ecloud-cli@${{ env.PACKAGE_VERSION }}"
+          echo "📦 SDK Package: @layr-labs/ecloud-sdk@${{ env.PACKAGE_VERSION }} (tag: latest)"
+          echo "📦 CLI Package: @layr-labs/ecloud-cli@${{ env.PACKAGE_VERSION }} (tag: latest)"
           echo "🏷️  Tag: latest"
           echo "🔒 Verified dev testing completed with matching commit from ${{ env.VERIFIED_DEV_TAG }}"
-          echo "🔗 Install with: npm install -g @layr-labs/ecloud-cli@${{ env.PACKAGE_VERSION }}"
+          echo "🔗 Install with: npm install -g @layr-labs/ecloud-cli@latest"
 
