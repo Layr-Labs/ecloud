@@ -63,8 +63,9 @@ export default class Version extends Command {
   async run(): Promise<void> {
     const versionInfo = readVersionFile();
 
-    // Version will always be present when published
+    // Version will always be present when published, for unpublished pull from current env
     if (!versionInfo) {
+      this.log(`Version: ${this.config.version} (unpublished)`);
       this.log(`Commit: ${execSync("git rev-parse --short HEAD", { encoding: "utf8" }).trim()}`);
       return;
     }
