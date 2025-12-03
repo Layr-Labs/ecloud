@@ -12,6 +12,7 @@ import { EnvironmentConfig } from "../types";
 
 import { defaultLogger } from "./logger";
 import { addHexPrefix, stripHexPrefix } from "./helpers";
+import { AppProfileResponse } from "../types";
 
 export interface AppInfo {
   address: Address;
@@ -24,14 +25,21 @@ export interface AppInfoResponse {
   apps: Array<{
     addresses: {
       data: {
-        evmAddresses: Address[];
-        solanaAddresses: string[];
+        evmAddresses: Array<{
+          address: Address;
+          derivationPath: string;
+        }>;
+        solanaAddresses: Array<{
+          address: string;
+          derivationPath: string;
+        }>;
       };
       signature: string;
     };
     app_status: string;
     ip: string;
     machine_type: string;
+    profile?: AppProfileResponse;
   }>;
 }
 
@@ -90,13 +98,66 @@ export class UserApiClient {
       const evm = app.addresses.data.evmAddresses.slice(0, count);
       // const sol = app.addresses.data.solanaAddresses.slice(0, count);
       // If the API ties each `apps[i]` to `appIDs[i]`, use i. Otherwise derive from `evm[0]`
-      const inferredAddress = evm[0] ?? appIDs[i] ?? appIDs[0];
+      const inferredAddress = evm[0]?.address ?? appIDs[i] ?? appIDs[0];
 
       return {
         address: inferredAddress as Address,
         status: app.app_status,
         ip: app.ip,
         machineType: app.machine_type,
+      };
+    });
+  }
+
+  /**
+   * Get full app info including addresses and profile
+   */
+  async getFullInfos(
+    appIDs: Address[],
+    addressCount = 1,
+    logger = defaultLogger,
+  ): Promise<Array<{
+    address: Address;
+    status: string;
+    ip: string;
+    machineType: string;
+    evmAddresses: Array<{
+      address: Address;
+      derivationPath: string;
+    }>;
+    solanaAddresses: Array<{
+      address: string;
+      derivationPath: string;
+    }>;
+    profile?: AppProfileResponse;
+  }>> {
+    const count = Math.min(addressCount, MAX_ADDRESS_COUNT);
+
+    const endpoint = `${this.config.userApiServerURL}/info`;
+    const url = `${endpoint}?${new URLSearchParams({ apps: appIDs.join(",") })}`;
+
+    const res = await this.makeAuthenticatedRequest(
+      url,
+      CanViewSensitiveAppInfoPermission,
+    );
+    const result: AppInfoResponse = await res.json();
+
+    // Print to debug logs
+    logger.debug(JSON.stringify(result, undefined, 2));
+
+    return result.apps.map((app, i) => {
+      const evm = app.addresses?.data?.evmAddresses?.slice(0, count) || [];
+      const sol = app.addresses?.data?.solanaAddresses?.slice(0, count) || [];
+      const inferredAddress = evm[0]?.address ?? appIDs[i] ?? appIDs[0];
+
+      return {
+        address: inferredAddress as Address,
+        status: app.app_status,
+        ip: app.ip,
+        machineType: app.machine_type,
+        evmAddresses: evm,
+        solanaAddresses: sol,
+        profile: app.profile,
       };
     });
   }

@@ -8,6 +8,7 @@ import { deploy as deployApp } from "./deploy";
 import { upgrade as upgradeApp } from "./upgrade";
 import { createApp, CreateAppOpts } from "./create";
 import { logs, LogsOptions } from "./logs";
+import { info, InfoOptions } from "./info";
 
 import { getAppName } from "../../common/registry/appNames";
 import { getEnvironmentConfig } from "../../common/config/environment";
@@ -36,6 +37,7 @@ export interface AppModule {
     opts: UpgradeAppOpts,
   ) => Promise<{ tx: `0x${string}`, appID: string, imageRef: string; }>;
   logs: (opts: LogsOptions) => Promise<void>;
+  info: (opts: InfoOptions) => Promise<void>;
   start: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: `0x${string}` | false }>;
   stop: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: `0x${string}` | false }>;
   terminate: (
@@ -123,6 +125,20 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           appID: opts.appID,
           watch: opts.watch,
           environment: ctx.environment,
+        },
+        logger,
+      );
+    },
+
+    async info(opts) {
+      return info(
+        {
+          privateKey,
+          appID: opts.appID,
+          watch: opts.watch,
+          environment: ctx.environment,
+          rpcUrl: ctx.rpcUrl,
+          addressCount: opts.addressCount,
         },
         logger,
       );
