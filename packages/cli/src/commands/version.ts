@@ -66,7 +66,20 @@ export default class Version extends Command {
     // Version will always be present when published, for unpublished pull from current env
     if (!versionInfo) {
       this.log(`Version: ${this.config.version} (unpublished)`);
-      this.log(`Commit: ${execSync("git rev-parse --short HEAD", { encoding: "utf8" }).trim()}`);
+
+      // Attempt to get version from package root
+      try {
+        // Pull current working dir to pull commit hash
+        const __dirname = path.dirname(fileURLToPath(import.meta.url));
+        const packageRoot = path.resolve(__dirname, "..");
+
+        // Print the short sha from the projects root .git dir
+        this.log(`Commit: ${execSync(`cd ${packageRoot} && git rev-parse --short HEAD`, { encoding: "utf8" }).trim()}`);
+      } catch {
+        // If we can't get the commit then print unknown
+        this.log(`Commit: unknown`);
+      }
+
       return;
     }
 
