@@ -913,9 +913,6 @@ export async function undelegate(
     },
   ];
 
-  const confirmationPrompt = "Undelegate account (removes EIP-7702 delegation)";
-  const pendingMessage = "Undelegating account...";
-
   // Send transaction with authorization list
   const hash = await walletClient.sendTransaction({
     account,

@@ -41,8 +41,17 @@
     "dirname": "",
     "topicSeparator": " ",
     "topics": {
+      "auth": {
+        "description": "Manage authentication with private keys stored in OS keyring"
+      },
       "billing": {
         "description": "Manage billing and subscriptions"
+      },
+      "compute": {
+        "description": "Manage compute projects and resources"
+      },
+      "compute:app": {
+        "description": "Manage projects"
       }
     }
   },

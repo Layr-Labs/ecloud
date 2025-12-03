@@ -1,21 +1,19 @@
-import { Command, Args, Flags } from "@oclif/core";
+import { Command, Flags } from "@oclif/core";
 import { logVisibility } from "@layr-labs/ecloud-sdk";
-import { createAppClient } from "../../client";
-import { commonFlags } from "../../flags";
+import { createAppClient } from "../../../client";
+import { commonFlags } from "../../../flags";
 import chalk from "chalk";
 
-export default class AppUpgrade extends Command {
-  static description = "Upgrade existing deployment";
-
-  static args = {
-    "app-id": Args.string({
-      description: "App ID or name to upgrade",
-      required: false,
-    }),
-  };
+export default class AppDeploy extends Command {
+  static description = "Deploy new app";
 
   static flags = {
     ...commonFlags,
+    name: Flags.string({
+      required: false,
+      description: "Friendly name for the app",
+      env: "ECLOUD_NAME",
+    }),
     dockerfile: Flags.string({
       required: false,
       description: "Path to Dockerfile",
@@ -42,15 +40,17 @@ export default class AppUpgrade extends Command {
       required: false,
       description:
         "Machine instance type to use e.g. g1-standard-4t, g1-standard-8t",
+      options: ["g1-standard-4t", "g1-standard-8t"],
       env: "ECLOUD_INSTANCE_TYPE",
     }),
   };
 
   async run() {
-    const { args, flags } = await this.parse(AppUpgrade);
+    const { flags } = await this.parse(AppDeploy);
     const app = await createAppClient(flags);
 
-    const res = await app.upgrade(args["app-id"] as any, {
+    const res = await app.deploy({
+      name: flags.name,
       dockerfile: flags.dockerfile,
       envFile: flags["env-file"],
       imageRef: flags["image-ref"],
@@ -58,12 +58,10 @@ export default class AppUpgrade extends Command {
       instanceType: flags["instance-type"],
     });
 
-    if (!res.tx) {
-      this.log(`\n${chalk.gray(`Upgrade failed`)}`);
+    if (!res.tx || !res.ipAddress) {
+      this.log(`\n${chalk.gray(`Deploy ${res.ipAddress ? "failed" : "aborted"}`)}`);
     } else {
-      this.log(`\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${res.appID}, image: ${res.imageRef})`)}`)}`);
+      this.log(`\n✅ ${chalk.green(`App deployed successfully ${chalk.bold(`(id: ${res.appID}, ip: ${res.ipAddress})`)}`)}`);
     }
-    this.log(JSON.stringify(res, null, 2));
   }
 }
-
