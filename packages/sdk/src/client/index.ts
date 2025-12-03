@@ -26,6 +26,19 @@ export { getOrPromptAppID } from "./common/utils/prompts";
 export { getEnvironmentConfig, getAvailableEnvironments, isEnvironmentAvailable } from "./common/config/environment";
 export { isSubscriptionActive } from "./common/utils/billing";
 
+// Export global config functions
+export {
+  loadGlobalConfig,
+  saveGlobalConfig,
+  getDefaultEnvironment,
+  setDefaultEnvironment,
+  isFirstRun,
+  markFirstRunComplete,
+  getGlobalTelemetryPreference,
+  setGlobalTelemetryPreference,
+  type GlobalConfig,
+} from "./common/config/globalConfig";
+
 // Export auth utilities
 export * from "./common/auth";
 

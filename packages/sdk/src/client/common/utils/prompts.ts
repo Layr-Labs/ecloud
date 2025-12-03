@@ -22,6 +22,8 @@ import {
 import { getAllAppsByDeveloper } from "../contract/caller";
 import { UserApiClient } from "./userapi";
 import { addHexPrefix, stripHexPrefix } from "./helpers";
+import { AppProfile } from "../types";
+import { getDefaultEnvironment } from "../config/globalConfig";
 
 /**
  * Prompt for Dockerfile selection
@@ -1188,6 +1190,20 @@ export async function getEnvironmentInteractive(
   // Get available environments based on build type
   const availableEnvs = getAvailableEnvironments();
 
+  // Get default environment from config if available
+  let defaultEnv: string | undefined;
+  const configDefaultEnv = getDefaultEnvironment();
+  if (
+    configDefaultEnv && availableEnvs.includes(configDefaultEnv)
+  ) {
+    try {
+      getEnvironmentConfig(configDefaultEnv);
+      defaultEnv = configDefaultEnv;
+    } catch {
+      // Default env is invalid, ignore it
+    }
+  }
+
   // Build choices based on available environments
   const choices = [];
   if (availableEnvs.includes("sepolia")) {
@@ -1216,6 +1232,7 @@ export async function getEnvironmentInteractive(
   const env = await select({
     message: "Select environment:",
     choices,
+    default: defaultEnv,
   });
 
   return env;
@@ -1257,9 +1274,7 @@ export async function getPrivateKeyInteractive(
  * Profile collection functions
  */
 
-import { AppProfile } from "../types";
-
-const MAX_APP_NAME_LENGTH = 100;
+// const MAX_APP_NAME_LENGTH = 100;
 const MAX_DESCRIPTION_LENGTH = 1000;
 const MAX_IMAGE_SIZE = 4 * 1024 * 1024; // 4MB
 const VALID_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png"];
