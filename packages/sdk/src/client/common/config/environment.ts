@@ -26,7 +26,7 @@ export const ChainAddresses: Record<number, Record<string, string>> = {
 // Billing environment configurations (separate from chain environments)
 const BILLING_ENVIRONMENTS: Record<"dev" | "prod", BillingEnvironmentConfig> = {
   dev: {
-    billingApiServerURL: "http://136.110.145.244",
+    billingApiServerURL: "https://billingapi-dev.eigencloud.xyz",
   },
   prod: {
     billingApiServerURL: "https://billingapi.eigencloud.xyz",
