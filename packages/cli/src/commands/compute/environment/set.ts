@@ -59,12 +59,7 @@ export default class EnvironmentSet extends Command {
     const { args, flags } = await this.parse(EnvironmentSet);
 
     // Get environment interactively if not provided
-    let newEnv: string;
-    if (args.environment) {
-      newEnv = args.environment;
-    } else {
-      newEnv = await getEnvironmentInteractive();
-    }
+    const newEnv = args.environment || (await getEnvironmentInteractive());
 
     // Validate that the environment exists and is available
     if (!isEnvironmentAvailable(newEnv)) {
