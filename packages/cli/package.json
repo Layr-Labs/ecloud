@@ -1,6 +1,12 @@
 {
   "name": "@layr-labs/ecloud-cli",
+  "version": "0.0.1-rfc.1",
   "type": "module",
+  "files": [
+    "dist",
+    "bin",
+    "README.md"
+  ],
   "bin": {
     "ecloud": "./bin/run.js"
   },
@@ -23,6 +29,7 @@
   "scripts": {
     "build": "tsup && npm run build:copy-templates",
     "build:copy-templates": "node scripts/copy-templates.js",
+    "prepublishOnly": "cp ../../README.md .",
     "lint": "eslint .",
     "format": "prettier --check .",
     "format:fix": "prettier --write .",

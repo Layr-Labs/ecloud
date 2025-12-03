@@ -16,6 +16,17 @@ jobs:
   build-and-publish:
     runs-on: ubuntu-latest
     steps:
+      - name: Enforce dev tag format
+        run: |
+          VERSION="${{ github.ref_name }}"
+
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-dev ]]; then
+            echo "Version '$VERSION' does not match required pattern v<major>.<minor>.<patch>-dev*"
+            exit 1
+          fi
+
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -23,10 +34,8 @@ jobs:
 
       - name: Set version from tag
         run: |
-          VERSION="${{ github.ref_name }}"
-          # Ensure version has -dev suffix (remove any existing -dev* and add clean -dev)
-          BASE_VERSION="${VERSION%-dev*}"
-          PACKAGE_VERSION="${BASE_VERSION}-dev"
+          # Clean leading v from provided version
+          PACKAGE_VERSION="${VERSION#v}"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "PACKAGE_VERSION=$PACKAGE_VERSION" >> $GITHUB_ENV
           echo "Building dev version: $PACKAGE_VERSION"
@@ -44,7 +53,7 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        working-directory: ./
+        working-directory: .
         run: pnpm install --frozen-lockfile
 
       - name: Build SDK (dev) - dependency for CLI
@@ -64,8 +73,7 @@ jobs:
       - name: Update SDK package.json for publishing
         working-directory: ./packages/sdk
         run: |
-          # Update SDK package name to dev namespace for publishing
-          npm pkg set name="@layr-labs/ecloud-sdk-dev"
+          # Update version (keep default package name)
           npm pkg set version="${{ env.PACKAGE_VERSION }}"
 
       - name: Publish SDK to npm (dev)
@@ -78,15 +86,13 @@ jobs:
       - name: Update CLI package.json for dev namespace
         working-directory: ./packages/cli
         run: |
-          # Update package name to dev namespace
-          npm pkg set name="@layr-labs/ecloud-cli-dev"
+          # Update version to tag as dev
           npm pkg set version="${{ env.PACKAGE_VERSION }}"
-          # Update SDK dependency to use published dev version
-          npm pkg set "dependencies.@layr-labs/ecloud-sdk-dev"="${{ env.PACKAGE_VERSION }}"
-          npm pkg delete 'dependencies.@layr-labs/ecloud-sdk' || true
+          # Update SDK dependency to match published version
+          npm pkg set "dependencies.@layr-labs/ecloud-sdk"="${{ env.PACKAGE_VERSION }}"
           # Verify changes
           cat package.json | grep -A 2 '"name"'
-          cat package.json | grep -A 1 '"@layr-labs/ecloud'
+          cat package.json | grep -A 1 '"@layr-labs/ecloud-sdk"'
 
       - name: Publish CLI to npm (dev)
         working-directory: ./packages/cli
@@ -98,8 +104,8 @@ jobs:
       - name: Summary
         run: |
           echo "✅ Dev release published successfully!"
-          echo "📦 SDK Package: @layr-labs/ecloud-sdk-dev@${{ env.PACKAGE_VERSION }}"
-          echo "📦 CLI Package: @layr-labs/ecloud-cli-dev@${{ env.PACKAGE_VERSION }}"
+          echo "📦 SDK Package: @layr-labs/ecloud-sdk@${{ env.PACKAGE_VERSION }} (tag: dev)"
+          echo "📦 CLI Package: @layr-labs/ecloud-cli@${{ env.PACKAGE_VERSION }} (tag: dev)"
           echo "🏷️  Tag: dev"
-          echo "🔗 Install with: npm install -g @layr-labs/ecloud-cli-dev@${{ env.PACKAGE_VERSION }}"
+          echo "🔗 Install with: npm install -g @layr-labs/ecloud-cli@dev"
 
