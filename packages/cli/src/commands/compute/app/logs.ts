@@ -1,6 +1,6 @@
 import { Command, Args, Flags } from "@oclif/core";
-import { createAppClient } from "../../client";
-import { commonFlags } from "../../flags";
+import { createAppClient } from "../../../client";
+import { commonFlags } from "../../../flags";
 
 export default class AppLogs extends Command {
   static description = "View app logs";

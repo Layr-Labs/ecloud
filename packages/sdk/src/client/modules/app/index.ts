@@ -11,7 +11,7 @@ import { logs, LogsOptions } from "./logs";
 
 import { getAppName } from "../../common/registry/appNames";
 import { getEnvironmentConfig } from "../../common/config/environment";
-import { sendAndWaitForTransaction } from "../../common/contract/caller";
+import { sendAndWaitForTransaction, undelegate } from "../../common/contract/caller";
 
 import type {
   AppId,
@@ -42,6 +42,7 @@ export interface AppModule {
     appId: AppId,
     opts?: LifecycleOpts,
   ) => Promise<{ tx: `0x${string}` | false }>;
+  undelegate: () => Promise<{ tx: `0x${string}` | false }>;
 }
 
 export interface AppModuleConfig {
@@ -228,5 +229,16 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
       );
       return { tx };
     },
+
+    async undelegate() {
+      // perform the undelegate EIP7702 tx (sets delegated to zero address)
+      const tx = await undelegate({
+        privateKey,
+        rpcUrl: ctx.rpcUrl,
+        environmentConfig: environment,
+      }, logger);
+
+      return { tx };
+    }
   };
 }

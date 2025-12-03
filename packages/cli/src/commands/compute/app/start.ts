@@ -1,6 +1,6 @@
 import { Command, Args } from "@oclif/core";
-import { createAppClient } from "../../client";
-import { commonFlags } from "../../flags";
+import { createAppClient } from "../../../client";
+import { commonFlags } from "../../../flags";
 import { getEnvironmentConfig, getOrPromptAppID } from "@layr-labs/ecloud-sdk";
 import chalk from "chalk";
 
