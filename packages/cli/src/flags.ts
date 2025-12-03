@@ -1,7 +1,7 @@
 import {
   getEnvironmentInteractive,
   getPrivateKeyInteractive,
-  getAvailableEnvironments,
+  getDefaultEnvironment,
 } from "@layr-labs/ecloud-sdk";
 import { Flags } from "@oclif/core";
 
@@ -12,21 +12,10 @@ export type CommonFlags = {
   "rpc-url"?: string;
 };
 
-// Get available environments dynamically from SDK based on build type
-const getEnvironmentOptions = (): string[] => {
-  try {
-    return getAvailableEnvironments();
-  } catch {
-    // Fallback to all environments if SDK not available
-    return ["sepolia", "sepolia-dev", "mainnet-alpha"];
-  }
-};
-
 export const commonFlags = {
   environment: Flags.string({
     required: false,
     description: "Deployment environment to use",
-    options: getEnvironmentOptions(),
     env: "ECLOUD_ENV",
   }),
   "private-key": Flags.string({
@@ -48,6 +37,11 @@ export const commonFlags = {
 
 // Validate or prompt for required common flags
 export async function validateCommonFlags(flags: CommonFlags) {
+  // If no environment is selected, default to the global config env
+  if (!flags['environment']) {
+    flags["environment"] = getDefaultEnvironment();
+  }
+  // If the provided env is invalid, proceed to prompt
   flags["environment"] = await getEnvironmentInteractive(flags["environment"]);
   flags["private-key"] = await getPrivateKeyInteractive(flags["private-key"]);
 
