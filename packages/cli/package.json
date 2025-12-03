@@ -52,6 +52,13 @@
       },
       "compute:app": {
         "description": "Manage projects"
+      },
+      "compute:environment": {
+        "description": "Manage deployment environment [alias: env]"
+      },
+      "compute:env": {
+        "hidden": true,
+        "description": "Manage deployment environment [alias: env]"
       }
     }
   },

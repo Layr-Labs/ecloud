@@ -25,6 +25,8 @@ function getEnvironmentDescription(name: string): string {
 export default class EnvironmentList extends Command {
   static description = "List available deployment environments";
 
+  static aliases = ['compute:environment:list', 'compute:env:list'];
+
   async run() {
     const availableEnvs = getAvailableEnvironments();
     const currentEnv = getDefaultEnvironment();

@@ -42,6 +42,8 @@ async function confirmMainnetEnvironment(env: string): Promise<void> {
 export default class EnvironmentSet extends Command {
   static description = "Set deployment environment";
 
+  static aliases = ['compute:environment:set', 'compute:env:set'];
+
   static args = {
     environment: Args.string(),
   };

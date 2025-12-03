@@ -8,6 +8,8 @@ import chalk from "chalk";
 
 export default class EnvironmentShow extends Command {
   static description = "Show active deployment environment";
+  
+  static aliases = ['compute:environment:show', 'compute:env:show'];
 
   async run() {
     const defaultEnv = getDefaultEnvironment();

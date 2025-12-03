@@ -1194,9 +1194,7 @@ export async function getEnvironmentInteractive(
   let defaultEnv: string | undefined;
   const configDefaultEnv = getDefaultEnvironment();
   if (
-    configDefaultEnv &&
-    isEnvironmentAvailable(configDefaultEnv) &&
-    availableEnvs.includes(configDefaultEnv)
+    configDefaultEnv && availableEnvs.includes(configDefaultEnv)
   ) {
     try {
       getEnvironmentConfig(configDefaultEnv);
