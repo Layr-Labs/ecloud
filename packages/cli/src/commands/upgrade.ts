@@ -2,6 +2,7 @@ import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 
 import { Command, Flags } from "@oclif/core";
+import { getBuildType } from "@layr-labs/ecloud-sdk";
 
 import chalk from "chalk";
 
@@ -50,22 +51,22 @@ function isBun(): boolean {
 }
 
 // Unified "upgrade global to latest" by manager
-export function upgradePackage(packageManager?: string): void {
+export function upgradePackage(packageManager?: string, buildTag = "latest"): void {
   const pm = packageManager ?? detectPM();
 
   const cmd = (() => {
     switch (pm) {
       case "npm":
-        return `npm install -g ${ecloudCLIPackage}@latest`;
+        return `npm install -g ${ecloudCLIPackage}@${buildTag}`;
       case "pnpm":
-        return `pnpm install -g ${ecloudCLIPackage}@latest`;
+        return `pnpm install -g ${ecloudCLIPackage}@${buildTag}`;
       case "yarn":
-        return `yarn global add ${ecloudCLIPackage}@latest`;
+        return `yarn global add ${ecloudCLIPackage}@${buildTag}`;
       case "yarnBerry":
         // best effort, behaves more like a disposable global
-        return `yarn dlx ${ecloudCLIPackage}@latest`;
+        return `yarn dlx ${ecloudCLIPackage}@${buildTag}`;
       case "bun":
-        return `bun add -g ${ecloudCLIPackage}@latest`;
+        return `bun add -g ${ecloudCLIPackage}@${buildTag}`;
       case "unknown":
       default:
         throw new Error();
@@ -91,8 +92,11 @@ export default class Upgrade extends Command {
   async run() {
     const { flags } = await this.parse(Upgrade);
 
+    const buildType = getBuildType();
+    const buildTag = buildType === "dev" ? "dev" : "latest";
+
     try {
-      upgradePackage(flags["package-manager"]);
+      upgradePackage(flags["package-manager"], buildTag);
       this.log(`\n${chalk.green(`Upgrade successful!`)}`);
     } catch (e) {
       this.log(`\n${chalk.red(`Upgrade failed!`)}`);
