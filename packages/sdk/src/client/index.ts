@@ -23,7 +23,7 @@ export { createBillingModule, type BillingModuleConfig } from "./modules/billing
 
 // Export utility functions for CLI use
 export { getOrPromptAppID } from "./common/utils/prompts";
-export { getEnvironmentConfig, getAvailableEnvironments, isEnvironmentAvailable } from "./common/config/environment";
+export { getEnvironmentConfig, getAvailableEnvironments, isEnvironmentAvailable, getBuildType } from "./common/config/environment";
 export { isSubscriptionActive } from "./common/utils/billing";
 
 // Export global config functions
