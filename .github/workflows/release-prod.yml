@@ -112,6 +112,27 @@ jobs:
         run: |
           pnpm run build
 
+      - name: Get short sha
+        run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+
+      - name: Generate SDK VERSION file
+        working-directory: ./packages/sdk
+        env:
+          PACKAGE_VERSION: ${{ env.PACKAGE_VERSION }}
+          GITHUB_SHA: ${{ env.SHORT_SHA }}
+        run: |
+          node scripts/generate-version.js
+
+      - name: Generate CLI VERSION file
+        working-directory: ./packages/cli
+        env:
+          PACKAGE_VERSION: ${{ env.PACKAGE_VERSION }}
+          GITHUB_SHA: ${{ env.SHORT_SHA }}
+        run: |
+          node scripts/generate-version.js
+
       - name: Update SDK package.json for publishing
         working-directory: ./packages/sdk
         run: |
