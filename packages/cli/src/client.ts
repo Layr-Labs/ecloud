@@ -1,12 +1,12 @@
 import {
   createAppModule,
   createBillingModule,
-  getPrivateKeyInteractive,
   getEnvironmentConfig,
   requirePrivateKey,
   getPrivateKeyWithSource,
 } from "@layr-labs/ecloud-sdk";
 import { CommonFlags, validateCommonFlags } from "./flags";
+import { getPrivateKeyInteractive } from "./utils/prompts";
 import { Hex } from "viem";
 
 export async function createAppClient(flags: CommonFlags) {

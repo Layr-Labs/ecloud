@@ -8,32 +8,51 @@ export type AppId = Address;
 
 export type logVisibility = "public" | "private" | "off";
 
+/**
+ * Confirmation callback type for mainnet transactions
+ */
+export type ConfirmationCallback = (prompt: string, maxCostEth: string) => Promise<boolean>;
+
 export interface DeployAppOpts {
-  name?: string;
+  /** App name - required */
+  name: string;
+  /** Path to Dockerfile (if building from Dockerfile) - either this or imageRef is required */
   dockerfile?: string;
+  /** Path to .env file - optional */
   envFile?: string;
+  /** Image reference (registry/path:tag) - either this or dockerfile is required */
   imageRef?: string;
-  instanceType?: string;
-  logVisibility?: logVisibility;
+  /** Instance type SKU - required */
+  instanceType: string;
+  /** Log visibility setting - required */
+  logVisibility: logVisibility;
+  /** Optional app profile to upload after deployment */
+  profile?: AppProfile;
+  /** Optional confirmation callback for mainnet transactions */
+  onConfirm?: ConfirmationCallback;
 }
 
 export interface UpgradeAppOpts {
-  /** Path to Dockerfile (if building from Dockerfile) */
+  /** Path to Dockerfile (if building from Dockerfile) - either this or imageRef is required */
   dockerfile?: string;
-  /** Image reference (registry/path:tag) - optional, will prompt if not provided */
+  /** Image reference (registry/path:tag) - either this or dockerfile is required */
   imageRef?: string;
-  /** Path to .env file - optional, will use .env if exists or prompt */
+  /** Path to .env file - optional */
   envFile?: string;
-  /** Instance type - optional, will prompt if not provided */
-  instanceType?: string;
-  /** Log visibility setting - optional, will prompt if not provided */
-  logVisibility?: logVisibility;
+  /** Instance type SKU - required */
+  instanceType: string;
+  /** Log visibility setting - required */
+  logVisibility: logVisibility;
+  /** Optional confirmation callback for mainnet transactions */
+  onConfirm?: ConfirmationCallback;
   gas?: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint };
 }
 
 export interface LifecycleOpts {
   gas?: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint };
   force?: boolean; // For terminate: skip confirmation if true
+  /** Optional confirmation callback for mainnet transactions */
+  onConfirm?: ConfirmationCallback;
 }
 
 export interface AppRecord {

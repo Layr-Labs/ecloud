@@ -57,7 +57,7 @@ function loadAppRegistry(environment: string): AppRegistry {
     }
 
     return registry;
-  } catch (error) {
+  } catch {
     // If parsing fails, return empty registry
     return {
       version: APP_REGISTRY_VERSION,
@@ -132,7 +132,7 @@ export async function setAppName(
 
   // Find and remove any existing names for this app ID
   for (const [name, app] of Object.entries(registry.apps)) {
-    if (app?.app_id?.toLowerCase() === targetAppIDLower) {
+    if (app?.app_id && String(app.app_id).toLowerCase() === targetAppIDLower) {
       delete registry.apps[name];
     }
   }
@@ -163,7 +163,7 @@ export function getAppName(environment: string, appID: string): string {
 
   // Search for the app ID in the registry
   for (const [name, app] of Object.entries(registry.apps)) {
-    if (app?.app_id?.toLowerCase() === normalizedAppID) {
+    if (app?.app_id && String(app.app_id).toLowerCase() === normalizedAppID) {
       return name;
     }
   }
@@ -180,7 +180,9 @@ export function listApps(environment: string): Record<string, string> {
 
   // Convert registry format (name -> app_id) to result format (name -> appID)
   for (const [name, app] of Object.entries(registry.apps)) {
-    result[name] = app.app_id;
+    if (app?.app_id) {
+      result[name] = String(app.app_id);
+    }
   }
 
   return result;

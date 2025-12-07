@@ -1,9 +1,9 @@
+import { getDefaultEnvironment } from "@layr-labs/ecloud-sdk";
+import { Flags } from "@oclif/core";
 import {
   getEnvironmentInteractive,
   getPrivateKeyInteractive,
-  getDefaultEnvironment,
-} from "@layr-labs/ecloud-sdk";
-import { Flags } from "@oclif/core";
+} from "./utils/prompts";
 
 export type CommonFlags = {
   verbose: boolean;

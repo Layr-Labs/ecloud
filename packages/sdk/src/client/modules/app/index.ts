@@ -67,7 +67,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
     },
     // Write operations
     async deploy(opts) {
-      // Map DeployAppOpts to DeployOptions and call the deploy function
+      // Map DeployAppOpts to SDKDeployOptions and call the deploy function
       const result = await deployApp(
         {
           privateKey,
@@ -79,6 +79,8 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           envFilePath: opts.envFile,
           imageRef: opts.imageRef,
           logVisibility: opts.logVisibility,
+          profile: opts.profile,
+          onConfirm: opts.onConfirm,
         },
         logger,
       );
@@ -93,7 +95,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
     },
 
     async upgrade(appID, opts) {
-      // Map UpgradeAppOpts to UpgradeOptions and call the upgrade function
+      // Map UpgradeAppOpts to SDKUpgradeOptions and call the upgrade function
       const result = await upgradeApp(
         {
           appID: appID,
@@ -105,6 +107,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           envFilePath: opts.envFile,
           imageRef: opts.imageRef,
           logVisibility: opts.logVisibility,
+          onConfirm: opts.onConfirm,
         },
         logger,
       );
@@ -155,6 +158,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           confirmationPrompt,
           pendingMessage,
           txDescription: "StartApp",
+          onConfirm: opts?.onConfirm,
         },
         logger,
       );
@@ -188,6 +192,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           confirmationPrompt,
           pendingMessage,
           txDescription: "StopApp",
+          onConfirm: opts?.onConfirm,
         },
         logger,
       );
@@ -224,6 +229,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           confirmationPrompt,
           pendingMessage,
           txDescription: "TerminateApp",
+          onConfirm: opts?.onConfirm,
         },
         logger,
       );

@@ -50,7 +50,7 @@ function readVersionFile(): VersionInfo | null {
     }
 
     return versionInfo;
-  } catch (error) {
+  } catch {
     return null;
   }
 }

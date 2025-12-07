@@ -19,7 +19,6 @@ import {
 import { hashAuthorization } from "viem/utils";
 import { sign } from "viem/accounts";
 
-import { confirm } from "../utils/prompts";
 import { addHexPrefix } from "../utils";
 
 import { EnvironmentConfig, Logger } from "../types";
@@ -31,6 +30,13 @@ import PermissionControllerABI from "../abis/PermissionController.json";
 import chalk from "chalk";
 
 
+/**
+ * Confirmation callback type for mainnet transactions
+ * Called with the confirmation prompt and estimated max cost in ETH
+ * Should return true to proceed or false to abort
+ */
+export type ConfirmationCallback = (prompt: string, maxCostEth: string) => Promise<boolean>;
+
 export interface DeployAppOptions {
   privateKey: string; // Will be converted to Hex
   rpcUrl: string;
@@ -39,6 +45,8 @@ export interface DeployAppOptions {
   release: Release;
   publicLogs: boolean;
   imageRef: string;
+  /** Optional confirmation callback for mainnet transactions */
+  onConfirm?: ConfirmationCallback;
 }
 
 /**
@@ -103,6 +111,7 @@ export async function deployApp(
     release,
     publicLogs,
     imageRef,
+    onConfirm,
   } = options;
 
   const privateKeyHex = addHexPrefix(privateKey) as Hex;
@@ -233,6 +242,7 @@ export async function deployApp(
       confirmationPrompt,
       pendingMessage,
       privateKey: privateKeyHex, // Pass private key for manual transaction signing
+      onConfirm, // Pass confirmation callback
     },
     logger,
   );
@@ -249,6 +259,8 @@ export interface UpgradeAppOptions {
   publicLogs: boolean;
   needsPermissionChange: boolean;
   imageRef: string;
+  /** Optional confirmation callback for mainnet transactions */
+  onConfirm?: ConfirmationCallback;
 }
 
 /**
@@ -267,6 +279,7 @@ export async function upgradeApp(
     publicLogs,
     needsPermissionChange,
     imageRef,
+    onConfirm,
   } = options;
 
   const privateKeyHex = addHexPrefix(privateKey) as Hex;
@@ -385,6 +398,7 @@ export async function upgradeApp(
       confirmationPrompt,
       pendingMessage,
       privateKey: privateKeyHex, // Pass private key for manual transaction signing
+      onConfirm, // Pass confirmation callback
     },
     logger,
   );
@@ -406,6 +420,8 @@ export interface SendTransactionOptions {
   confirmationPrompt: string;
   pendingMessage: string;
   txDescription: string;
+  /** Optional confirmation callback for mainnet transactions */
+  onConfirm?: ConfirmationCallback;
 }
 
 export async function sendAndWaitForTransaction(
@@ -423,6 +439,7 @@ export async function sendAndWaitForTransaction(
     confirmationPrompt,
     pendingMessage,
     txDescription,
+    onConfirm,
   } = options;
 
   const privateKeyHex = addHexPrefix(privateKey) as Hex;
@@ -461,13 +478,25 @@ export async function sendAndWaitForTransaction(
       // place an empty line for tidier output
       logger.info("");
       
-      // Interactive confirmation prompt
-      if (!(await confirm(`${confirmationPrompt} ${chalk.reset(`on ${environmentConfig.name} (max cost: ${costEth} ETH)`)}`))) {
-        return false;
+      // Use confirmation callback if provided
+      if (onConfirm) {
+        const fullPrompt = `${confirmationPrompt} ${chalk.reset(`on ${environmentConfig.name} (max cost: ${costEth} ETH)`)}`;
+        if (!(await onConfirm(fullPrompt, costEth))) {
+          return false;
+        }
+      } else {
+        // No callback provided - throw error for mainnet transactions
+        throw new Error(
+          `Mainnet transaction requires confirmation. Please provide an onConfirm callback or use the CLI for interactive confirmation.`
+        );
       }
     } catch (error: any) {
+      // Re-throw confirmation errors
+      if (error.message?.includes("requires confirmation")) {
+        throw error;
+      }
       // Try to parse custom contract errors
-      const parsedErr = parseEstimateGasError(error, environmentConfig);
+      const parsedErr = parseEstimateGasError(error);
       if (parsedErr) {
         throw parsedErr;
       }
@@ -530,10 +559,7 @@ export async function sendAndWaitForTransaction(
 /**
  * Parse estimate gas errors to extract contract-specific error messages
  */
-function parseEstimateGasError(
-  err: any,
-  environmentConfig: EnvironmentConfig,
-): Error | null {
+function parseEstimateGasError(err: any): Error | null {
   if (!err) {
     return null;
   }

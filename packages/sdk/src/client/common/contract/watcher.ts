@@ -108,7 +108,6 @@ export interface WatchUntilUpgradeCompleteOptions {
   appID: Address;
 }
 
-const APP_STATUS_UPGRADING = "Upgrading";
 const APP_STATUS_STOPPED = "Stopped";
 
 /**

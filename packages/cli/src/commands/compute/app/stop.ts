@@ -1,7 +1,8 @@
 import { Command, Args } from "@oclif/core";
 import { createAppClient } from "../../../client";
 import { commonFlags } from "../../../flags";
-import { getEnvironmentConfig, getOrPromptAppID } from "@layr-labs/ecloud-sdk";
+import { getEnvironmentConfig } from "@layr-labs/ecloud-sdk";
+import { getOrPromptAppID } from "../../../utils/prompts";
 import chalk from "chalk";
 
 export default class AppLifecycleStop extends Command {
