@@ -6,14 +6,6 @@ import {
   selectTemplateInteractive,
 } from "../../../utils/prompts";
 
-// Language short name mappings
-const SHORT_NAMES: Record<string, string> = {
-  ts: "typescript",
-  go: "golang",
-  rs: "rust",
-  py: "python",
-};
-
 export default class AppCreate extends Command {
   static description = "Create a new app from a template";
 
@@ -23,7 +15,7 @@ export default class AppCreate extends Command {
     }),
     language: Flags.string({
       description: "Programming language (typescript, golang, rust, python)",
-      options: ["typescript", "golang", "rust", "python", "ts", "go", "rs", "py"],
+      options: ["typescript", "golang", "rust", "python"],
     }),
     template: Flags.string({
       description: "Template name or custom template URL",
@@ -55,13 +47,7 @@ export default class AppCreate extends Command {
     }
 
     // 2. Get language interactively if not provided
-    let language = flags.language;
-    if (!language) {
-      language = await promptLanguage();
-    } else {
-      // Resolve short names
-      language = SHORT_NAMES[language] || language;
-    }
+    const language = flags.language || await promptLanguage();
 
     // 3. Get template interactively if not provided
     let template = flags.template;

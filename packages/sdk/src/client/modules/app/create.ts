@@ -55,13 +55,6 @@ export interface CreateAppOpts {
 // Language configuration
 export const PRIMARY_LANGUAGES = ["typescript", "golang", "rust", "python"];
 
-export const SHORT_NAMES: Record<string, string> = {
-  ts: "typescript",
-  go: "golang",
-  rs: "rust",
-  py: "python",
-};
-
 export const LANGUAGE_FILES: Record<string, string[]> = {
   typescript: ["package.json"],
   rust: ["Cargo.toml", "Dockerfile"],
@@ -96,22 +89,16 @@ function validateProjectName(name: string): void {
 /**
  * Validate language
  */
-function validateLanguage(language: string): string {
+function validateLanguage(language: string): void {
   if (!language) {
     throw new Error("Language is required");
   }
 
-  // Resolve short names to full names
-  const resolvedLanguage = SHORT_NAMES[language] || language;
-
-  // Validate against primary languages
-  if (!PRIMARY_LANGUAGES.includes(resolvedLanguage)) {
+  if (!PRIMARY_LANGUAGES.includes(language)) {
     throw new Error(
-      `Invalid language: ${language}. Must be one of: ${PRIMARY_LANGUAGES.join(", ")} (or short: ${Object.keys(SHORT_NAMES).join(", ")})`
+      `Invalid language: ${language}. Must be one of: ${PRIMARY_LANGUAGES.join(", ")}`
     );
   }
-
-  return resolvedLanguage;
 }
 
 /**
@@ -163,14 +150,14 @@ export async function createApp(
 ): Promise<void> {
   // 1. Validate required parameters
   validateProjectName(options.name || "");
-  const language = validateLanguage(options.language || "");
+  validateLanguage(options.language || "");
 
   // 2. Gather project configuration
   const cfg = await gatherProjectConfig(
     {
       ...options,
       name: options.name!,
-      language,
+      language: options.language!,
     },
     logger
   );

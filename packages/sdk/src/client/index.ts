@@ -14,7 +14,7 @@ export * from "./common/types";
 export * from "./common/utils/validation";
 
 // Special case on createApp - we don't need the client to run it
-export { createApp, CreateAppOpts, SDKCreateAppOpts, PRIMARY_LANGUAGES, SHORT_NAMES, getAvailableTemplates } from "./modules/app/create";
+export { createApp, CreateAppOpts, SDKCreateAppOpts, PRIMARY_LANGUAGES, getAvailableTemplates } from "./modules/app/create";
 export { logs, LogsOptions, SDKLogsOptions } from "./modules/app/logs";
 export { SDKDeployOptions } from "./modules/app/deploy";
 export { SDKUpgradeOptions } from "./modules/app/upgrade";
