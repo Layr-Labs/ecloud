@@ -2,7 +2,7 @@ import { Command, Args, Flags } from "@oclif/core";
 import { createAppClient } from "../../../client";
 import { commonFlags } from "../../../flags";
 import { getEnvironmentConfig } from "@layr-labs/ecloud-sdk";
-import { getOrPromptAppID } from "../../../utils/prompts";
+import { getOrPromptAppID, confirm } from "../../../utils/prompts";
 import chalk from "chalk";
 
 export default class AppLifecycleTerminate extends Command {
@@ -49,6 +49,9 @@ export default class AppLifecycleTerminate extends Command {
 
     const res = await app.terminate(appId, {
       force: flags.force,
+      onConfirm: async (prompt: string) => {
+        return confirm(prompt);
+      },
     });
 
     if (!res.tx) {
