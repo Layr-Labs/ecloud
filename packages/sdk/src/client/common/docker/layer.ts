@@ -128,7 +128,9 @@ export async function buildAndPushLayeredImage(
   const baseImageTag = `ecloud-temp-${path.basename(dockerfilePath).toLowerCase()}`;
   logger.info(`Building base image from ${dockerfilePath}...`);
 
-  await buildDockerImage(".", dockerfilePath, baseImageTag, logger);
+  // Use the directory containing the Dockerfile as build context
+  const buildContext = path.dirname(dockerfilePath);
+  await buildDockerImage(buildContext, dockerfilePath, baseImageTag, logger);
 
   // 2. Layer the base image
   const docker = new Docker();

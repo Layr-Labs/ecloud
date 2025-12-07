@@ -61,14 +61,18 @@ export async function getDockerfileInteractive(
     return dockerfilePath;
   }
 
-  // Check if default Dockerfile exists
-  if (!fs.existsSync("Dockerfile")) {
+  // Check if default Dockerfile exists in current directory
+  // Use INIT_CWD if available (set by npm/pnpm to original cwd), otherwise fall back to process.cwd()
+  const cwd = process.env.INIT_CWD || process.cwd();
+  const dockerfilePath_resolved = path.join(cwd, "Dockerfile");
+  
+  if (!fs.existsSync(dockerfilePath_resolved)) {
     // No Dockerfile found, return empty string (deploy existing image)
     return "";
   }
 
   // Interactive prompt when Dockerfile exists
-  console.log("\nFound Dockerfile in current directory.");
+  console.log(`\nFound Dockerfile in ${cwd}`);
 
   const choice = await select({
     message: "Choose deployment method:",
@@ -80,7 +84,8 @@ export async function getDockerfileInteractive(
 
   switch (choice) {
     case "build":
-      return "Dockerfile";
+      // Return full path so SDK uses the correct directory
+      return dockerfilePath_resolved;
     case "existing":
       return "";
     default:
@@ -286,7 +291,9 @@ async function getAvailableRegistries(): Promise<RegistryInfo[]> {
 
 function getDefaultAppName(): string {
   try {
-    return path.basename(process.cwd());
+    // Use INIT_CWD if available (set by npm/pnpm to original cwd)
+    const cwd = process.env.INIT_CWD || process.cwd();
+    return path.basename(cwd);
   } catch {
     return "myapp";
   }
