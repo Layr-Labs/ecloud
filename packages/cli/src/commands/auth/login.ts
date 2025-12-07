@@ -16,7 +16,7 @@ import {
   deleteLegacyPrivateKey,
   type LegacyKey,
 } from "@layr-labs/ecloud-sdk";
-import { getHiddenInput, displayWarning } from "../../utils/prompts";
+import { getHiddenInput, displayWarning } from "../../utils/security";
 
 export default class AuthLogin extends Command {
   static description = "Store your private key in OS keyring";
