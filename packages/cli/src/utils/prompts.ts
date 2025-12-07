@@ -97,6 +97,47 @@ interface RegistryInfo {
 }
 
 /**
+ * Extract hostname from a registry URL/string for safe comparison
+ * This avoids the security issue of using .includes() which can match
+ * substrings anywhere (e.g., "malicious.docker.io.attacker.com")
+ */
+function extractHostname(registry: string): string {
+  // Remove protocol if present
+  let hostname = registry.replace(/^https?:\/\//, "");
+  // Remove path and trailing slashes
+  hostname = hostname.split("/")[0];
+  // Remove port if present
+  hostname = hostname.split(":")[0];
+  return hostname.toLowerCase();
+}
+
+/**
+ * Check if a registry matches Docker Hub
+ */
+function isDockerHub(registry: string): boolean {
+  const hostname = extractHostname(registry);
+  return hostname === "docker.io" || 
+         hostname === "index.docker.io" || 
+         hostname === "registry-1.docker.io";
+}
+
+/**
+ * Check if a registry matches GitHub Container Registry
+ */
+function isGHCR(registry: string): boolean {
+  const hostname = extractHostname(registry);
+  return hostname === "ghcr.io";
+}
+
+/**
+ * Check if a registry matches Google Container Registry
+ */
+function isGCR(registry: string): boolean {
+  const hostname = extractHostname(registry);
+  return hostname === "gcr.io" || hostname.endsWith(".gcr.io");
+}
+
+/**
  * Get credentials from Docker credential helper
  */
 async function getCredentialsFromHelper(
@@ -122,7 +163,7 @@ async function getCredentialsFromHelper(
     try {
       const registryVariants: string[] = [];
 
-      if (registry.includes("index.docker.io") || registry.includes("docker.io")) {
+      if (isDockerHub(registry)) {
         registryVariants.push("https://index.docker.io/v1/");
         registryVariants.push("https://index.docker.io/v1");
         registryVariants.push("index.docker.io");
@@ -179,7 +220,9 @@ async function getAvailableRegistries(): Promise<RegistryInfo[]> {
     for (const [registry, auth] of Object.entries(auths)) {
       const authData = auth as { username?: string; auth?: string };
 
-      if (registry.includes("access-token") || registry.includes("refresh-token")) {
+      // Skip token entries (these are not actual registries)
+      const hostname = extractHostname(registry);
+      if (hostname.includes("access-token") || hostname.includes("refresh-token")) {
         continue;
       }
 
@@ -187,13 +230,13 @@ async function getAvailableRegistries(): Promise<RegistryInfo[]> {
       let registryType = "other";
       let normalizedURL = registry;
 
-      if (registry.includes("index.docker.io") || registry.includes("docker.io")) {
+      if (isDockerHub(registry)) {
         registryType = "dockerhub";
         normalizedURL = "https://index.docker.io/v1/";
-      } else if (registry.includes("ghcr.io")) {
+      } else if (isGHCR(registry)) {
         registryType = "ghcr";
         normalizedURL = registry.replace(/^https?:\/\//, "").replace(/\/v1\/?$/, "");
-      } else if (registry.includes("gcr.io") || registry.includes(".gcr.io")) {
+      } else if (isGCR(registry)) {
         registryType = "gcr";
         normalizedURL = "gcr.io";
       }
