@@ -10,13 +10,7 @@ import chalk from "chalk";
 const ecloudCLIPackage = "@layr-labs/ecloud-cli";
 
 // Possible PackManagers being covered
-export type PackageManager =
-  | "npm"
-  | "pnpm"
-  | "yarn"
-  | "yarnBerry"
-  | "bun"
-  | "unknown";
+export type PackageManager = "npm" | "pnpm" | "yarn" | "yarnBerry" | "bun" | "unknown";
 
 // Detect package-manager from UA, check for bun as special case
 export function detectPM(): PackageManager {
@@ -100,8 +94,12 @@ export default class Upgrade extends Command {
       this.log(`\n${chalk.green(`Upgrade successful!`)}`);
     } catch (e) {
       this.log(`\n${chalk.red(`Upgrade failed!`)}`);
-      this.log(`\n${chalk.red(`Cannot determine package manager to upgrade ${ecloudCLIPackage}.`)}`);
-      this.log(`\n${chalk.red(`Use ${chalk.yellow("`package-manager`")} flag to instruct upgrade (<supported managers: npm|pnpm|yarn|yarnBerry|bun>).`)}\n`);
+      this.log(
+        `\n${chalk.red(`Cannot determine package manager to upgrade ${ecloudCLIPackage}.`)}`,
+      );
+      this.log(
+        `\n${chalk.red(`Use ${chalk.yellow("`package-manager`")} flag to instruct upgrade (<supported managers: npm|pnpm|yarn|yarnBerry|bun>).`)}\n`,
+      );
       throw e;
     }
   }

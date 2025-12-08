@@ -75,11 +75,7 @@ export async function pullDockerImage(
         stream!,
         (err) => {
           if (err) {
-            reject(
-              new Error(
-                `Failed to complete image pull for ${imageTag}: ${err.message}`,
-              ),
-            );
+            reject(new Error(`Failed to complete image pull for ${imageTag}: ${err.message}`));
           } else {
             logger?.info?.(`Image pull completed: ${imageTag}`);
             resolve();

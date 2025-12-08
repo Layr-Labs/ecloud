@@ -15,13 +15,12 @@ interface VersionInfo {
   commit: string;
 }
 
-
 function readVersionFile(): VersionInfo | null {
   try {
     // Get the directory of the current module
     const currentFile = fileURLToPath(import.meta.url);
     const currentDir = path.dirname(currentFile);
-    
+
     // Navigate to package root
     const packageRoot = path.resolve(currentDir, "../..");
     const versionFilePath = path.join(packageRoot, "VERSION");
@@ -32,7 +31,7 @@ function readVersionFile(): VersionInfo | null {
 
     const content = fs.readFileSync(versionFilePath, "utf8");
     const lines = content.trim().split("\n");
-    
+
     const versionInfo: VersionInfo = {
       version: "unknown",
       commit: "unknown",
@@ -41,7 +40,7 @@ function readVersionFile(): VersionInfo | null {
     for (const line of lines) {
       const [key, ...valueParts] = line.split("=");
       const value = valueParts.join("=").trim();
-      
+
       if (key === "version") {
         versionInfo.version = value;
       } else if (key === "commit") {
@@ -74,7 +73,9 @@ export default class Version extends Command {
         const packageRoot = path.resolve(__dirname, "..");
 
         // Print the short sha from the projects root .git dir
-        this.log(`Commit: ${execSync(`cd ${packageRoot} && git rev-parse --short HEAD`, { encoding: "utf8" }).trim()}`);
+        this.log(
+          `Commit: ${execSync(`cd ${packageRoot} && git rev-parse --short HEAD`, { encoding: "utf8" }).trim()}`,
+        );
       } catch {
         // If we can't get the commit then print unknown
         this.log(`Commit: unknown`);
@@ -87,4 +88,3 @@ export default class Version extends Command {
     this.log(`Commit:  ${versionInfo.commit}`);
   }
 }
-

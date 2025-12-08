@@ -175,4 +175,3 @@ export function getCategoryDescriptions(
 
   return descriptions;
 }
-

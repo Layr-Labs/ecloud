@@ -1,10 +1,10 @@
 /**
  * Global configuration management
- * 
+ *
  * Stores user-level configuration that persists across all CLI usage.
  * - $XDG_CONFIG_HOME/ecloud[BuildSuffix]/config.yaml (if XDG_CONFIG_HOME is set)
  * - Or ~/.config/ecloud[BuildSuffix]/config.yaml (fallback)
- * 
+ *
  * Where BuildSuffix is:
  * - "" (empty) for production builds
  * - "-dev" for development builds
@@ -149,4 +149,3 @@ export function setGlobalTelemetryPreference(enabled: boolean): void {
   config.first_run = false; // No longer first run after setting preference
   saveGlobalConfig(config);
 }
-

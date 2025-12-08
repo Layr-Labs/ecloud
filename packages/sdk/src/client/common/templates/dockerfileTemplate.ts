@@ -18,18 +18,12 @@ export interface DockerfileTemplateData {
 /**
  * Process Dockerfile template
  */
-export function processDockerfileTemplate(
-  data: DockerfileTemplateData,
-): string {
+export function processDockerfileTemplate(data: DockerfileTemplateData): string {
   // Try multiple paths to support both CLI (bundled) and standalone SDK usage
   const possiblePaths = [
     path.join(__dirname, "./templates", LAYERED_DOCKERFILE_TEMPLATE_PATH), // Standalone SDK
     path.join(__dirname, "../../templates", LAYERED_DOCKERFILE_TEMPLATE_PATH), // CLI bundled
-    path.join(
-      __dirname,
-      "../../../templates",
-      LAYERED_DOCKERFILE_TEMPLATE_PATH,
-    ), // Alternative CLI path
+    path.join(__dirname, "../../../templates", LAYERED_DOCKERFILE_TEMPLATE_PATH), // Alternative CLI path
   ];
 
   let templatePath: string | null = null;
@@ -41,9 +35,7 @@ export function processDockerfileTemplate(
   }
 
   if (!templatePath) {
-    throw new Error(
-      `Dockerfile template not found. Tried: ${possiblePaths.join(", ")}`,
-    );
+    throw new Error(`Dockerfile template not found. Tried: ${possiblePaths.join(", ")}`);
   }
 
   const templateContent = fs.readFileSync(templatePath, "utf-8");

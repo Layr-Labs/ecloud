@@ -10,9 +10,7 @@ const MNEMONIC_ENV_VAR = "MNEMONIC";
 /**
  * Parse environment file and split into public/private variables
  */
-export function parseAndValidateEnvFile(
-  envFilePath: string,
-): ParsedEnvironment {
+export function parseAndValidateEnvFile(envFilePath: string): ParsedEnvironment {
   if (!fs.existsSync(envFilePath)) {
     throw new Error(`Environment file not found: ${envFilePath}`);
   }
@@ -80,9 +78,7 @@ export function parseAndValidateEnvFile(
 export function displayEnvironmentVariables(
   parsed: ParsedEnvironment & { _mnemonicFiltered?: boolean },
 ): void {
-  console.log(
-    "\nYour container will deploy with the following environment variables:\n",
-  );
+  console.log("\nYour container will deploy with the following environment variables:\n");
 
   if (parsed._mnemonicFiltered) {
     console.log(

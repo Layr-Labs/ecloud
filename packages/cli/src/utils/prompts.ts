@@ -1,16 +1,11 @@
 /**
  * Interactive prompts for CLI commands
- * 
+ *
  * This module contains all interactive user prompts. These functions should only
  * be used in CLI commands, not in the SDK.
  */
 
-import {
-  input,
-  select,
-  password,
-  confirm as inquirerConfirm,
-} from "@inquirer/prompts";
+import { input, select, password, confirm as inquirerConfirm } from "@inquirer/prompts";
 import fs from "fs";
 import path from "path";
 import os from "os";
@@ -53,9 +48,7 @@ function addHexPrefix(value: string): `0x${string}` {
 /**
  * Prompt for Dockerfile selection
  */
-export async function getDockerfileInteractive(
-  dockerfilePath?: string
-): Promise<string> {
+export async function getDockerfileInteractive(dockerfilePath?: string): Promise<string> {
   // Check if provided via option
   if (dockerfilePath) {
     return dockerfilePath;
@@ -65,7 +58,7 @@ export async function getDockerfileInteractive(
   // Use INIT_CWD if available (set by npm/pnpm to original cwd), otherwise fall back to process.cwd()
   const cwd = process.env.INIT_CWD || process.cwd();
   const dockerfilePath_resolved = path.join(cwd, "Dockerfile");
-  
+
   if (!fs.existsSync(dockerfilePath_resolved)) {
     // No Dockerfile found, return empty string (deploy existing image)
     return "";
@@ -121,9 +114,11 @@ function extractHostname(registry: string): string {
  */
 function isDockerHub(registry: string): boolean {
   const hostname = extractHostname(registry);
-  return hostname === "docker.io" || 
-         hostname === "index.docker.io" || 
-         hostname === "registry-1.docker.io";
+  return (
+    hostname === "docker.io" ||
+    hostname === "index.docker.io" ||
+    hostname === "registry-1.docker.io"
+  );
 }
 
 /**
@@ -146,7 +141,7 @@ function isGCR(registry: string): boolean {
  * Get credentials from Docker credential helper
  */
 async function getCredentialsFromHelper(
-  registry: string
+  registry: string,
 ): Promise<{ username: string; password: string } | undefined> {
   const dockerConfigPath = path.join(os.homedir(), ".docker", "config.json");
 
@@ -299,11 +294,7 @@ function getDefaultAppName(): string {
   }
 }
 
-function suggestImageReference(
-  registry: RegistryInfo,
-  imageName: string,
-  tag: string
-): string {
+function suggestImageReference(registry: RegistryInfo, imageName: string, tag: string): string {
   imageName = imageName.toLowerCase().replace(/_/g, "-");
   if (!tag) {
     tag = "latest";
@@ -355,7 +346,7 @@ function displayRegistryExamples(appName: string): void {
 async function selectRegistryInteractive(
   registries: RegistryInfo[],
   imageName: string,
-  tag: string
+  tag: string,
 ): Promise<string> {
   if (registries.length === 1) {
     const defaultRef = suggestImageReference(registries[0], imageName, tag);
@@ -399,7 +390,7 @@ async function selectRegistryInteractive(
  */
 export async function getImageReferenceInteractive(
   imageRef?: string,
-  buildFromDockerfile: boolean = false
+  buildFromDockerfile: boolean = false,
 ): Promise<string> {
   if (imageRef) {
     return imageRef;
@@ -447,7 +438,7 @@ export async function getImageReferenceInteractive(
  */
 async function getAvailableAppNameInteractive(
   environment: string,
-  imageRef: string
+  imageRef: string,
 ): Promise<string> {
   const baseName = extractAppNameFromImage(imageRef);
   const suggestedName = findAvailableName(environment, baseName);
@@ -483,7 +474,7 @@ async function getAvailableAppNameInteractive(
 export async function getOrPromptAppName(
   appName: string | undefined,
   environment: string,
-  imageRef: string
+  imageRef: string,
 ): Promise<string> {
   if (appName) {
     validateAppName(appName);
@@ -548,7 +539,7 @@ export async function getEnvFileInteractive(envFilePath?: string): Promise<strin
 export async function getInstanceTypeInteractive(
   instanceType: string | undefined,
   defaultSKU: string,
-  availableTypes: Array<{ sku: string; description: string }>
+  availableTypes: Array<{ sku: string; description: string }>,
 ): Promise<string> {
   if (instanceType) {
     // Validate provided instance type
@@ -595,7 +586,7 @@ export type LogVisibility = "public" | "private" | "off";
  * Prompt for log settings
  */
 export async function getLogSettingsInteractive(
-  logVisibility?: LogVisibility
+  logVisibility?: LogVisibility,
 ): Promise<{ logRedirect: string; publicLogs: boolean }> {
   if (logVisibility) {
     switch (logVisibility) {
@@ -606,7 +597,9 @@ export async function getLogSettingsInteractive(
       case "off":
         return { logRedirect: "", publicLogs: false };
       default:
-        throw new Error(`Invalid log-visibility: ${logVisibility} (must be public, private, or off)`);
+        throw new Error(
+          `Invalid log-visibility: ${logVisibility} (must be public, private, or off)`,
+        );
     }
   }
 
@@ -690,7 +683,7 @@ export interface GetAppIDOptions {
  */
 export async function getOrPromptAppID(
   appIDOrOptions: string | Address | GetAppIDOptions | undefined,
-  environment?: string
+  environment?: string,
 ): Promise<Address> {
   let options: GetAppIDOptions;
   if (environment !== undefined) {
@@ -698,7 +691,11 @@ export async function getOrPromptAppID(
       appID: appIDOrOptions as string | Address | undefined,
       environment: environment,
     };
-  } else if (appIDOrOptions && typeof appIDOrOptions === "object" && "environment" in appIDOrOptions) {
+  } else if (
+    appIDOrOptions &&
+    typeof appIDOrOptions === "object" &&
+    "environment" in appIDOrOptions
+  ) {
     options = appIDOrOptions as GetAppIDOptions;
   } else {
     options = {
@@ -708,7 +705,8 @@ export async function getOrPromptAppID(
   }
 
   if (options.appID) {
-    const normalized = typeof options.appID === "string" ? addHexPrefix(options.appID) : options.appID;
+    const normalized =
+      typeof options.appID === "string" ? addHexPrefix(options.appID) : options.appID;
 
     if (isAddress(normalized)) {
       return normalized as Address;
@@ -720,7 +718,9 @@ export async function getOrPromptAppID(
       return addHexPrefix(foundAppID) as Address;
     }
 
-    throw new Error(`App name '${options.appID}' not found in environment '${options.environment}'`);
+    throw new Error(
+      `App name '${options.appID}' not found in environment '${options.environment}'`,
+    );
   }
 
   return getAppIDInteractive(options);
@@ -744,7 +744,7 @@ async function getAppIDInteractive(options: GetAppIDOptions): Promise<Address> {
   const { apps, appConfigs } = await getAllAppsByDeveloper(
     options.rpcUrl,
     environmentConfig,
-    developerAddr
+    developerAddr,
   );
 
   if (apps.length === 0) {
@@ -838,7 +838,10 @@ async function getAppIDInteractive(options: GetAppIDOptions): Promise<Address> {
   return selected as Address;
 }
 
-async function getAppIDInteractiveFromRegistry(environment: string, action: string): Promise<Address> {
+async function getAppIDInteractiveFromRegistry(
+  environment: string,
+  action: string,
+): Promise<Address> {
   const apps = listApps(environment);
 
   if (Object.keys(apps).length === 0) {
@@ -927,7 +930,10 @@ export async function confirm(prompt: string): Promise<boolean> {
 /**
  * ConfirmWithDefault prompts the user to confirm an action with a yes/no question and a default value.
  */
-export async function confirmWithDefault(prompt: string, defaultValue: boolean = false): Promise<boolean> {
+export async function confirmWithDefault(
+  prompt: string,
+  defaultValue: boolean = false,
+): Promise<boolean> {
   return await inquirerConfirm({
     message: prompt,
     default: defaultValue,
@@ -951,7 +957,7 @@ export async function getPrivateKeyInteractive(privateKey?: string): Promise<str
   // Try to get from keyring using SDK's resolver
   const { getPrivateKeyWithSource } = await import("@layr-labs/ecloud-sdk");
   const result = await getPrivateKeyWithSource({ privateKey: undefined });
-  
+
   if (result) {
     return result.key;
   }
@@ -1013,7 +1019,10 @@ export async function getEnvironmentInteractive(environment?: string): Promise<s
     choices.push({ name: "sepolia-dev - Ethereum Sepolia testnet (dev)", value: "sepolia-dev" });
   }
   if (availableEnvs.includes("mainnet-alpha")) {
-    choices.push({ name: "mainnet-alpha - Ethereum mainnet (⚠️  uses real funds)", value: "mainnet-alpha" });
+    choices.push({
+      name: "mainnet-alpha - Ethereum mainnet (⚠️  uses real funds)",
+      value: "mainnet-alpha",
+    });
   }
 
   if (choices.length === 0) {
@@ -1171,7 +1180,7 @@ function validateImagePath(filePath: string): string | undefined {
  */
 export async function getAppProfileInteractive(
   defaultName: string = "",
-  allowRetry: boolean = true
+  allowRetry: boolean = true,
 ): Promise<AppProfile | undefined> {
   while (true) {
     const name = await getAppNameForProfile(defaultName);
@@ -1310,7 +1319,8 @@ async function getAppImageInteractive(): Promise<string | undefined> {
   }
 
   const imagePath = await input({
-    message: "Image path (drag & drop image file or enter path - JPG/PNG, max 4MB, square recommended):",
+    message:
+      "Image path (drag & drop image file or enter path - JPG/PNG, max 4MB, square recommended):",
     default: "",
     validate: (value: string) => {
       if (!value.trim()) {

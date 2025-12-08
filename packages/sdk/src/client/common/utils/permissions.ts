@@ -39,25 +39,16 @@ export async function checkAppLogPermission(
   try {
     // Call the canCall method on PermissionController
     const canCall = await publicClient.readContract({
-      address: preflightCtx.environmentConfig
-        .permissionControllerAddress as Address,
+      address: preflightCtx.environmentConfig.permissionControllerAddress as Address,
       abi: PermissionControllerABI,
       functionName: "canCall",
-      args: [
-        appAddress,
-        AnyoneCanCallAddress,
-        ApiPermissionsTarget,
-        CanViewAppLogsPermission,
-      ],
+      args: [appAddress, AnyoneCanCallAddress, ApiPermissionsTarget, CanViewAppLogsPermission],
     });
 
     return canCall as boolean;
   } catch (err: any) {
-    logger.warn(
-      `Failed to check log permission: ${err.message}. Assuming private logs.`,
-    );
+    logger.warn(`Failed to check log permission: ${err.message}. Assuming private logs.`);
     // Default to false (private) on error
     return false;
   }
 }
-

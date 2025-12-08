@@ -73,7 +73,7 @@ export default class BillingStatus extends Command {
         const product = `${flags.product.charAt(0).toUpperCase()}${flags.product.slice(1)}`;
         const chain = item.description.toLowerCase().includes("sepolia") ? "Sepolia" : "Mainnet";
         this.log(
-          `    • ${product} (${chain}): $${item.subtotal.toFixed(2)} (${item.quantity} vCPU hours × $${item.price.toFixed(3)}/vCPU hour)`
+          `    • ${product} (${chain}): $${item.subtotal.toFixed(2)} (${item.quantity} vCPU hours × $${item.price.toFixed(3)}/vCPU hour)`,
         );
       }
     }
@@ -88,22 +88,22 @@ export default class BillingStatus extends Command {
       this.log(`    Total Due:        $${(result.upcomingInvoiceTotal ?? 0).toFixed(2)}`);
 
       if (result.remainingCredits !== undefined) {
-        this.log(`\n  ${chalk.bold("Remaining Credits:")} ${chalk.cyan(`$${result.remainingCredits.toFixed(2)}`)}${formatExpiry(result.nextCreditExpiry)}`);
+        this.log(
+          `\n  ${chalk.bold("Remaining Credits:")} ${chalk.cyan(`$${result.remainingCredits.toFixed(2)}`)}${formatExpiry(result.nextCreditExpiry)}`,
+        );
       }
     } else if (result.upcomingInvoiceTotal !== undefined) {
-      this.log(
-        `\n  Upcoming Invoice: $${result.upcomingInvoiceTotal.toFixed(2)}`
-      );
+      this.log(`\n  Upcoming Invoice: $${result.upcomingInvoiceTotal.toFixed(2)}`);
       if (result.remainingCredits !== undefined && result.remainingCredits > 0) {
-        this.log(`  ${chalk.bold("Available Credits:")} ${chalk.cyan(`$${result.remainingCredits.toFixed(2)}`)}${formatExpiry(result.nextCreditExpiry)}`);
+        this.log(
+          `  ${chalk.bold("Available Credits:")} ${chalk.cyan(`$${result.remainingCredits.toFixed(2)}`)}${formatExpiry(result.nextCreditExpiry)}`,
+        );
       }
     }
 
     // Display cancellation information
     if (result.cancelAtPeriodEnd) {
-      this.log(
-        `\n  ${chalk.yellow("⚠ Subscription will cancel at period end")}`
-      );
+      this.log(`\n  ${chalk.yellow("⚠ Subscription will cancel at period end")}`);
     }
 
     if (result.canceledAt) {
@@ -113,9 +113,7 @@ export default class BillingStatus extends Command {
 
     // Display portal URL for management
     if (result.portalUrl) {
-      this.log(
-        `\n  ${chalk.dim("Manage subscription:")} ${chalk.cyan(result.portalUrl)}`
-      );
+      this.log(`\n  ${chalk.dim("Manage subscription:")} ${chalk.cyan(result.portalUrl)}`);
     }
 
     this.log();

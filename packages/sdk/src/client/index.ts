@@ -3,7 +3,11 @@
  */
 
 import { createAppModule, type AppModule } from "./modules/app";
-import { getEnvironmentConfig, isEnvironmentAvailable, getAvailableEnvironments } from "./common/config/environment";
+import {
+  getEnvironmentConfig,
+  isEnvironmentAvailable,
+  getAvailableEnvironments,
+} from "./common/config/environment";
 import { createBillingModule, type BillingModule } from "./modules/billing";
 import { addHexPrefix } from "./common/utils";
 
@@ -14,14 +18,20 @@ export * from "./common/types";
 export * from "./common/utils/validation";
 
 // Special case on createApp - we don't need the client to run it
-export { createApp, CreateAppOpts, SDKCreateAppOpts, PRIMARY_LANGUAGES, getAvailableTemplates } from "./modules/app/create";
+export {
+  createApp,
+  CreateAppOpts,
+  SDKCreateAppOpts,
+  PRIMARY_LANGUAGES,
+  getAvailableTemplates,
+} from "./modules/app/create";
 export { logs, LogsOptions, SDKLogsOptions } from "./modules/app/logs";
 export { SDKDeployOptions } from "./modules/app/deploy";
 export { SDKUpgradeOptions } from "./modules/app/upgrade";
 
 // Export modules for standalone use
-export { 
-  createAppModule, 
+export {
+  createAppModule,
   type AppModuleConfig,
   encodeStartAppData,
   encodeStopAppData,
@@ -30,7 +40,13 @@ export {
 export { createBillingModule, type BillingModuleConfig } from "./modules/billing";
 
 // Export environment config utilities
-export { getEnvironmentConfig, getAvailableEnvironments, isEnvironmentAvailable, getBuildType, isMainnet } from "./common/config/environment";
+export {
+  getEnvironmentConfig,
+  getAvailableEnvironments,
+  isEnvironmentAvailable,
+  getBuildType,
+  isMainnet,
+} from "./common/config/environment";
 export { isSubscriptionActive } from "./common/utils/billing";
 
 // Export global config functions
@@ -60,7 +76,7 @@ export {
 export { listApps, getAppName, setAppName } from "./common/registry/appNames";
 
 // Export contract utilities
-export { 
+export {
   getAllAppsByDeveloper,
   estimateTransactionGas,
   formatETH,
@@ -94,13 +110,12 @@ export interface ECloudClient {
 export function createECloudClient(cfg: ClientConfig): ECloudClient {
   cfg.privateKey = addHexPrefix(cfg.privateKey);
 
-
   // Validate environment is available in current build
   const environment = cfg.environment || "sepolia";
   if (!isEnvironmentAvailable(environment)) {
     throw new Error(
       `Environment "${environment}" is not available in this build type. ` +
-      `Available environments: ${getAvailableEnvironments().join(", ")}`
+        `Available environments: ${getAvailableEnvironments().join(", ")}`,
     );
   }
 

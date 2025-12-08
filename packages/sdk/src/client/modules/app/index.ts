@@ -12,12 +12,7 @@ import { getAppName } from "../../common/registry/appNames";
 import { getEnvironmentConfig } from "../../common/config/environment";
 import { sendAndWaitForTransaction, undelegate } from "../../common/contract/caller";
 
-import type {
-  AppId,
-  DeployAppOpts,
-  LifecycleOpts,
-  UpgradeAppOpts,
-} from "../../common/types";
+import type { AppId, DeployAppOpts, LifecycleOpts, UpgradeAppOpts } from "../../common/types";
 import { getLogger, addHexPrefix } from "../../common/utils";
 
 // Minimal ABI
@@ -62,26 +57,31 @@ export function encodeTerminateAppData(appId: AppId): `0x${string}` {
 
 export interface AppModule {
   create: (opts: CreateAppOpts) => Promise<void>;
-  deploy: (opts: DeployAppOpts) => Promise<{ appID: AppId; tx: `0x${string}`; appName: string; imageRef: string; ipAddress?: string; }>;
+  deploy: (
+    opts: DeployAppOpts,
+  ) => Promise<{
+    appID: AppId;
+    tx: `0x${string}`;
+    appName: string;
+    imageRef: string;
+    ipAddress?: string;
+  }>;
   upgrade: (
     appID: AppId,
     opts: UpgradeAppOpts,
-  ) => Promise<{ tx: `0x${string}`, appID: string, imageRef: string; }>;
+  ) => Promise<{ tx: `0x${string}`; appID: string; imageRef: string }>;
   logs: (opts: LogsOptions) => Promise<void>;
   start: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: `0x${string}` | false }>;
   stop: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: `0x${string}` | false }>;
-  terminate: (
-    appId: AppId,
-    opts?: LifecycleOpts,
-  ) => Promise<{ tx: `0x${string}` | false }>;
+  terminate: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: `0x${string}` | false }>;
   undelegate: () => Promise<{ tx: `0x${string}` | false }>;
 }
 
 export interface AppModuleConfig {
-    verbose?: boolean;
-    privateKey: `0x${string}`;
-    rpcUrl: string;
-    environment: string;
+  verbose?: boolean;
+  privateKey: `0x${string}`;
+  rpcUrl: string;
+  environment: string;
 }
 
 export function createAppModule(ctx: AppModuleConfig): AppModule {
@@ -252,13 +252,16 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
 
     async undelegate() {
       // perform the undelegate EIP7702 tx (sets delegated to zero address)
-      const tx = await undelegate({
-        privateKey,
-        rpcUrl: ctx.rpcUrl,
-        environmentConfig: environment,
-      }, logger);
+      const tx = await undelegate(
+        {
+          privateKey,
+          rpcUrl: ctx.rpcUrl,
+          environmentConfig: environment,
+        },
+        logger,
+      );
 
       return { tx };
-    }
+    },
   };
 }

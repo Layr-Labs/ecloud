@@ -17,15 +17,13 @@ import type {
 
 export interface BillingModule {
   subscribe: (opts?: SubscriptionOpts) => Promise<SubscribeResponse>;
-  getStatus: (
-    opts?: SubscriptionOpts,
-  ) => Promise<ProductSubscriptionResponse>;
+  getStatus: (opts?: SubscriptionOpts) => Promise<ProductSubscriptionResponse>;
   cancel: (opts?: SubscriptionOpts) => Promise<CancelResponse>;
 }
 
 export interface BillingModuleConfig {
-    verbose?: boolean;
-    privateKey: Hex;
+  verbose?: boolean;
+  privateKey: Hex;
 }
 
 export function createBillingModule(config: BillingModuleConfig): BillingModule {
@@ -58,7 +56,10 @@ export function createBillingModule(config: BillingModuleConfig): BillingModule 
       }
 
       // If subscription has payment issues, return portal URL instead
-      if (currentStatus.subscriptionStatus === "past_due" || currentStatus.subscriptionStatus === "unpaid") {
+      if (
+        currentStatus.subscriptionStatus === "past_due" ||
+        currentStatus.subscriptionStatus === "unpaid"
+      ) {
         logger.debug(`Subscription has payment issue: ${currentStatus.subscriptionStatus}`);
         return {
           type: "payment_issue" as const,
@@ -84,9 +85,7 @@ export function createBillingModule(config: BillingModuleConfig): BillingModule 
 
       const result = await billingApi.getSubscription(productId);
 
-      logger.debug(
-        `Subscription status: ${result.subscriptionStatus}`,
-      );
+      logger.debug(`Subscription status: ${result.subscriptionStatus}`);
       return result;
     },
 
@@ -99,9 +98,7 @@ export function createBillingModule(config: BillingModuleConfig): BillingModule 
 
       // If no active subscription, don't attempt to cancel
       if (!isSubscriptionActive(currentStatus.subscriptionStatus)) {
-        logger.debug(
-          `No active subscription to cancel: ${currentStatus.subscriptionStatus}`,
-        );
+        logger.debug(`No active subscription to cancel: ${currentStatus.subscriptionStatus}`);
         return {
           type: "no_active_subscription" as const,
           status: currentStatus.subscriptionStatus,

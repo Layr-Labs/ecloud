@@ -14,7 +14,7 @@ export default defineConfig({
   skipNodeModulesBundle: true,
   banner: { js: "#!/usr/bin/env node" },
   define: {
-    "BUILD_TYPE_BUILD_TIME": JSON.stringify(buildType),
+    BUILD_TYPE_BUILD_TIME: JSON.stringify(buildType),
   },
   esbuildOptions(options) {
     options.outbase = "src";

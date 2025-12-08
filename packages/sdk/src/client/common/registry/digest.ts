@@ -33,9 +33,7 @@ interface Manifest {
  * Get image digest and registry name from image reference
  * Uses docker manifest inspect to get the manifest
  */
-export async function getImageDigestAndName(
-  imageRef: string,
-): Promise<ImageDigestResult> {
+export async function getImageDigestAndName(imageRef: string): Promise<ImageDigestResult> {
   try {
     // Use docker manifest inspect to get the manifest
     const { stdout } = await exec(`docker manifest inspect ${imageRef}`, {
@@ -52,19 +50,14 @@ export async function getImageDigestAndName(
       return extractDigestFromSinglePlatform(manifest, imageRef);
     }
   } catch (error: any) {
-    throw new Error(
-      `Failed to get image digest for ${imageRef}: ${error.message}`,
-    );
+    throw new Error(`Failed to get image digest for ${imageRef}: ${error.message}`);
   }
 }
 
 /**
  * Extract digest from multi-platform image index
  */
-function extractDigestFromMultiPlatform(
-  manifest: Manifest,
-  imageRef: string,
-): ImageDigestResult {
+function extractDigestFromMultiPlatform(manifest: Manifest, imageRef: string): ImageDigestResult {
   if (!manifest.manifests) {
     throw new Error(`Invalid manifest for ${imageRef}: no manifests found`);
   }
@@ -223,7 +216,7 @@ function extractRegistryName(imageRef: string): string {
   }
 
   // Prefix with docker.io/ if no registry is provided
-  if ([...name].filter(c => c === "/").length === 1) {
+  if ([...name].filter((c) => c === "/").length === 1) {
     name = `docker.io/${name}`;
   }
 
@@ -234,10 +227,7 @@ function extractRegistryName(imageRef: string): string {
 /**
  * Create platform error message
  */
-function createPlatformErrorMessage(
-  imageRef: string,
-  platforms: string[],
-): Error {
+function createPlatformErrorMessage(imageRef: string, platforms: string[]): Error {
   const errorMsg = `ecloud requires linux/amd64 images for TEE deployment.
 
 Image: ${imageRef}

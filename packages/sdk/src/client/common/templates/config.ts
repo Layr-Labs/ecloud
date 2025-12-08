@@ -65,9 +65,7 @@ export function getTemplateURLs(
   // Language gate - only enforce if Languages array is populated
   if (fw.languages && fw.languages.length > 0) {
     if (!fw.languages.includes(language)) {
-      throw new Error(
-        `Language ${language} not available for framework ${framework}`,
-      );
+      throw new Error(`Language ${language} not available for framework ${framework}`);
     }
   }
 

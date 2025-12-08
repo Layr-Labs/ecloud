@@ -39,19 +39,17 @@ const ENVIRONMENTS: Record<string, Omit<EnvironmentConfig, "chainID">> = {
     name: "sepolia",
     build: "dev",
     appControllerAddress: "0xa86DC1C47cb2518327fB4f9A1627F51966c83B92",
-    permissionControllerAddress:
-      ChainAddresses[SEPOLIA_CHAIN_ID].PermissionController,
+    permissionControllerAddress: ChainAddresses[SEPOLIA_CHAIN_ID].PermissionController,
     erc7702DelegatorAddress: CommonAddresses.ERC7702Delegator,
     kmsServerURL: "http://10.128.0.57:8080",
     userApiServerURL: "https://userapi-compute-sepolia-dev.eigencloud.xyz",
     defaultRPCURL: "https://ethereum-sepolia-rpc.publicnode.com",
   },
-  "sepolia": {
+  sepolia: {
     name: "sepolia",
     build: "prod",
     appControllerAddress: "0x0dd810a6ffba6a9820a10d97b659f07d8d23d4E2",
-    permissionControllerAddress:
-      ChainAddresses[SEPOLIA_CHAIN_ID].PermissionController,
+    permissionControllerAddress: ChainAddresses[SEPOLIA_CHAIN_ID].PermissionController,
     erc7702DelegatorAddress: CommonAddresses.ERC7702Delegator,
     kmsServerURL: "http://10.128.15.203:8080",
     userApiServerURL: "https://userapi-compute-sepolia-prod.eigencloud.xyz",
@@ -61,8 +59,7 @@ const ENVIRONMENTS: Record<string, Omit<EnvironmentConfig, "chainID">> = {
     name: "mainnet-alpha",
     build: "prod",
     appControllerAddress: "0xc38d35Fc995e75342A21CBd6D770305b142Fbe67",
-    permissionControllerAddress:
-      ChainAddresses[MAINNET_CHAIN_ID].PermissionController,
+    permissionControllerAddress: ChainAddresses[MAINNET_CHAIN_ID].PermissionController,
     erc7702DelegatorAddress: CommonAddresses.ERC7702Delegator,
     kmsServerURL: "http://10.128.0.2:8080",
     userApiServerURL: "https://userapi-compute.eigencloud.xyz",
@@ -78,20 +75,17 @@ const CHAIN_ID_TO_ENVIRONMENT: Record<string, string> = {
 /**
  * Get environment configuration
  */
-export function getEnvironmentConfig(
-  environment: string,
-  chainID?: bigint,
-): EnvironmentConfig {
+export function getEnvironmentConfig(environment: string, chainID?: bigint): EnvironmentConfig {
   const env = ENVIRONMENTS[environment];
   if (!env) {
     throw new Error(`Unknown environment: ${environment}`);
   }
-  
+
   // Check if environment is available in current build
   if (!isEnvironmentAvailable(environment)) {
     throw new Error(
       `Environment ${environment} is not available in this build type. ` +
-      `Available environments: ${getAvailableEnvironments().join(", ")}`
+        `Available environments: ${getAvailableEnvironments().join(", ")}`,
     );
   }
 
@@ -99,9 +93,7 @@ export function getEnvironmentConfig(
   if (chainID) {
     const expectedEnv = CHAIN_ID_TO_ENVIRONMENT[chainID.toString()];
     if (expectedEnv && expectedEnv !== environment) {
-      throw new Error(
-        `Environment ${environment} does not match chain ID ${chainID}`,
-      );
+      throw new Error(`Environment ${environment} does not match chain ID ${chainID}`);
     }
   }
 
@@ -123,9 +115,9 @@ export function getEnvironmentConfig(
  * Get billing environment configuration
  * @param build - The build type ("dev" or "prod")
  */
-export function getBillingEnvironmentConfig(
-  build: "dev" | "prod",
-): { billingApiServerURL: string } {
+export function getBillingEnvironmentConfig(build: "dev" | "prod"): {
+  billingApiServerURL: string;
+} {
   const config = BILLING_ENVIRONMENTS[build];
   if (!config) {
     throw new Error(`Unknown billing environment: ${build}`);
@@ -136,9 +128,7 @@ export function getBillingEnvironmentConfig(
 /**
  * Detect environment from chain ID
  */
-export function detectEnvironmentFromChainID(
-  chainID: bigint,
-): string | undefined {
+export function detectEnvironmentFromChainID(chainID: bigint): string | undefined {
   return CHAIN_ID_TO_ENVIRONMENT[chainID.toString()];
 }
 
@@ -152,15 +142,14 @@ declare const BUILD_TYPE_BUILD_TIME: string | undefined;
 export function getBuildType(): "dev" | "prod" {
   // First check build-time constant (set by tsup define)
   // @ts-ignore - BUILD_TYPE_BUILD_TIME is injected at build time
-  const buildTimeType = typeof BUILD_TYPE_BUILD_TIME !== "undefined" 
-    ? BUILD_TYPE_BUILD_TIME?.toLowerCase() 
-    : undefined;
-  
+  const buildTimeType =
+    typeof BUILD_TYPE_BUILD_TIME !== "undefined" ? BUILD_TYPE_BUILD_TIME?.toLowerCase() : undefined;
+
   // Fall back to runtime environment variable
   const runtimeType = process.env.BUILD_TYPE?.toLowerCase();
-  
+
   const buildType = buildTimeType || runtimeType;
-  
+
   if (buildType === "dev") {
     return "dev";
   }
@@ -174,11 +163,11 @@ export function getBuildType(): "dev" | "prod" {
  */
 export function getAvailableEnvironments(): string[] {
   const buildType = getBuildType();
-  
+
   if (buildType === "dev") {
     return ["sepolia-dev"];
   }
-  
+
   // prod build
   return ["sepolia", "mainnet-alpha"];
 }

@@ -56,13 +56,7 @@ function findBinary(binaryName: string): string {
     }
 
     // Also check if we're in a monorepo structure
-    const sdkToolsPath = path.join(
-      currentDir,
-      "packages",
-      "sdk",
-      "tools",
-      binaryName,
-    );
+    const sdkToolsPath = path.join(currentDir, "packages", "sdk", "tools", binaryName);
     if (fs.existsSync(sdkToolsPath)) {
       return sdkToolsPath;
     }
@@ -116,13 +110,7 @@ export async function buildAndPushLayeredImage(
   options: BuildAndPushLayeredImageOptions,
   logger: Logger,
 ): Promise<string> {
-  const {
-    dockerfilePath,
-    targetImageRef,
-    logRedirect,
-    envFilePath,
-    environmentConfig,
-  } = options;
+  const { dockerfilePath, targetImageRef, logRedirect, envFilePath, environmentConfig } = options;
 
   // 1. Build base image from user's Dockerfile
   const baseImageTag = `ecloud-temp-${path.basename(dockerfilePath).toLowerCase()}`;
@@ -159,10 +147,7 @@ export async function layerRemoteImageIfNeeded(
   const docker = new Docker();
 
   // Check if image already has ecloud layering
-  const alreadyLayered = await checkIfImageAlreadyLayeredForECloud(
-    docker,
-    imageRef,
-  );
+  const alreadyLayered = await checkIfImageAlreadyLayeredForECloud(docker, imageRef);
   if (alreadyLayered) {
     logger.info("Image already has ecloud layering");
     return imageRef;
@@ -176,9 +161,7 @@ export async function layerRemoteImageIfNeeded(
   // TODO: Make this configurable via options
   const targetImageRef = `${imageRef}-layered`;
 
-  logger.info(
-    `Adding ecloud components to create ${targetImageRef} from ${imageRef}...`,
-  );
+  logger.info(`Adding ecloud components to create ${targetImageRef} from ${imageRef}...`);
   const layeredImageRef = await layerLocalImage(
     {
       docker,
@@ -208,19 +191,12 @@ async function layerLocalImage(
   },
   logger: Logger,
 ): Promise<string> {
-  const {
-    docker,
-    sourceImageRef,
-    targetImageRef,
-    logRedirect,
-    envFilePath,
-    environmentConfig,
-  } = options;
+  const { docker, sourceImageRef, targetImageRef, logRedirect, envFilePath, environmentConfig } =
+    options;
 
   // 1. Extract original command and user from source image
   const imageConfig = await extractImageConfig(docker, sourceImageRef);
-  const originalCmd =
-    imageConfig.cmd.length > 0 ? imageConfig.cmd : imageConfig.entrypoint;
+  const originalCmd = imageConfig.cmd.length > 0 ? imageConfig.cmd : imageConfig.entrypoint;
   const originalUser = imageConfig.user;
 
   // 2. Check if TLS is needed (check for DOMAIN in env file)
@@ -230,9 +206,7 @@ async function layerLocalImage(
     const domainMatch = envContent.match(/^DOMAIN=(.+)$/m);
     if (domainMatch && domainMatch[1] && domainMatch[1] !== "localhost") {
       includeTLS = true;
-      logger.debug(
-        `Found DOMAIN=${domainMatch[1]} in ${envFilePath}, including TLS components`,
-      );
+      logger.debug(`Found DOMAIN=${domainMatch[1]} in ${envFilePath}, including TLS components`);
     }
   }
 
@@ -262,16 +236,9 @@ async function layerLocalImage(
 
   try {
     // 5. Build layered image
-    logger.info(
-      `Building updated image with ecloud components for ${sourceImageRef}...`,
-    );
+    logger.info(`Building updated image with ecloud components for ${sourceImageRef}...`);
     const layeredDockerfilePath = path.join(tempDir, LAYERED_DOCKERFILE_NAME);
-    await buildDockerImage(
-      tempDir,
-      layeredDockerfilePath,
-      targetImageRef,
-      logger,
-    );
+    await buildDockerImage(tempDir, layeredDockerfilePath, targetImageRef, logger);
 
     // 6. Push to registry
     logger.info(`Publishing updated image to ${targetImageRef}...`);
@@ -295,9 +262,7 @@ async function setupLayeredBuildDirectory(
   includeTLS: boolean,
   // logger?: Logger
 ): Promise<string> {
-  const tempDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), LAYERED_BUILD_DIR_PREFIX),
-  );
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), LAYERED_BUILD_DIR_PREFIX));
 
   try {
     // Write layered Dockerfile
@@ -313,7 +278,7 @@ async function setupLayeredBuildDirectory(
     // Copy KMS keys
     const { signingKey } = getKMSKeysForEnvironment(
       environmentConfig.name,
-      environmentConfig.build
+      environmentConfig.build,
     );
 
     const signingKeyPath = path.join(tempDir, KMS_SIGNING_KEY_NAME);

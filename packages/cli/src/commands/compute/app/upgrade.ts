@@ -52,8 +52,7 @@ export default class AppUpgrade extends Command {
     }),
     "instance-type": Flags.string({
       required: false,
-      description:
-        "Machine instance type to use e.g. g1-standard-4t, g1-standard-8t",
+      description: "Machine instance type to use e.g. g1-standard-4t, g1-standard-8t",
       env: "ECLOUD_INSTANCE_TYPE",
     }),
   };
@@ -81,10 +80,7 @@ export default class AppUpgrade extends Command {
     const buildFromDockerfile = dockerfilePath !== "";
 
     // 3. Get image reference interactively (context-aware)
-    const imageRef = await getImageReferenceInteractive(
-      flags["image-ref"],
-      buildFromDockerfile
-    );
+    const imageRef = await getImageReferenceInteractive(flags["image-ref"], buildFromDockerfile);
 
     // 4. Get env file path interactively
     const envFilePath = await getEnvFileInteractive(flags["env-file"]);
@@ -92,11 +88,7 @@ export default class AppUpgrade extends Command {
     // 5. Get current instance type (best-effort, used as default)
     let currentInstanceType = "";
     try {
-      const userApiClient = new UserApiClient(
-        environmentConfig,
-        flags["private-key"],
-        rpcUrl
-      );
+      const userApiClient = new UserApiClient(environmentConfig, flags["private-key"], rpcUrl);
       const infos = await userApiClient.getInfos([appID], 1);
       if (infos.length > 0) {
         currentInstanceType = infos[0].machineType || "";
@@ -109,44 +101,42 @@ export default class AppUpgrade extends Command {
     const availableTypes = await fetchAvailableInstanceTypes(
       environmentConfig,
       flags["private-key"],
-      rpcUrl
+      rpcUrl,
     );
     const instanceType = await getInstanceTypeInteractive(
       flags["instance-type"],
       currentInstanceType,
-      availableTypes
+      availableTypes,
     );
 
     // 7. Get log visibility interactively
     const logSettings = await getLogSettingsInteractive(
-      flags["log-visibility"] as LogVisibility | undefined
+      flags["log-visibility"] as LogVisibility | undefined,
     );
 
     // 8. Estimate gas cost on mainnet and prompt for confirmation
     let gasParams: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } | undefined;
-    
+
     if (isMainnet(environmentConfig)) {
       const chain = mainnet;
       const publicClient = createPublicClient({
         chain,
         transport: http(rpcUrl),
       });
-      
+
       // Get current gas prices for estimation
       const fees = await publicClient.estimateFeesPerGas();
       // Upgrade typically has 1-2 executions in the batch
       const estimatedGas = BigInt(250000); // Conservative estimate for upgrade batch
       const maxCostWei = estimatedGas * fees.maxFeePerGas;
       const maxCostEth = formatETH(maxCostWei);
-      
-      const confirmed = await confirm(
-        `This upgrade will cost up to ${maxCostEth} ETH. Continue?`
-      );
+
+      const confirmed = await confirm(`This upgrade will cost up to ${maxCostEth} ETH. Continue?`);
       if (!confirmed) {
         this.log(`\n${chalk.gray(`Upgrade cancelled`)}`);
         return;
       }
-      
+
       gasParams = {
         maxFeePerGas: fees.maxFeePerGas,
         maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
@@ -171,7 +161,7 @@ export default class AppUpgrade extends Command {
       this.log(`\n${chalk.gray(`Upgrade failed`)}`);
     } else {
       this.log(
-        `\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${res.appID}, image: ${res.imageRef})`)}`)}`
+        `\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${res.appID}, image: ${res.imageRef})`)}`)}`,
       );
     }
   }
@@ -183,14 +173,10 @@ export default class AppUpgrade extends Command {
 async function fetchAvailableInstanceTypes(
   environmentConfig: any,
   privateKey?: string,
-  rpcUrl?: string
+  rpcUrl?: string,
 ): Promise<Array<{ sku: string; description: string }>> {
   try {
-    const userApiClient = new UserApiClient(
-      environmentConfig,
-      privateKey,
-      rpcUrl
-    );
+    const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl);
 
     const skuList = await userApiClient.getSKUs();
     if (skuList.skus.length === 0) {

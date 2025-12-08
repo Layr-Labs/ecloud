@@ -1,8 +1,8 @@
 import { Command, Args } from "@oclif/core";
 import { createAppClient } from "../../../client";
 import { commonFlags } from "../../../flags";
-import { 
-  getEnvironmentConfig, 
+import {
+  getEnvironmentConfig,
   estimateTransactionGas,
   encodeStopAppData,
   isMainnet,
@@ -32,23 +32,21 @@ export default class AppLifecycleStop extends Command {
     // Get environment config
     const environment = flags.environment || "sepolia";
     const environmentConfig = getEnvironmentConfig(environment);
-  
+
     // Get RPC URL (needed for contract queries and authentication)
     const rpcUrl = flags.rpcUrl || environmentConfig.defaultRPCURL;
 
     // Get private key for gas estimation
-    const privateKey = flags["private-key"] || await getPrivateKeyInteractive(environment);
-    
+    const privateKey = flags["private-key"] || (await getPrivateKeyInteractive(environment));
+
     // Resolve app ID (prompt if not provided)
-    const appId = await getOrPromptAppID(
-      {
-        appID: args["app-id"],
-        environment: flags["environment"]!,
-        privateKey,
-        rpcUrl,
-        action: "stop",
-      }
-    );
+    const appId = await getOrPromptAppID({
+      appID: args["app-id"],
+      environment: flags["environment"]!,
+      privateKey,
+      rpcUrl,
+      action: "stop",
+    });
 
     // Estimate gas cost
     const callData = encodeStopAppData(appId as `0x${string}`);
@@ -62,9 +60,7 @@ export default class AppLifecycleStop extends Command {
 
     // On mainnet, prompt for confirmation with cost
     if (isMainnet(environmentConfig)) {
-      const confirmed = await confirm(
-        `This will cost up to ${estimate.maxCostEth} ETH. Continue?`
-      );
+      const confirmed = await confirm(`This will cost up to ${estimate.maxCostEth} ETH. Continue?`);
       if (!confirmed) {
         this.log(`\n${chalk.gray(`Stop cancelled`)}`);
         return;
@@ -85,4 +81,3 @@ export default class AppLifecycleStop extends Command {
     }
   }
 }
-
