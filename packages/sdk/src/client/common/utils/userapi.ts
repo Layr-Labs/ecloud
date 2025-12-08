@@ -7,9 +7,8 @@ import FormData from "form-data";
 import { Address, Hex, createPublicClient, http } from "viem";
 import { calculatePermissionSignature } from "./auth";
 import { privateKeyToAccount } from "viem/accounts";
-import { sepolia, mainnet } from "viem/chains";
 import { EnvironmentConfig } from "../types";
-import { addHexPrefix, stripHexPrefix } from "./helpers";
+import { addHexPrefix, stripHexPrefix, getChainFromID } from "./helpers";
 
 export interface AppInfo {
   address: Address;
@@ -317,11 +316,8 @@ export class UserApiClient {
       throw new Error("RPC URL required for authenticated requests");
     }
 
-    // Get chain from environment config
-    const chain =
-      this.config.chainID === 11155111n ? sepolia : this.config.chainID === 1n ? mainnet : sepolia;
+    const chain = getChainFromID(this.config.chainID);
 
-    // Create public client to call contract
     const publicClient = createPublicClient({
       chain,
       transport: http(this.rpcUrl),

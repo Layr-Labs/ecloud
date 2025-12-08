@@ -3,9 +3,9 @@
  */
 
 import { Address, createPublicClient, http, Hex } from "viem";
-import { sepolia, mainnet } from "viem/chains";
 import { EnvironmentConfig, Logger } from "../types";
 import PermissionControllerABI from "../abis/PermissionController.json";
+import { getChainFromID } from "./helpers";
 
 // Permission constants (matching Go version)
 const AnyoneCanCallAddress = "0x493219d9949348178af1f58740655951a8cd110c" as Address;
@@ -23,13 +23,7 @@ export async function checkAppLogPermission(
   appAddress: Address,
   logger: Logger,
 ): Promise<boolean> {
-  // Map chainID to viem Chain
-  const chain =
-    preflightCtx.environmentConfig.chainID === 11155111n
-      ? sepolia
-      : preflightCtx.environmentConfig.chainID === 1n
-        ? mainnet
-        : sepolia; // Default to sepolia if unknown
+  const chain = getChainFromID(preflightCtx.environmentConfig.chainID);
 
   const publicClient = createPublicClient({
     chain,
