@@ -133,7 +133,7 @@ export default class AppUpgrade extends Command {
 
     const { prepared, gasEstimate } = await prepareUpgrade(
       {
-        appID,
+        appId: appID,
         privateKey,
         rpcUrl,
         environment,

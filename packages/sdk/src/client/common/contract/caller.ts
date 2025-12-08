@@ -145,8 +145,6 @@ export interface PreparedDeployBatch {
   publicClient: PublicClient;
   /** Environment configuration */
   environmentConfig: EnvironmentConfig;
-  /** Private key in hex format */
-  privateKeyHex: Hex;
 }
 
 /**
@@ -163,8 +161,6 @@ export interface PreparedUpgradeBatch {
   publicClient: PublicClient;
   /** Environment configuration */
   environmentConfig: EnvironmentConfig;
-  /** Private key in hex format */
-  privateKeyHex: Hex;
 }
 
 /**
@@ -329,7 +325,6 @@ export async function prepareDeployBatch(
     walletClient,
     publicClient,
     environmentConfig,
-    privateKeyHex,
   };
 }
 
@@ -350,7 +345,6 @@ export async function executeDeployBatch(
       environmentConfig: prepared.environmentConfig,
       executions: prepared.executions,
       pendingMessage,
-      privateKey: prepared.privateKeyHex,
       gas,
     },
     logger,
@@ -521,7 +515,6 @@ export async function prepareUpgradeBatch(
     walletClient,
     publicClient,
     environmentConfig,
-    privateKeyHex,
   };
 }
 
@@ -546,7 +539,6 @@ export async function executeUpgradeBatch(
       environmentConfig: prepared.environmentConfig,
       executions: prepared.executions,
       pendingMessage,
-      privateKey: prepared.privateKeyHex,
       gas,
     },
     logger,

@@ -14,10 +14,8 @@ import {
   toBytes,
   concat,
 } from "viem";
-import { hashAuthorization } from "viem/utils";
-import { sign } from "viem/accounts";
 
-import type { WalletClient, PublicClient } from "viem";
+import type { WalletClient, PublicClient, SendTransactionParameters } from "viem";
 import { EnvironmentConfig, Logger } from "../types";
 
 import ERC7702DelegatorABI from "../abis/ERC7702Delegator.json";
@@ -83,7 +81,6 @@ export interface ExecuteBatchOptions {
     callData: Hex;
   }>;
   pendingMessage: string;
-  privateKey?: Hex; // Private key for signing raw hash (required for authorization signing)
   /** Optional gas params from estimation */
   gas?: {
     maxFeePerGas?: bigint;
@@ -119,15 +116,8 @@ export async function checkERC7702Delegation(
  * 3. Passing the right parameters to viem
  */
 export async function executeBatch(options: ExecuteBatchOptions, logger: Logger): Promise<Hex> {
-  const {
-    walletClient,
-    publicClient,
-    environmentConfig,
-    executions,
-    pendingMessage,
-    privateKey,
-    gas,
-  } = options;
+  const { walletClient, publicClient, environmentConfig, executions, pendingMessage, gas } =
+    options;
 
   const account = walletClient.account;
   if (!account) {
@@ -190,58 +180,25 @@ export async function executeBatch(options: ExecuteBatchOptions, logger: Logger)
   );
 
   // 4. Create authorization if needed
-  let authorizationList: Array<{
-    chainId: number;
-    address: Address;
-    nonce: number;
-    r: Hex;
-    s: Hex;
-    yParity: number;
-  }> = [];
+  let authorizationList: Awaited<ReturnType<typeof walletClient.signAuthorization>>[] = [];
 
   if (!isDelegated) {
-    if (!privateKey) {
-      throw new Error("Private key required for signing authorization");
-    }
-
     const transactionNonce = await publicClient.getTransactionCount({
       address: account.address,
       blockTag: "pending",
     });
 
     const chainId = await publicClient.getChainId();
-    const authorizationNonce = BigInt(transactionNonce) + 1n;
+    const authorizationNonce = transactionNonce + 1;
 
-    const authorization = {
+    const signedAuthorization = await walletClient.signAuthorization({
+      account,
+      contractAddress: environmentConfig.erc7702DelegatorAddress as Address,
       chainId: Number(chainId),
-      address: environmentConfig.erc7702DelegatorAddress as Address,
       nonce: authorizationNonce,
-    };
-
-    const sighash = hashAuthorization({
-      chainId: authorization.chainId,
-      contractAddress: authorization.address,
-      nonce: Number(authorization.nonce),
     });
 
-    const sig = await sign({
-      hash: sighash,
-      privateKey,
-    });
-
-    const v = Number(sig.v);
-    const yParity = v === 27 ? 0 : 1;
-
-    authorizationList = [
-      {
-        chainId: authorization.chainId,
-        address: authorization.address,
-        nonce: Number(authorization.nonce),
-        r: sig.r as Hex,
-        s: sig.s as Hex,
-        yParity,
-      },
-    ];
+    authorizationList = [signedAuthorization];
   }
 
   // 5. Show pending message
@@ -249,7 +206,7 @@ export async function executeBatch(options: ExecuteBatchOptions, logger: Logger)
     logger.info(pendingMessage);
   }
 
-  const txRequest: any = {
+  const txRequest: SendTransactionParameters = {
     account: walletClient.account!,
     chain,
     to: account.address,
