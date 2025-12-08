@@ -4,7 +4,6 @@
  * This module handles on-chain contract interactions using viem
  */
 
-import { sepolia, mainnet } from "viem/chains";
 import { privateKeyToAccount } from "viem/accounts";
 import { executeBatch } from "./eip7702";
 import {
@@ -19,7 +18,7 @@ import {
 import { hashAuthorization } from "viem/utils";
 import { sign } from "viem/accounts";
 
-import { addHexPrefix } from "../utils";
+import { addHexPrefix, getChainFromID } from "../utils";
 
 import { EnvironmentConfig, Logger } from "../types";
 import { Release } from "../types";
@@ -82,12 +81,7 @@ export async function estimateTransactionGas(options: EstimateGasOptions): Promi
   const privateKeyHex = addHexPrefix(privateKey) as Hex;
   const account = privateKeyToAccount(privateKeyHex);
 
-  const chain =
-    environmentConfig.chainID === 11155111n
-      ? sepolia
-      : environmentConfig.chainID === 1n
-        ? mainnet
-        : sepolia;
+  const chain = getChainFromID(environmentConfig.chainID);
 
   const publicClient = createPublicClient({
     chain,
@@ -146,13 +140,7 @@ export async function calculateAppID(
   const privateKeyHex = addHexPrefix(privateKey);
   const account = privateKeyToAccount(privateKeyHex);
 
-  // Map chainID to viem Chain
-  const chain =
-    environmentConfig.chainID === 11155111n
-      ? sepolia
-      : environmentConfig.chainID === 1n
-        ? mainnet
-        : sepolia; // Default to sepolia if unknown
+  const chain = getChainFromID(environmentConfig.chainID);
 
   const publicClient = createPublicClient({
     chain,
@@ -191,13 +179,7 @@ export async function deployApp(
   const privateKeyHex = addHexPrefix(privateKey) as Hex;
   const account = privateKeyToAccount(privateKeyHex);
 
-  // Map chainID to viem Chain
-  const chain =
-    environmentConfig.chainID === 11155111n
-      ? sepolia
-      : environmentConfig.chainID === 1n
-        ? mainnet
-        : sepolia; // Default to sepolia if unknown
+  const chain = getChainFromID(environmentConfig.chainID);
 
   const publicClient = createPublicClient({
     chain,
@@ -348,13 +330,7 @@ export async function upgradeApp(options: UpgradeAppOptions, logger: Logger): Pr
   const privateKeyHex = addHexPrefix(privateKey) as Hex;
   const account = privateKeyToAccount(privateKeyHex);
 
-  // Map chainID to viem Chain
-  const chain =
-    environmentConfig.chainID === 11155111n
-      ? sepolia
-      : environmentConfig.chainID === 1n
-        ? mainnet
-        : sepolia; // Default to sepolia if unknown
+  const chain = getChainFromID(environmentConfig.chainID);
 
   const publicClient = createPublicClient({
     chain,
@@ -499,12 +475,7 @@ export async function sendAndWaitForTransaction(
   const privateKeyHex = addHexPrefix(privateKey) as Hex;
   const account = privateKeyToAccount(privateKeyHex);
 
-  const chain =
-    environmentConfig.chainID === 11155111n
-      ? sepolia
-      : environmentConfig.chainID === 1n
-        ? mainnet
-        : sepolia;
+  const chain = getChainFromID(environmentConfig.chainID);
 
   const publicClient = createPublicClient({
     chain,
@@ -616,12 +587,7 @@ export async function getActiveAppCount(
   environmentConfig: EnvironmentConfig,
   user: Address,
 ): Promise<number> {
-  const chain =
-    environmentConfig.chainID === 11155111n
-      ? sepolia
-      : environmentConfig.chainID === 1n
-        ? mainnet
-        : sepolia;
+  const chain = getChainFromID(environmentConfig.chainID);
 
   const publicClient = createPublicClient({
     chain,
@@ -646,12 +612,7 @@ export async function getMaxActiveAppsPerUser(
   environmentConfig: EnvironmentConfig,
   user: Address,
 ): Promise<number> {
-  const chain =
-    environmentConfig.chainID === 11155111n
-      ? sepolia
-      : environmentConfig.chainID === 1n
-        ? mainnet
-        : sepolia;
+  const chain = getChainFromID(environmentConfig.chainID);
 
   const publicClient = createPublicClient({
     chain,
@@ -683,12 +644,7 @@ export async function getAppsByCreator(
   offset: bigint,
   limit: bigint,
 ): Promise<{ apps: Address[]; appConfigs: AppConfig[] }> {
-  const chain =
-    environmentConfig.chainID === 11155111n
-      ? sepolia
-      : environmentConfig.chainID === 1n
-        ? mainnet
-        : sepolia;
+  const chain = getChainFromID(environmentConfig.chainID);
 
   const publicClient = createPublicClient({
     chain,
@@ -719,12 +675,7 @@ export async function getAppsByDeveloper(
   offset: bigint,
   limit: bigint,
 ): Promise<{ apps: Address[]; appConfigs: AppConfig[] }> {
-  const chain =
-    environmentConfig.chainID === 11155111n
-      ? sepolia
-      : environmentConfig.chainID === 1n
-        ? mainnet
-        : sepolia;
+  const chain = getChainFromID(environmentConfig.chainID);
 
   const publicClient = createPublicClient({
     chain,
@@ -830,12 +781,7 @@ export async function undelegate(
   const privateKeyHex = addHexPrefix(privateKey);
   const account = privateKeyToAccount(privateKeyHex);
 
-  const chain =
-    environmentConfig.chainID === 11155111n
-      ? sepolia
-      : environmentConfig.chainID === 1n
-        ? mainnet
-        : sepolia;
+  const chain = getChainFromID(environmentConfig.chainID);
 
   const publicClient = createPublicClient({
     chain,

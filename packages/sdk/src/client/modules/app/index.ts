@@ -57,9 +57,7 @@ export function encodeTerminateAppData(appId: AppId): `0x${string}` {
 
 export interface AppModule {
   create: (opts: CreateAppOpts) => Promise<void>;
-  deploy: (
-    opts: DeployAppOpts,
-  ) => Promise<{
+  deploy: (opts: DeployAppOpts) => Promise<{
     appID: AppId;
     tx: `0x${string}`;
     appName: string;
