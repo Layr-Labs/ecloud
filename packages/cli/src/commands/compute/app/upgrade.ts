@@ -1,5 +1,5 @@
 import { Command, Args, Flags } from "@oclif/core";
-import { getEnvironmentConfig, UserApiClient, formatETH } from "@layr-labs/ecloud-sdk";
+import { getEnvironmentConfig, UserApiClient, formatETH, isMainnet } from "@layr-labs/ecloud-sdk";
 import { createAppClient } from "../../../client";
 import { commonFlags } from "../../../flags";
 import {
@@ -123,10 +123,9 @@ export default class AppUpgrade extends Command {
     );
 
     // 8. Estimate gas cost on mainnet and prompt for confirmation
-    const isMainnet = environmentConfig.chainID === BigInt(1);
     let gasParams: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } | undefined;
     
-    if (isMainnet) {
+    if (isMainnet(environmentConfig)) {
       const chain = mainnet;
       const publicClient = createPublicClient({
         chain,

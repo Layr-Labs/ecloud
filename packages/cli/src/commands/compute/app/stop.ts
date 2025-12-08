@@ -5,6 +5,7 @@ import {
   getEnvironmentConfig, 
   estimateTransactionGas,
   encodeStopAppData,
+  isMainnet,
 } from "@layr-labs/ecloud-sdk";
 import { getOrPromptAppID, confirm } from "../../../utils/prompts";
 import { getPrivateKeyInteractive } from "../../../utils/prompts";
@@ -60,8 +61,7 @@ export default class AppLifecycleStop extends Command {
     });
 
     // On mainnet, prompt for confirmation with cost
-    const isMainnet = environmentConfig.chainID === 1n;
-    if (isMainnet) {
+    if (isMainnet(environmentConfig)) {
       const confirmed = await confirm(
         `This will cost up to ${estimate.maxCostEth} ETH. Continue?`
       );

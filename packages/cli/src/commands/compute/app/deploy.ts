@@ -1,5 +1,5 @@
 import { Command, Flags } from "@oclif/core";
-import { getEnvironmentConfig, UserApiClient, formatETH } from "@layr-labs/ecloud-sdk";
+import { getEnvironmentConfig, UserApiClient, formatETH, isMainnet } from "@layr-labs/ecloud-sdk";
 import { createPublicClient, http } from "viem";
 import { mainnet } from "viem/chains";
 import { createAppClient } from "../../../client";
@@ -122,10 +122,9 @@ export default class AppDeploy extends Command {
     }
 
     // 8. Estimate gas cost on mainnet and prompt for confirmation
-    const isMainnet = environmentConfig.chainID === BigInt(1);
     let gasParams: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } | undefined;
     
-    if (isMainnet) {
+    if (isMainnet(environmentConfig)) {
       const chain = mainnet;
       const publicClient = createPublicClient({
         chain,

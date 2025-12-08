@@ -30,7 +30,7 @@ export {
 export { createBillingModule, type BillingModuleConfig } from "./modules/billing";
 
 // Export environment config utilities
-export { getEnvironmentConfig, getAvailableEnvironments, isEnvironmentAvailable, getBuildType } from "./common/config/environment";
+export { getEnvironmentConfig, getAvailableEnvironments, isEnvironmentAvailable, getBuildType, isMainnet } from "./common/config/environment";
 export { isSubscriptionActive } from "./common/utils/billing";
 
 // Export global config functions

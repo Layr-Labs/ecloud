@@ -5,6 +5,7 @@ import {
   getEnvironmentConfig, 
   estimateTransactionGas,
   encodeTerminateAppData,
+  isMainnet,
 } from "@layr-labs/ecloud-sdk";
 import { getOrPromptAppID, confirm } from "../../../utils/prompts";
 import { getPrivateKeyInteractive } from "../../../utils/prompts";
@@ -67,8 +68,7 @@ export default class AppLifecycleTerminate extends Command {
 
     // Ask for confirmation unless forced
     if (!flags.force) {
-      const isMainnet = environmentConfig.chainID === BigInt(1);
-      const costInfo = isMainnet ? ` (cost: up to ${estimate.maxCostEth} ETH)` : "";
+      const costInfo = isMainnet(environmentConfig) ? ` (cost: up to ${estimate.maxCostEth} ETH)` : "";
       const confirmed = await confirm(`⚠️  Permanently destroy app ${appId}${costInfo}?`);
       if (!confirmed) {
         this.log(`\n${chalk.gray(`Termination aborted`)}`);
