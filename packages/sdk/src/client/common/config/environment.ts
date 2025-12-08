@@ -189,3 +189,10 @@ export function getAvailableEnvironments(): string[] {
 export function isEnvironmentAvailable(environment: string): boolean {
   return getAvailableEnvironments().includes(environment);
 }
+
+/**
+ * Check if environment is mainnet (chain ID 1)
+ */
+export function isMainnet(environmentConfig: EnvironmentConfig): boolean {
+  return environmentConfig.chainID === BigInt(MAINNET_CHAIN_ID);
+}

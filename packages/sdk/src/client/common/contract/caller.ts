@@ -19,7 +19,6 @@ import {
 import { hashAuthorization } from "viem/utils";
 import { sign } from "viem/accounts";
 
-import { confirm } from "../utils/prompts";
 import { addHexPrefix } from "../utils";
 
 import { EnvironmentConfig, Logger } from "../types";
@@ -28,8 +27,99 @@ import { getAppName } from "../registry/appNames";
 
 import AppControllerABI from "../abis/AppController.json";
 import PermissionControllerABI from "../abis/PermissionController.json";
-import chalk from "chalk";
 
+/**
+ * Gas estimation result
+ */
+export interface GasEstimate {
+  /** Estimated gas limit for the transaction */
+  gasLimit: bigint;
+  /** Max fee per gas (EIP-1559) */
+  maxFeePerGas: bigint;
+  /** Max priority fee per gas (EIP-1559) */
+  maxPriorityFeePerGas: bigint;
+  /** Maximum cost in wei (gasLimit * maxFeePerGas) */
+  maxCostWei: bigint;
+  /** Maximum cost formatted as ETH string */
+  maxCostEth: string;
+}
+
+/**
+ * Options for estimating transaction gas
+ */
+export interface EstimateGasOptions {
+  privateKey: string;
+  rpcUrl: string;
+  environmentConfig: EnvironmentConfig;
+  to: Address;
+  data: Hex;
+  value?: bigint;
+}
+
+/**
+ * Format Wei to ETH string
+ */
+export function formatETH(wei: bigint): string {
+  const eth = Number(wei) / 1e18;
+  const costStr = eth.toFixed(6);
+  // Remove trailing zeros and decimal point if needed
+  const trimmed = costStr.replace(/\.?0+$/, "");
+  // If result is "0", show "<0.000001" for small amounts
+  if (trimmed === "0" && wei > 0n) {
+    return "<0.000001";
+  }
+  return trimmed;
+}
+
+/**
+ * Estimate gas cost for a transaction
+ * 
+ * Use this to get cost estimate before prompting user for confirmation.
+ */
+export async function estimateTransactionGas(
+  options: EstimateGasOptions,
+): Promise<GasEstimate> {
+  const { privateKey, rpcUrl, environmentConfig, to, data, value = 0n } = options;
+
+  const privateKeyHex = addHexPrefix(privateKey) as Hex;
+  const account = privateKeyToAccount(privateKeyHex);
+
+  const chain =
+    environmentConfig.chainID === 11155111n
+      ? sepolia
+      : environmentConfig.chainID === 1n
+        ? mainnet
+        : sepolia;
+
+  const publicClient = createPublicClient({
+    chain,
+    transport: http(rpcUrl),
+  });
+
+  // Get current gas prices
+  const fees = await publicClient.estimateFeesPerGas();
+
+  // Estimate gas for the transaction
+  const gasLimit = await publicClient.estimateGas({
+    account: account.address,
+    to,
+    data,
+    value,
+  });
+
+  const maxFeePerGas = fees.maxFeePerGas;
+  const maxPriorityFeePerGas = fees.maxPriorityFeePerGas;
+  const maxCostWei = gasLimit * maxFeePerGas;
+  const maxCostEth = formatETH(maxCostWei);
+
+  return {
+    gasLimit,
+    maxFeePerGas,
+    maxPriorityFeePerGas,
+    maxCostWei,
+    maxCostEth,
+  };
+}
 
 export interface DeployAppOptions {
   privateKey: string; // Will be converted to Hex
@@ -39,6 +129,11 @@ export interface DeployAppOptions {
   release: Release;
   publicLogs: boolean;
   imageRef: string;
+  /** Optional gas params from estimation */
+  gas?: {
+    maxFeePerGas?: bigint;
+    maxPriorityFeePerGas?: bigint;
+  };
 }
 
 /**
@@ -102,7 +197,7 @@ export async function deployApp(
     salt,
     release,
     publicLogs,
-    imageRef,
+    gas,
   } = options;
 
   const privateKeyHex = addHexPrefix(privateKey) as Hex;
@@ -220,7 +315,6 @@ export async function deployApp(
   }
 
   // 6. Execute batch via EIP-7702 delegator
-  const confirmationPrompt = `Deploy new app with image: ${imageRef}`;
   const pendingMessage = "Deploying new app...";
 
   const txHash = await executeBatch(
@@ -229,10 +323,9 @@ export async function deployApp(
       publicClient,
       environmentConfig,
       executions,
-      needsConfirmation: environmentConfig.chainID === 1n, // Mainnet needs confirmation
-      confirmationPrompt,
       pendingMessage,
       privateKey: privateKeyHex, // Pass private key for manual transaction signing
+      gas,
     },
     logger,
   );
@@ -249,6 +342,11 @@ export interface UpgradeAppOptions {
   publicLogs: boolean;
   needsPermissionChange: boolean;
   imageRef: string;
+  /** Optional gas params from estimation */
+  gas?: {
+    maxFeePerGas?: bigint;
+    maxPriorityFeePerGas?: bigint;
+  };
 }
 
 /**
@@ -266,7 +364,7 @@ export async function upgradeApp(
     release,
     publicLogs,
     needsPermissionChange,
-    imageRef,
+    gas,
   } = options;
 
   const privateKeyHex = addHexPrefix(privateKey) as Hex;
@@ -365,15 +463,11 @@ export async function upgradeApp(
   }
 
   // 4. Execute batch via EIP-7702 delegator
-  // Get app name for confirmation prompt
   const appName = getAppName(environmentConfig.name, appID);
-  let confirmationPrompt = "Upgrade app";
   let pendingMessage = "Upgrading app...";
   if (appName !== "") {
-    confirmationPrompt = `${confirmationPrompt} '${appName}'`;
     pendingMessage = `Upgrading app '${appName}'...`;
   }
-  confirmationPrompt = `${confirmationPrompt} with image: ${imageRef}`;
 
   const txHash = await executeBatch(
     {
@@ -381,10 +475,9 @@ export async function upgradeApp(
       publicClient,
       environmentConfig,
       executions,
-      needsConfirmation: environmentConfig.chainID === 1n, // Mainnet needs confirmation
-      confirmationPrompt,
       pendingMessage,
       privateKey: privateKeyHex, // Pass private key for manual transaction signing
+      gas,
     },
     logger,
   );
@@ -402,16 +495,19 @@ export interface SendTransactionOptions {
   to: Address;
   data: Hex;
   value?: bigint;
-  needsConfirmation: boolean;
-  confirmationPrompt: string;
   pendingMessage: string;
   txDescription: string;
+  /** Optional gas params from estimation */
+  gas?: {
+    maxFeePerGas?: bigint;
+    maxPriorityFeePerGas?: bigint;
+  };
 }
 
 export async function sendAndWaitForTransaction(
   options: SendTransactionOptions,
   logger: Logger,
-): Promise<Hex | false> {
+): Promise<Hex> {
   const {
     privateKey,
     rpcUrl,
@@ -419,10 +515,9 @@ export async function sendAndWaitForTransaction(
     to,
     data,
     value = 0n,
-    needsConfirmation,
-    confirmationPrompt,
     pendingMessage,
     txDescription,
+    gas,
   } = options;
 
   const privateKeyHex = addHexPrefix(privateKey) as Hex;
@@ -445,47 +540,19 @@ export async function sendAndWaitForTransaction(
     transport: http(rpcUrl),
   });
 
-  // Handle confirmation if needed
-  if (needsConfirmation) {
-    try {
-      const fees = await publicClient.estimateFeesPerGas();
-      const gasEstimate = await publicClient.estimateGas({
-        account: account.address,
-        to,
-        data,
-        value,
-      });
-      const maxCostWei = gasEstimate * fees.maxFeePerGas;
-      const costEth = formatETH(maxCostWei);
-
-      // place an empty line for tidier output
-      logger.info("");
-      
-      // Interactive confirmation prompt
-      if (!(await confirm(`${confirmationPrompt} ${chalk.reset(`on ${environmentConfig.name} (max cost: ${costEth} ETH)`)}`))) {
-        return false;
-      }
-    } catch (error: any) {
-      // Try to parse custom contract errors
-      const parsedErr = parseEstimateGasError(error, environmentConfig);
-      if (parsedErr) {
-        throw parsedErr;
-      }
-      logger.warn(`Could not estimate cost for confirmation: ${error}`);
-    }
-  }
-
   // Show pending message if provided
   if (pendingMessage) {
     logger.info(`\n${pendingMessage}`);
   }
 
-  // Send transaction
+  // Send transaction with optional gas params
   const hash = await walletClient.sendTransaction({
     account,
     to,
     data,
     value,
+    ...(gas?.maxFeePerGas && { maxFeePerGas: gas.maxFeePerGas }),
+    ...(gas?.maxPriorityFeePerGas && { maxPriorityFeePerGas: gas.maxPriorityFeePerGas }),
   });
 
   logger.info(`Transaction sent: ${hash}`);
@@ -508,7 +575,8 @@ export async function sendAndWaitForTransaction(
             abi: AppControllerABI,
             data: callError.data,
           });
-          revertReason = `${decoded.errorName}: ${JSON.stringify(decoded.args)}`;
+          const formattedError = formatAppControllerError(decoded);
+          revertReason = formattedError.message;
         } catch {
           revertReason = callError.message || "Unknown reason";
         }
@@ -528,53 +596,9 @@ export async function sendAndWaitForTransaction(
 }
 
 /**
- * Parse estimate gas errors to extract contract-specific error messages
- */
-function parseEstimateGasError(
-  err: any,
-  environmentConfig: EnvironmentConfig,
-): Error | null {
-  if (!err) {
-    return null;
-  }
-
-  // Check if error has data property (viem/ethers RPC errors)
-  const errorData = err.data || err.error?.data;
-  if (!errorData) {
-    return null;
-  }
-
-  // Convert data to hex string if needed
-  let hexData: string;
-  if (typeof errorData === "string") {
-    hexData = errorData;
-  } else if (Buffer.isBuffer(errorData)) {
-    hexData = `0x${errorData.toString("hex")}`;
-  } else {
-    return null;
-  }
-
-  if (hexData.length < 10) {
-    // Need at least 4 bytes (0x + 8 hex chars) for function selector
-    return null;
-  }
-
-  // Try to decode the error
-  try {
-    const decoded = decodeErrorResult({
-      abi: AppControllerABI,
-      data: hexData as Hex,
-    });
-    return formatAppControllerError(decoded);
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Format AppController errors to user-friendly messages
  */
-function formatAppControllerError(decoded: any): Error {
+function formatAppControllerError(decoded: { errorName: string; args?: readonly unknown[] }): Error {
   const errorName = decoded.errorName;
 
   switch (errorName) {
@@ -607,21 +631,6 @@ function formatAppControllerError(decoded: any): Error {
     default:
       return new Error(`contract error: ${errorName}`);
   }
-}
-
-/**
- * Format Wei to ETH string
- */
-function formatETH(wei: bigint): string {
-  const eth = Number(wei) / 1e18;
-  const costStr = eth.toFixed(6);
-  // Remove trailing zeros and decimal point if needed
-  const trimmed = costStr.replace(/\.?0+$/, "");
-  // If result is "0", show "<0.000001" for small amounts
-  if (trimmed === "0" && wei > 0n) {
-    return "<0.000001";
-  }
-  return trimmed;
 }
 
 /**
@@ -822,7 +831,6 @@ export async function suspend(
   });
 
   const pendingMessage = `Suspending ${apps.length} app(s)...`;
-  const confirmationPrompt = `Suspend ${apps.length} app(s) for account ${account}`;
 
   return sendAndWaitForTransaction(
     {
@@ -831,8 +839,6 @@ export async function suspend(
       environmentConfig,
       to: environmentConfig.appControllerAddress as Address,
       data: suspendData,
-      needsConfirmation: environmentConfig.chainID === 1n,
-      confirmationPrompt,
       pendingMessage,
       txDescription: "Suspend",
     },

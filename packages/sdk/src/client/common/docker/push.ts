@@ -15,6 +15,34 @@ import { promisify } from "util";
 const execAsync = promisify(exec);
 
 /**
+ * Extract hostname from a registry URL/string for safe comparison
+ */
+function extractHostname(registry: string): string {
+  let hostname = registry.replace(/^https?:\/\//, "");
+  hostname = hostname.split("/")[0];
+  hostname = hostname.split(":")[0];
+  return hostname.toLowerCase();
+}
+
+/**
+ * Check if a registry matches Docker Hub
+ */
+function isDockerHub(registry: string): boolean {
+  const hostname = extractHostname(registry);
+  return hostname === "docker.io" || 
+         hostname === "index.docker.io" || 
+         hostname === "registry-1.docker.io";
+}
+
+/**
+ * Check if a registry matches Google Container Registry
+ */
+function isGCR(registry: string): boolean {
+  const hostname = extractHostname(registry);
+  return hostname === "gcr.io" || hostname.endsWith(".gcr.io");
+}
+
+/**
  * Extract registry from image reference
  */
 export function extractRegistry(imageRef: string): string {
@@ -35,7 +63,7 @@ export function extractRegistry(imageRef: string): string {
   if (
     firstPart.includes(".") ||
     firstPart === "ghcr.io" ||
-    firstPart.includes("gcr.io")
+    isGCR(firstPart)
   ) {
     return firstPart;
   }
@@ -106,7 +134,7 @@ export async function getRegistryAuthConfig(
   }
 
   // For Docker Hub, try common variants
-  if (registry === "docker.io" || registry.includes("docker.io")) {
+  if (isDockerHub(registry)) {
     const dockerVariants = [
       "https://index.docker.io/v1/",
       "https://index.docker.io/v1",

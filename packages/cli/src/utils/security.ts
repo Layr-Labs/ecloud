@@ -1,12 +1,13 @@
 /**
- * Security Utilities
- *
- * Provides secure display and input handling for sensitive data like private keys
+ * Security utilities for CLI
+ * 
+ * Functions for securely displaying and handling sensitive content
+ * like private keys.
  */
 
-import { password, select } from "@inquirer/prompts";
 import { spawn, execSync } from "child_process";
 import { platform } from "os";
+import { select, password } from "@inquirer/prompts";
 
 /**
  * Display sensitive content using system pager (less/more)
@@ -64,19 +65,19 @@ export async function showPrivateKey(content: string): Promise<boolean> {
 function detectPager(): string | null {
   // Check PAGER env var first
   if (process.env.PAGER) {
-    const pager = process.env.PAGER.trim();
+    const pagerEnv = process.env.PAGER.trim();
     // Only allow simple command names without arguments or special characters
-    if (/^[a-zA-Z0-9_-]+$/.test(pager)) {
-      return pager;
+    if (/^[a-zA-Z0-9_-]+$/.test(pagerEnv)) {
+      return pagerEnv;
     }
   }
 
   // Try common pagers
   const pagers = ["less", "more"];
 
-  for (const pager of pagers) {
-    if (commandExists(pager)) {
-      return pager;
+  for (const pagerCmd of pagers) {
+    if (commandExists(pagerCmd)) {
+      return pagerCmd;
     }
   }
 
@@ -102,17 +103,17 @@ function runPager(pager: string, content: string): Promise<void> {
     });
 
     try {
-      const written = child.stdin.write(content);
+      const written = child.stdin!.write(content);
       if (!written) {
-        child.stdin.once("drain", () => {
+        child.stdin!.once("drain", () => {
           try {
-            child.stdin.end();
+            child.stdin!.end();
           } catch (err) {
             reject(err);
           }
         });
       } else {
-        child.stdin.end();
+        child.stdin!.end();
       }
     } catch (err) {
       reject(err);

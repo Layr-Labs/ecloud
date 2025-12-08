@@ -2,7 +2,6 @@
  * Main App namespace entry point
  */
 
-import chalk from "chalk";
 import { parseAbi, encodeFunctionData } from "viem";
 import { deploy as deployApp } from "./deploy";
 import { upgrade as upgradeApp } from "./upgrade";
@@ -27,6 +26,39 @@ const CONTROLLER_ABI = parseAbi([
   "function stopApp(address appId)",
   "function terminateApp(address appId)",
 ]);
+
+/**
+ * Encode start app call data for gas estimation
+ */
+export function encodeStartAppData(appId: AppId): `0x${string}` {
+  return encodeFunctionData({
+    abi: CONTROLLER_ABI,
+    functionName: "startApp",
+    args: [appId],
+  });
+}
+
+/**
+ * Encode stop app call data for gas estimation
+ */
+export function encodeStopAppData(appId: AppId): `0x${string}` {
+  return encodeFunctionData({
+    abi: CONTROLLER_ABI,
+    functionName: "stopApp",
+    args: [appId],
+  });
+}
+
+/**
+ * Encode terminate app call data for gas estimation
+ */
+export function encodeTerminateAppData(appId: AppId): `0x${string}` {
+  return encodeFunctionData({
+    abi: CONTROLLER_ABI,
+    functionName: "terminateApp",
+    args: [appId],
+  });
+}
 
 export interface AppModule {
   create: (opts: CreateAppOpts) => Promise<void>;
@@ -67,7 +99,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
     },
     // Write operations
     async deploy(opts) {
-      // Map DeployAppOpts to DeployOptions and call the deploy function
+      // Map DeployAppOpts to SDKDeployOptions and call the deploy function
       const result = await deployApp(
         {
           privateKey,
@@ -79,6 +111,8 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           envFilePath: opts.envFile,
           imageRef: opts.imageRef,
           logVisibility: opts.logVisibility,
+          profile: opts.profile,
+          gas: opts.gas,
         },
         logger,
       );
@@ -93,7 +127,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
     },
 
     async upgrade(appID, opts) {
-      // Map UpgradeAppOpts to UpgradeOptions and call the upgrade function
+      // Map UpgradeAppOpts to SDKUpgradeOptions and call the upgrade function
       const result = await upgradeApp(
         {
           appID: appID,
@@ -105,6 +139,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           envFilePath: opts.envFile,
           imageRef: opts.imageRef,
           logVisibility: opts.logVisibility,
+          gas: opts.gas,
         },
         logger,
       );
@@ -129,12 +164,9 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
     },
 
     async start(appId, opts) {
-      // Get app name for confirmation prompt (matches Go implementation)
       const appName = getAppName(ctx.environment, appId);
-      let confirmationPrompt = "Start app";
       let pendingMessage = "Starting app...";
       if (appName !== "") {
-        confirmationPrompt = `${confirmationPrompt} '${appName}'`;
         pendingMessage = `Starting app '${appName}'...`;
       }
 
@@ -151,10 +183,9 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           environmentConfig: environment,
           to: environment.appControllerAddress as `0x${string}`,
           data,
-          needsConfirmation: environment.chainID === 1n, // Mainnet needs confirmation
-          confirmationPrompt,
           pendingMessage,
           txDescription: "StartApp",
+          gas: opts?.gas,
         },
         logger,
       );
@@ -162,12 +193,9 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
     },
 
     async stop(appId, opts) {
-      // Get app name for confirmation prompt (matches Go implementation)
       const appName = getAppName(ctx.environment, appId);
-      let confirmationPrompt = "Stop app";
       let pendingMessage = "Stopping app...";
       if (appName !== "") {
-        confirmationPrompt = `${confirmationPrompt} '${appName}'`;
         pendingMessage = `Stopping app '${appName}'...`;
       }
 
@@ -184,10 +212,9 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           environmentConfig: environment,
           to: environment.appControllerAddress as `0x${string}`,
           data,
-          needsConfirmation: environment.chainID === 1n, // Mainnet needs confirmation
-          confirmationPrompt,
           pendingMessage,
           txDescription: "StopApp",
+          gas: opts?.gas,
         },
         logger,
       );
@@ -195,17 +222,11 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
     },
 
     async terminate(appId, opts) {
-      // Get app name for confirmation prompt (matches Go implementation)
       const appName = getAppName(ctx.environment, appId);
-      let confirmationPrompt = `⚠️  ${chalk.bold("Permanently")} ${chalk.reset("destroy app")}`;
       let pendingMessage = "Terminating app...";
       if (appName !== "") {
-        confirmationPrompt = `${confirmationPrompt} '${chalk.bold(appName)}'`;
         pendingMessage = `Terminating app '${appName}'...`;
       }
-
-      // Note: Terminate always needs confirmation unless force is specified
-      const force = opts?.force || false;
 
       const data = encodeFunctionData({
         abi: CONTROLLER_ABI,
@@ -220,10 +241,9 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           environmentConfig: environment,
           to: environment.appControllerAddress as `0x${string}`,
           data,
-          needsConfirmation: !force, // Terminate always needs confirmation unless force is specified
-          confirmationPrompt,
           pendingMessage,
           txDescription: "TerminateApp",
+          gas: opts?.gas,
         },
         logger,
       );

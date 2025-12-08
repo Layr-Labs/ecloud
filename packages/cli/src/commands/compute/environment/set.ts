@@ -1,12 +1,11 @@
 import { Args, Command, Flags } from "@oclif/core";
 import {
-  getEnvironmentInteractive,
   getEnvironmentConfig,
   getAvailableEnvironments,
   isEnvironmentAvailable,
   setDefaultEnvironment,
-  getDefaultEnvironment,
 } from "@layr-labs/ecloud-sdk";
+import { getEnvironmentInteractive } from "../../../utils/prompts";
 import { confirm } from "@inquirer/prompts";
 
 /**

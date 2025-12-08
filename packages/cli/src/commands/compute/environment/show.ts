@@ -26,7 +26,7 @@ export default class EnvironmentShow extends Command {
         console.log(
           "Run 'ecloud environment set <env>' to set your preferred deployment environment"
         );
-      } catch (err: any) {
+      } catch {
         console.log(`Active deployment environment: ${chalk.green(fallbackEnv)} (fallback default)`);
         console.log(
           "Run 'ecloud environment set <env>' to set your preferred deployment environment"
@@ -36,7 +36,7 @@ export default class EnvironmentShow extends Command {
       try {
         const envConfig = getEnvironmentConfig(defaultEnv);
         console.log(`Active deployment environment: ${chalk.green(envConfig.name)}`);
-      } catch (err: any) {
+      } catch {
         console.log(`Active deployment environment: ${chalk.green(defaultEnv)}`);
       }
     }

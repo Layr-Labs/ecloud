@@ -10,12 +10,12 @@ import {
   storePrivateKey,
   keyExists,
   getAddressFromPrivateKey,
-  displayWarning,
   getLegacyKeys,
   getLegacyPrivateKey,
   deleteLegacyPrivateKey,
   type LegacyKey,
 } from "@layr-labs/ecloud-sdk";
+import { displayWarning } from "../../utils/security";
 
 export default class AuthMigrate extends Command {
   static description = "Migrate a private key from eigenx-cli to ecloud";

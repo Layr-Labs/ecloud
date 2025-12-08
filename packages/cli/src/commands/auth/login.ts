@@ -9,15 +9,14 @@ import { confirm, select } from "@inquirer/prompts";
 import {
   storePrivateKey,
   keyExists,
-  getHiddenInput,
   validatePrivateKey,
   getAddressFromPrivateKey,
-  displayWarning,
   getLegacyKeys,
   getLegacyPrivateKey,
   deleteLegacyPrivateKey,
   type LegacyKey,
 } from "@layr-labs/ecloud-sdk";
+import { getHiddenInput, displayWarning } from "../../utils/security";
 
 export default class AuthLogin extends Command {
   static description = "Store your private key in OS keyring";

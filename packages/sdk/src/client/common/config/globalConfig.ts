@@ -74,7 +74,7 @@ export function loadGlobalConfig(): GlobalConfig {
     const content = fs.readFileSync(configPath, "utf-8");
     const config = loadYaml(content) as GlobalConfig;
     return config || { first_run: true };
-  } catch (err: any) {
+  } catch {
     // If parsing fails, return defaults
     return {
       first_run: true,

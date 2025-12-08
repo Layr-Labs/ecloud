@@ -23,7 +23,8 @@
     "prepublishOnly": "cp ../../README.md .",
     "lint": "eslint .",
     "format": "prettier --check .",
-    "format:fix": "prettier --write ."
+    "format:fix": "prettier --write .",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@inquirer/prompts": "^7.10.1",

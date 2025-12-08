@@ -2,6 +2,9 @@
  * Create command
  *
  * Creates a new app project from a template
+ * 
+ * NOTE: This SDK function is non-interactive. All required parameters must be
+ * provided explicitly. Use the CLI for interactive parameter collection.
  */
 
 import * as fs from "fs";
@@ -20,25 +23,37 @@ import {
 } from "../../common/templates/catalog";
 import { fetchTemplate, fetchTemplateSubdirectory } from "../../common/templates/git";
 import { postProcessTemplate } from "../../common/templates/postprocess";
-import { input, select } from "@inquirer/prompts";
 
+/**
+ * Required create app options for SDK (non-interactive)
+ */
+export interface SDKCreateAppOpts {
+  /** Project name - required */
+  name: string;
+  /** Programming language - required (typescript, golang, rust, python) */
+  language: string;
+  /** Template name/category (e.g., "minimal") or custom template URL - optional, defaults to first available */
+  template?: string;
+  /** Template version/ref - optional */
+  templateVersion?: string;
+  /** Verbose output - optional */
+  verbose?: boolean;
+}
+
+/**
+ * Legacy interface for backward compatibility
+ * @deprecated Use SDKCreateAppOpts instead
+ */
 export interface CreateAppOpts {
   name?: string;
   language?: string;
-  template?: string; // Template name/category (e.g., "minimal") or custom template URL
+  template?: string;
   templateVersion?: string;
   verbose?: boolean;
 }
 
 // Language configuration
 export const PRIMARY_LANGUAGES = ["typescript", "golang", "rust", "python"];
-
-export const SHORT_NAMES: Record<string, string> = {
-  ts: "typescript",
-  go: "golang",
-  rs: "rust",
-  py: "python",
-};
 
 export const LANGUAGE_FILES: Record<string, string[]> = {
   typescript: ["package.json"],
@@ -60,28 +75,106 @@ interface ProjectConfig {
 }
 
 /**
+ * Validate project name
+ */
+function validateProjectName(name: string): void {
+  if (!name) {
+    throw new Error("Project name is required");
+  }
+  if (name.includes(" ")) {
+    throw new Error("Project name cannot contain spaces");
+  }
+}
+
+/**
+ * Validate language
+ */
+function validateLanguage(language: string): void {
+  if (!language) {
+    throw new Error("Language is required");
+  }
+
+  if (!PRIMARY_LANGUAGES.includes(language)) {
+    throw new Error(
+      `Invalid language: ${language}. Must be one of: ${PRIMARY_LANGUAGES.join(", ")}`
+    );
+  }
+}
+
+/**
+ * Check if a string is a URL
+ */
+function isURL(str: string): boolean {
+  try {
+    new URL(str);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Get available template categories for a language
+ */
+export async function getAvailableTemplates(
+  language: string
+): Promise<Array<{ name: string; description: string }>> {
+  const catalog = await fetchTemplateCatalog();
+  const categoryDescriptions = getCategoryDescriptions(catalog, language);
+
+  if (Object.keys(categoryDescriptions).length === 0) {
+    throw new Error(`No templates found for language ${language}`);
+  }
+
+  // Sort categories alphabetically for consistent ordering
+  const categories = Object.keys(categoryDescriptions).sort();
+
+  return categories.map((category) => ({
+    name: category,
+    description: categoryDescriptions[category] || "",
+  }));
+}
+
+/**
  * Create a new app project from template
+ * 
+ * This function is non-interactive and requires all parameters to be provided explicitly.
+ * 
+ * @param options - Required options including name and language
+ * @param logger - Optional logger instance
+ * @throws Error if required parameters are missing or invalid
  */
 export async function createApp(
-  options: CreateAppOpts,
+  options: SDKCreateAppOpts | CreateAppOpts,
   logger: Logger = defaultLogger,
 ): Promise<void> {
-  // 1. Gather project configuration
-  const cfg = await gatherProjectConfig(options, logger);
+  // 1. Validate required parameters
+  validateProjectName(options.name || "");
+  validateLanguage(options.language || "");
 
-  // 2. Check if directory exists
+  // 2. Gather project configuration
+  const cfg = await gatherProjectConfig(
+    {
+      ...options,
+      name: options.name!,
+      language: options.language!,
+    },
+    logger
+  );
+
+  // 3. Check if directory exists
   if (fs.existsSync(cfg.name)) {
     throw new Error(`Directory ${cfg.name} already exists`);
   }
 
-  // 3. Create project directory
+  // 4. Create project directory
   fs.mkdirSync(cfg.name, { mode: 0o755 });
 
   try {
-    // 4. Populate project from template
+    // 5. Populate project from template
     await populateProjectFromTemplate(cfg, options, logger);
 
-    // 5. Post-process template
+    // 6. Post-process template
     if (cfg.subPath && cfg.language && cfg.templateEntry) {
       await postProcessTemplate(
         cfg.name,
@@ -100,41 +193,20 @@ export async function createApp(
 }
 
 /**
- * Validate project name
- */
-function validateProjectName(name: string): void {
-  if (!name) {
-    throw new Error("Project name cannot be empty");
-  }
-  if (name.includes(" ")) {
-    throw new Error("Project name cannot contain spaces");
-  }
-}
-
-/**
- * Gather project configuration
+ * Gather project configuration (non-interactive)
  */
 async function gatherProjectConfig(
-  options: CreateAppOpts,
+  options: { name: string; language: string; template?: string; templateVersion?: string },
   logger: Logger,
 ): Promise<ProjectConfig> {
   const cfg: ProjectConfig = {
     repoURL: DEFAULT_TEMPLATE_REPO,
     ref: DEFAULT_TEMPLATE_VERSION,
     subPath: "",
-    name: "",
+    name: options.name,
   };
 
-  // 1. Get project name
-  let name = options.name;
-  if (!name) {
-    name = await promptProjectName();
-  }
-  // Validate project name
-  validateProjectName(name);
-  cfg.name = name;
-
-  // 2. Handle custom template repo (if template is a URL)
+  // Handle custom template repo (if template is a URL)
   const customTemplateRepo = options.template;
   if (customTemplateRepo && isURL(customTemplateRepo)) {
     cfg.repoURL = customTemplateRepo;
@@ -142,29 +214,26 @@ async function gatherProjectConfig(
     return cfg;
   }
 
-  // 3. Handle built-in templates
-  // Get language
-  let language = options.language;
-  if (!language) {
-    language = await promptLanguage();
-  } else {
-    // Resolve short names to full names
-    if (SHORT_NAMES[language]) {
-      language = SHORT_NAMES[language];
-    }
-  }
-  cfg.language = language;
+  // Handle built-in templates
+  cfg.language = options.language;
 
   // Get template name (category)
   let templateName = customTemplateRepo; // If provided and not a URL, it's a template name
+  
   if (!templateName) {
-    templateName = await selectTemplateInteractive(language, logger);
+    // Default to first available template for the language
+    const availableTemplates = await getAvailableTemplates(options.language);
+    if (availableTemplates.length === 0) {
+      throw new Error(`No templates found for language ${options.language}`);
+    }
+    templateName = availableTemplates[0].name;
+    logger.debug(`Using default template: ${templateName}`);
   }
   cfg.templateName = templateName;
 
   // Resolve template details from catalog
   const catalog = await fetchTemplateCatalog();
-  const matchedTemplate = getTemplate(catalog, templateName, language);
+  const matchedTemplate = getTemplate(catalog, templateName, options.language);
   cfg.templateEntry = matchedTemplate;
   cfg.repoURL = DEFAULT_TEMPLATE_REPO;
   cfg.ref = options.templateVersion || DEFAULT_TEMPLATE_VERSION;
@@ -174,58 +243,11 @@ async function gatherProjectConfig(
 }
 
 /**
- * Check if a string is a URL
- */
-function isURL(str: string): boolean {
-  try {
-    new URL(str);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Select template interactively
- */
-async function selectTemplateInteractive(
-  language: string,
-  logger: Logger,
-): Promise<string> {
-  const catalog = await fetchTemplateCatalog();
-  const categoryDescriptions = getCategoryDescriptions(catalog, language);
-
-  if (Object.keys(categoryDescriptions).length === 0) {
-    throw new Error(`No templates found for language ${language}`);
-  }
-
-  // Sort categories alphabetically for consistent ordering
-  const categories = Object.keys(categoryDescriptions).sort();
-
-  // Build display options: "category: description" or just "category"
-  const options = categories.map((category) => {
-    const description = categoryDescriptions[category];
-    if (description) {
-      return { name: `${category}: ${description}`, value: category };
-    }
-    return { name: category, value: category };
-  });
-
-  // Prompt user to select
-  const selected = await select({
-    message: "Select template:",
-    choices: options,
-  });
-
-  return selected;
-}
-
-/**
  * Populate project from template
  */
 async function populateProjectFromTemplate(
   cfg: ProjectConfig,
-  options: CreateAppOpts,
+  options: { verbose?: boolean },
   logger: Logger,
 ): Promise<void> {
   // Handle local templates for development
@@ -297,21 +319,4 @@ async function copyDirectory(src: string, dst: string): Promise<void> {
       fs.chmodSync(dstPath, stat.mode);
     }
   }
-}
-
-/**
- * Prompt for project name
- */
-async function promptProjectName(): Promise<string> {
-  return input({ message: "Enter project name:" });
-}
-
-/**
- * Prompt for language selection
- */
-async function promptLanguage(): Promise<string> {
-  return select({
-    message: "Select language:",
-    choices: PRIMARY_LANGUAGES,
-  });
 }

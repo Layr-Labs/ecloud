@@ -10,9 +10,8 @@ import {
   generateNewPrivateKey,
   storePrivateKey,
   keyExists,
-  showPrivateKey,
-  displayWarning,
 } from "@layr-labs/ecloud-sdk";
+import { showPrivateKey, displayWarning } from "../../utils/security";
 
 export default class AuthGenerate extends Command {
   static description = "Generate a new private key";

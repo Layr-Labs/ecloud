@@ -39,7 +39,7 @@ export default class EnvironmentList extends Command {
         const description = getEnvironmentDescription(name) || `- ${config.name}`;
         const marker = currentEnv === name ? ` ${chalk.green("(active)")}` : "";
         console.log(`  • ${name} ${description}${marker}`);
-      } catch (err) {
+      } catch {
         // Skip environments that can't be loaded
         console.log(`  • ${name} (unavailable)`);
       }

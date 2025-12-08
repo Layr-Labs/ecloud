@@ -3,6 +3,9 @@
  *
  * This is the main entry point for upgrading existing applications on ecloud TEE.
  * It orchestrates all the steps: build, push, encrypt, and upgrade on-chain.
+ * 
+ * NOTE: This SDK function is non-interactive. All required parameters must be
+ * provided explicitly. Use the CLI for interactive parameter collection.
  */
 
 import { Address } from "viem";
@@ -12,38 +15,43 @@ import { prepareRelease } from "../../common/release/prepare";
 import { upgradeApp } from "../../common/contract/caller";
 import { watchUntilUpgradeComplete } from "../../common/contract/watcher";
 import {
-  getDockerfileInteractive,
-  getImageReferenceInteractive,
-  getEnvFileInteractive,
-  getInstanceTypeInteractive,
-  getLogSettingsInteractive,
-  getOrPromptAppID,
-} from "../../common/utils/prompts";
-import { doPreflightChecks, PreflightContext } from "../../common/utils/preflight";
-import { UserApiClient } from "../../common/utils/userapi";
+  resolveAppID,
+  validateLogVisibility,
+  assertValidImageReference,
+  assertValidFilePath,
+  LogVisibility,
+} from "../../common/utils/validation";
+import { doPreflightChecks } from "../../common/utils/preflight";
 import { checkAppLogPermission } from "../../common/utils/permissions";
-import { getCurrentInstanceType } from "../../common/utils/instance";
 import { defaultLogger } from "../../common/utils";
 
-export interface UpgradeOptions {
-  /** App ID to upgrade - optional, will prompt if not provided */
-  appID?: string | Address;
-  /** Private key for signing transactions (hex string with or without 0x prefix) - optional, will prompt if not provided */
-  privateKey?: string;
+/**
+ * Required upgrade options for SDK (non-interactive)
+ */
+export interface SDKUpgradeOptions {
+  /** App ID to upgrade - required */
+  appID: string | Address;
+  /** Private key for signing transactions (hex string with or without 0x prefix) */
+  privateKey: string;
   /** RPC URL for blockchain connection - optional, uses environment default if not provided */
   rpcUrl?: string;
-  /** Environment name (e.g., 'sepolia', 'mainnet-alpha') - optional, defaults to 'sepolia' */
+  /** Environment name (e.g., 'sepolia', 'mainnet-alpha') - defaults to 'sepolia' */
   environment?: string;
-  /** Path to Dockerfile (if building from Dockerfile) */
+  /** Path to Dockerfile (if building from Dockerfile) - either this or imageRef is required */
   dockerfilePath?: string;
-  /** Image reference (registry/path:tag) - optional, will prompt if not provided */
+  /** Image reference (registry/path:tag) - either this or dockerfilePath is required */
   imageRef?: string;
-  /** Path to .env file - optional, will use .env if exists or prompt */
+  /** Path to .env file - optional */
   envFilePath?: string;
-  /** Instance type - optional, will prompt if not provided */
-  instanceType?: string;
-  /** Log visibility setting - optional, will prompt if not provided */
-  logVisibility?: "public" | "private" | "off";
+  /** Instance type SKU - required */
+  instanceType: string;
+  /** Log visibility setting - required */
+  logVisibility: LogVisibility;
+  /** Optional gas params from estimation */
+  gas?: {
+    maxFeePerGas?: bigint;
+    maxPriorityFeePerGas?: bigint;
+  };
 }
 
 export interface UpgradeResult {
@@ -56,25 +64,72 @@ export interface UpgradeResult {
 }
 
 /**
+ * Validate upgrade options and throw descriptive errors for missing/invalid params
+ */
+function validateUpgradeOptions(options: SDKUpgradeOptions, environment: string): Address {
+  // Private key is required
+  if (!options.privateKey) {
+    throw new Error("privateKey is required for upgrade");
+  }
+
+  // App ID is required
+  if (!options.appID) {
+    throw new Error("appID is required for upgrade");
+  }
+  // Resolve app ID (validates and returns Address)
+  const resolvedAppID = resolveAppID(options.appID, environment);
+
+  // Must have either dockerfilePath or imageRef
+  if (!options.dockerfilePath && !options.imageRef) {
+    throw new Error("Either dockerfilePath or imageRef is required for upgrade");
+  }
+
+  // If imageRef is provided, validate it
+  if (options.imageRef) {
+    assertValidImageReference(options.imageRef);
+  }
+
+  // If dockerfilePath is provided, validate it exists
+  if (options.dockerfilePath) {
+    assertValidFilePath(options.dockerfilePath);
+  }
+
+  // Instance type is required
+  if (!options.instanceType) {
+    throw new Error("instanceType is required for upgrade");
+  }
+
+  // Log visibility is required
+  if (!options.logVisibility) {
+    throw new Error("logVisibility is required (must be 'public', 'private', or 'off')");
+  }
+  // Validate log visibility value
+  validateLogVisibility(options.logVisibility);
+
+  return resolvedAppID;
+}
+
+/**
  * Upgrade an existing application on ECloud TEE
  *
- * This function follows the exact same flow as the Go CLI upgrade command:
- * 1. Preflight checks (auth, network, etc.)
- * 2. Ensure Docker is running
- * 3. Get app ID from args or interactive selection
- * 4. Check for Dockerfile before asking for image reference
- * 5. Get image reference (context-aware based on Dockerfile decision)
- * 6. Get environment file configuration
- * 7. Get current app's instance type (best-effort, used as default for selection)
- * 8. Get instance type selection (defaults to current app's instance type)
- * 9. Get log settings from flags or interactive prompt
- * 10. Prepare the release (includes build/push if needed, with automatic retry on permission errors)
- * 11. Check current permission state and determine if change is needed
- * 12. Upgrade the app
- * 13. Watch until upgrade completes
+ * This function is non-interactive and requires all parameters to be provided explicitly.
+ * 
+ * Flow:
+ * 1. Validate all required parameters
+ * 2. Preflight checks (auth, network, etc.)
+ * 3. Ensure Docker is running
+ * 4. Prepare the release (includes build/push if needed)
+ * 5. Check current permission state and determine if change is needed
+ * 6. Upgrade the app on-chain
+ * 7. Watch until upgrade completes
+ * 
+ * @param options - Required upgrade options
+ * @param logger - Optional logger instance
+ * @returns UpgradeResult with appID, imageRef, and txHash
+ * @throws Error if required parameters are missing or invalid
  */
 export async function upgrade(
-  options: Partial<UpgradeOptions>,
+  options: SDKUpgradeOptions,
   logger: Logger = defaultLogger,
 ): Promise<UpgradeResult> {
   // 1. Do preflight checks (auth, network, etc.) first
@@ -88,56 +143,23 @@ export async function upgrade(
     logger,
   );
 
-  // 2. Check if docker is running, else try to start it
+  // 2. Validate all required parameters upfront (now that we have environment)
+  const appID = validateUpgradeOptions(options, preflightCtx.environmentConfig.name);
+
+  // Convert log visibility to internal format
+  const { logRedirect, publicLogs } = validateLogVisibility(options.logVisibility);
+
+  // 3. Check if docker is running, else try to start it
   logger.debug("Checking Docker...");
   await ensureDockerIsRunning();
 
-  // 3. Get app ID from args or interactive selection
-  const appID = await getOrPromptAppID(
-    options.appID,
-    preflightCtx.environmentConfig.name,
-  );
+  // Use provided values (already validated)
+  const dockerfilePath = options.dockerfilePath || "";
+  const imageRef = options.imageRef || "";
+  const envFilePath = options.envFilePath || "";
+  const instanceType = options.instanceType;
 
-  // 4. Check for Dockerfile before asking for image reference
-  const dockerfilePath = await getDockerfileInteractive(
-    options.dockerfilePath,
-  );
-  const buildFromDockerfile = dockerfilePath !== "";
-
-  // 5. Get image reference (context-aware based on Dockerfile decision)
-  const imageRef = await getImageReferenceInteractive(
-    options.imageRef,
-    buildFromDockerfile,
-  );
-
-  // 6. Get environment file configuration
-  const envFilePath = await getEnvFileInteractive(options.envFilePath);
-
-  // 7. Get current app's instance type (best-effort, used as default for selection)
-  const currentInstanceType = await getCurrentInstanceType(
-    preflightCtx,
-    appID,
-    logger,
-  );
-
-  // 8. Get instance type selection (defaults to current app's instance type)
-  const availableTypes = await fetchAvailableInstanceTypes(
-    preflightCtx,
-    logger,
-  );
-  const instanceType = await getInstanceTypeInteractive(
-    options.instanceType,
-    currentInstanceType,
-    availableTypes,
-  );
-
-  // 9. Get log settings from flags or interactive prompt
-  const logSettings = await getLogSettingsInteractive(
-    options.logVisibility as "public" | "private" | "off" | undefined,
-  );
-  const { logRedirect, publicLogs } = logSettings;
-
-  // 10. Prepare the release (includes build/push if needed, with automatic retry on permission errors)
+  // 4. Prepare the release (includes build/push if needed, with automatic retry on permission errors)
   logger.info("Preparing release...");
   const { release, finalImageRef } = await prepareRelease(
     {
@@ -152,7 +174,7 @@ export async function upgrade(
     logger,
   );
 
-  // 11. Check current permission state and determine if change is needed
+  // 5. Check current permission state and determine if change is needed
   logger.debug("Checking current log permission state...");
   const currentlyPublic = await checkAppLogPermission(
     preflightCtx,
@@ -161,7 +183,7 @@ export async function upgrade(
   );
   const needsPermissionChange = currentlyPublic !== publicLogs;
 
-  // 12. Upgrade the app
+  // 6. Upgrade the app
   logger.info("Upgrading on-chain...");
   const txHash = await upgradeApp(
     {
@@ -173,11 +195,12 @@ export async function upgrade(
       publicLogs,
       needsPermissionChange,
       imageRef: finalImageRef,
+      gas: options.gas,
     },
     logger,
   );
 
-  // 13. Watch until upgrade completes
+  // 7. Watch until upgrade completes
   logger.info("Waiting for upgrade to complete...");
   await watchUntilUpgradeComplete(
     {
@@ -194,31 +217,4 @@ export async function upgrade(
     imageRef: finalImageRef,
     txHash,
   };
-}
-
-/**
- * Fetch available instance types from backend
- */
-async function fetchAvailableInstanceTypes(
-  preflightCtx: PreflightContext,
-  logger: Logger,
-): Promise<Array<{ sku: string; description: string }>> {
-  try {
-    const userApiClient = new UserApiClient(
-      preflightCtx.environmentConfig,
-      preflightCtx.privateKey,
-      preflightCtx.rpcUrl,
-    );
-
-    const skuList = await userApiClient.getSKUs();
-    if (skuList.skus.length === 0) {
-      throw new Error("No instance types available from server");
-    }
-
-    return skuList.skus;
-  } catch (err: any) {
-    logger.warn(`Failed to fetch instance types: ${err.message}`);
-    // Return a default fallback
-    return [{ sku: "standard", description: "Standard instance type" }];
-  }
 }

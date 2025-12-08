@@ -25,7 +25,6 @@ import {
   LAYERED_DOCKERFILE_NAME,
   ENV_SOURCE_SCRIPT_NAME,
   KMS_CLIENT_BINARY_NAME,
-  KMS_ENCRYPTION_KEY_NAME,
   KMS_SIGNING_KEY_NAME,
   TLS_KEYGEN_BINARY_NAME,
   CADDYFILE_NAME,
@@ -129,7 +128,9 @@ export async function buildAndPushLayeredImage(
   const baseImageTag = `ecloud-temp-${path.basename(dockerfilePath).toLowerCase()}`;
   logger.info(`Building base image from ${dockerfilePath}...`);
 
-  await buildDockerImage(".", dockerfilePath, baseImageTag, logger);
+  // Use the directory containing the Dockerfile as build context
+  const buildContext = path.dirname(dockerfilePath);
+  await buildDockerImage(buildContext, dockerfilePath, baseImageTag, logger);
 
   // 2. Layer the base image
   const docker = new Docker();

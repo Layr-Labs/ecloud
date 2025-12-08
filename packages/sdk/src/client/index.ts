@@ -10,20 +10,27 @@ import { addHexPrefix } from "./common/utils";
 // Export all types
 export * from "./common/types";
 
-// Export all prompts
-export * from "./common/utils/prompts";
+// Export validation utilities (non-interactive)
+export * from "./common/utils/validation";
 
 // Special case on createApp - we don't need the client to run it
-export { createApp, CreateAppOpts } from "./modules/app/create";
-export { logs, LogsOptions } from "./modules/app/logs";
+export { createApp, CreateAppOpts, SDKCreateAppOpts, PRIMARY_LANGUAGES, getAvailableTemplates } from "./modules/app/create";
+export { logs, LogsOptions, SDKLogsOptions } from "./modules/app/logs";
+export { SDKDeployOptions } from "./modules/app/deploy";
+export { SDKUpgradeOptions } from "./modules/app/upgrade";
 
 // Export modules for standalone use
-export { createAppModule, type AppModuleConfig } from "./modules/app";
+export { 
+  createAppModule, 
+  type AppModuleConfig,
+  encodeStartAppData,
+  encodeStopAppData,
+  encodeTerminateAppData,
+} from "./modules/app";
 export { createBillingModule, type BillingModuleConfig } from "./modules/billing";
 
-// Export utility functions for CLI use
-export { getOrPromptAppID } from "./common/utils/prompts";
-export { getEnvironmentConfig, getAvailableEnvironments, isEnvironmentAvailable, getBuildType } from "./common/config/environment";
+// Export environment config utilities
+export { getEnvironmentConfig, getAvailableEnvironments, isEnvironmentAvailable, getBuildType, isMainnet } from "./common/config/environment";
 export { isSubscriptionActive } from "./common/utils/billing";
 
 // Export global config functions
@@ -41,6 +48,34 @@ export {
 
 // Export auth utilities
 export * from "./common/auth";
+
+// Export template catalog utilities for CLI
+export {
+  fetchTemplateCatalog,
+  getTemplate,
+  getCategoryDescriptions,
+} from "./common/templates/catalog";
+
+// Export registry utilities
+export { listApps, getAppName, setAppName } from "./common/registry/appNames";
+
+// Export contract utilities
+export { 
+  getAllAppsByDeveloper,
+  estimateTransactionGas,
+  formatETH,
+  type GasEstimate,
+  type EstimateGasOptions,
+} from "./common/contract/caller";
+
+// Export batch gas estimation
+export { estimateBatchGas, type EstimateBatchGasOptions } from "./common/contract/eip7702";
+
+// Export instance type utilities
+export { getCurrentInstanceType } from "./common/utils/instance";
+
+// Export user API client
+export { UserApiClient } from "./common/utils/userapi";
 
 export type Environment = "sepolia" | "sepolia-dev" | "mainnet-alpha";
 

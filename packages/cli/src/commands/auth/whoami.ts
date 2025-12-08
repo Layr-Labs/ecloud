@@ -8,7 +8,6 @@ import { Command } from "@oclif/core";
 import {
   getPrivateKeyWithSource,
   getAddressFromPrivateKey,
-  getPrivateKey,
 } from "@layr-labs/ecloud-sdk";
 import { commonFlags } from "../../flags";
 
