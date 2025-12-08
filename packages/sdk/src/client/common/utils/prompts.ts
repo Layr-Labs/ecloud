@@ -11,6 +11,7 @@ import {
 import fs from "fs";
 import path from "path";
 import os from "os";
+import { URL } from "url";
 import { Address, isAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { listApps, getAppName } from "../registry/appNames";
@@ -801,19 +802,31 @@ async function getAvailableRegistries(): Promise<RegistryInfo[]> {
       let normalizedURL = registry;
 
       // Determine registry type and normalize URL
+      // Parse registry hostname for robust matching
+      let registryHost: string;
+      try {
+        registryHost = new URL(registry).hostname;
+      } catch (e) {
+        // If no scheme present, treat as host directly
+        registryHost = registry.replace(/^https?:\/\//, "").split("/")[0];
+      }
+
       if (
-        registry.includes("index.docker.io") ||
-        registry.includes("docker.io")
+        registryHost === "index.docker.io" ||
+        registryHost === "docker.io"
       ) {
         registryType = "dockerhub";
         normalizedURL = "https://index.docker.io/v1/";
-      } else if (registry.includes("ghcr.io")) {
+      } else if (registryHost === "ghcr.io") {
         registryType = "ghcr";
         // Normalize ghcr.io variants
         normalizedURL = registry
           .replace(/^https?:\/\//, "")
           .replace(/\/v1\/?$/, "");
-      } else if (registry.includes("gcr.io") || registry.includes(".gcr.io")) {
+      } else if (
+        registryHost === "gcr.io" ||
+        registryHost.endsWith(".gcr.io")
+      ) {
         registryType = "gcr";
         normalizedURL = "gcr.io"; // Normalize to canonical URL
       }
