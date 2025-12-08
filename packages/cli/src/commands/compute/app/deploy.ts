@@ -1,8 +1,11 @@
 import { Command, Flags } from "@oclif/core";
-import { getEnvironmentConfig, UserApiClient, formatETH, isMainnet } from "@layr-labs/ecloud-sdk";
-import { createPublicClient, http } from "viem";
-import { mainnet } from "viem/chains";
-import { createAppClient } from "../../../client";
+import { 
+  getEnvironmentConfig, 
+  UserApiClient, 
+  isMainnet,
+  prepareDeploy,
+  executeDeploy,
+} from "@layr-labs/ecloud-sdk";
 import { commonFlags } from "../../../flags";
 import {
   getDockerfileInteractive,
@@ -14,6 +17,7 @@ import {
   getAppProfileInteractive,
   LogVisibility,
   confirm,
+  getPrivateKeyInteractive,
 } from "../../../utils/prompts";
 import chalk from "chalk";
 
@@ -63,12 +67,22 @@ export default class AppDeploy extends Command {
 
   async run() {
     const { flags } = await this.parse(AppDeploy);
-    const app = await createAppClient(flags);
+    
+    // Create CLI logger
+    const logger = {
+      info: (msg: string) => this.log(msg),
+      warn: (msg: string) => this.warn(msg),
+      error: (msg: string) => this.error(msg),
+      debug: (msg: string) => flags.verbose && this.log(msg),
+    };
 
     // Get environment config for fetching available instance types
     const environment = flags.environment || "sepolia";
     const environmentConfig = getEnvironmentConfig(environment);
     const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
+    
+    // Get private key interactively if not provided
+    const privateKey = flags["private-key"] || await getPrivateKeyInteractive();
 
     // 1. Get dockerfile path interactively
     const dockerfilePath = await getDockerfileInteractive(flags.dockerfile);
@@ -87,8 +101,8 @@ export default class AppDeploy extends Command {
     // First, fetch available instance types from backend
     const availableTypes = await fetchAvailableInstanceTypes(
       environmentConfig,
-      flags["private-key"],
-      rpcUrl,
+      privateKey,
+      rpcUrl
     );
     const instanceType = await getInstanceTypeInteractive(
       flags["instance-type"],
@@ -115,60 +129,53 @@ export default class AppDeploy extends Command {
       }
     }
 
-    // 8. Estimate gas cost on mainnet and prompt for confirmation
-    let gasParams: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } | undefined;
+    // 8. Prepare deployment (builds image, pushes to registry, prepares batch, estimates gas)
+    const logVisibility = logSettings.publicLogs
+      ? "public"
+      : logSettings.logRedirect
+        ? "private"
+        : "off";
 
+    const { prepared, gasEstimate } = await prepareDeploy(
+      {
+        privateKey,
+        rpcUrl,
+        environment,
+        dockerfilePath,
+        imageRef,
+        envFilePath,
+        appName,
+        instanceType,
+        logVisibility,
+        profile,
+      },
+      logger,
+    );
+
+    // 9. Show gas estimate and prompt for confirmation on mainnet
+    this.log(`\nEstimated transaction cost: ${chalk.cyan(gasEstimate.maxCostEth)} ETH`);
+    
     if (isMainnet(environmentConfig)) {
-      const chain = mainnet;
-      const publicClient = createPublicClient({
-        chain,
-        transport: http(rpcUrl),
-      });
-
-      // Get current gas prices for estimation
-      const fees = await publicClient.estimateFeesPerGas();
-      // Deploy typically has 2-3 executions in the batch
-      const estimatedGas = BigInt(300000); // Conservative estimate for deploy batch
-      const maxCostWei = estimatedGas * fees.maxFeePerGas;
-      const maxCostEth = formatETH(maxCostWei);
-
-      const confirmed = await confirm(
-        `This deployment will cost up to ${maxCostEth} ETH. Continue?`,
-      );
+      const confirmed = await confirm(`Continue with deployment?`);
       if (!confirmed) {
         this.log(`\n${chalk.gray(`Deployment cancelled`)}`);
         return;
       }
-
-      gasParams = {
-        maxFeePerGas: fees.maxFeePerGas,
-        maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
-      };
     }
 
-    // 9. Deploy with all gathered parameters
-    const res = await app.deploy({
-      name: appName,
-      dockerfile: dockerfilePath,
-      envFile: envFilePath,
-      imageRef: imageRef,
-      logVisibility: logSettings.publicLogs
-        ? "public"
-        : logSettings.logRedirect
-          ? "private"
-          : "off",
-      instanceType,
-      profile,
-      gas: gasParams,
-    });
+    // 10. Execute the deployment
+    const res = await executeDeploy(
+      prepared, 
+      {
+        maxFeePerGas: gasEstimate.maxFeePerGas,
+        maxPriorityFeePerGas: gasEstimate.maxPriorityFeePerGas,
+      },
+      logger,
+    );
 
-    if (!res.tx || !res.ipAddress) {
-      this.log(`\n${chalk.gray(`Deploy ${res.ipAddress ? "failed" : "aborted"}`)}`);
-    } else {
-      this.log(
-        `\n✅ ${chalk.green(`App deployed successfully ${chalk.bold(`(id: ${res.appID}, ip: ${res.ipAddress})`)}`)}`,
-      );
-    }
+    this.log(
+      `\n✅ ${chalk.green(`App deployed successfully ${chalk.bold(`(id: ${res.appID}, ip: ${res.ipAddress})`)}`)}`
+    );
   }
 }
 

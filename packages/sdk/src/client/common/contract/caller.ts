@@ -15,6 +15,7 @@ import {
   encodeFunctionData,
   decodeErrorResult,
 } from "viem";
+import type { WalletClient, PublicClient } from "viem";
 import { hashAuthorization } from "viem/utils";
 import { sign } from "viem/accounts";
 
@@ -129,6 +130,44 @@ export interface DeployAppOptions {
 }
 
 /**
+ * Prepared deploy batch ready for gas estimation and execution
+ */
+export interface PreparedDeployBatch {
+  /** The app address that will be deployed */
+  appAddress: Address;
+  /** The salt used for deployment */
+  salt: Uint8Array;
+  /** Batch executions to be sent */
+  executions: Array<{ target: Address; value: bigint; callData: Hex }>;
+  /** Wallet client for sending transaction */
+  walletClient: WalletClient;
+  /** Public client for reading chain state */
+  publicClient: PublicClient;
+  /** Environment configuration */
+  environmentConfig: EnvironmentConfig;
+  /** Private key in hex format */
+  privateKeyHex: Hex;
+}
+
+/**
+ * Prepared upgrade batch ready for gas estimation and execution
+ */
+export interface PreparedUpgradeBatch {
+  /** The app ID being upgraded */
+  appID: Address;
+  /** Batch executions to be sent */
+  executions: Array<{ target: Address; value: bigint; callData: Hex }>;
+  /** Wallet client for sending transaction */
+  walletClient: WalletClient;
+  /** Public client for reading chain state */
+  publicClient: PublicClient;
+  /** Environment configuration */
+  environmentConfig: EnvironmentConfig;
+  /** Private key in hex format */
+  privateKeyHex: Hex;
+}
+
+/**
  * Calculate app ID from owner address and salt
  */
 export async function calculateAppID(
@@ -168,13 +207,34 @@ export async function calculateAppID(
 }
 
 /**
- * Deploy app on-chain
+ * Options for preparing a deploy batch
  */
-export async function deployApp(
-  options: DeployAppOptions,
+export interface PrepareDeployBatchOptions {
+  privateKey: string;
+  rpcUrl: string;
+  environmentConfig: EnvironmentConfig;
+  salt: Uint8Array;
+  release: Release;
+  publicLogs: boolean;
+}
+
+/**
+ * Prepare deploy batch - creates executions without sending transaction
+ * 
+ * Use this to get the prepared batch for gas estimation before executing.
+ */
+export async function prepareDeployBatch(
+  options: PrepareDeployBatchOptions,
   logger: Logger,
-): Promise<{ appAddress: Address; txHash: Hex }> {
-  const { privateKey, rpcUrl, environmentConfig, salt, release, publicLogs, gas } = options;
+): Promise<PreparedDeployBatch> {
+  const {
+    privateKey,
+    rpcUrl,
+    environmentConfig,
+    salt,
+    release,
+    publicLogs,
+  } = options;
 
   const privateKeyHex = addHexPrefix(privateKey) as Hex;
   const account = privateKeyToAccount(privateKeyHex);
@@ -197,19 +257,15 @@ export async function deployApp(
   logger.info(`App ID: ${appAddress}`);
 
   // Verify the app address calculation matches what createApp will deploy
-  // This ensures we're calling acceptAdmin on the correct app address
   logger.debug(`App address calculated: ${appAddress}`);
   logger.debug(`This address will be used for acceptAdmin call`);
 
   // 2. Pack create app call
-  // Ensure salt is properly formatted as hex string (32 bytes = 64 hex chars)
   const saltHexString = Buffer.from(salt).toString("hex");
-  // Pad to 64 characters if needed (shouldn't be needed for 32 bytes, but just in case)
   const paddedSaltHex = saltHexString.padStart(64, "0");
   const saltHex = `0x${paddedSaltHex}` as Hex;
 
   // Convert Release Uint8Array values to hex strings for viem
-  // Viem expects hex strings for bytes and bytes32 types
   const releaseForViem = {
     rmsRelease: {
       artifacts: release.rmsRelease.artifacts.map((artifact) => ({
@@ -229,9 +285,6 @@ export async function deployApp(
   });
 
   // 3. Pack accept admin call
-  // NOTE: createApp calls initialize(admin) which adds the EOA (msg.sender) as a pending admin
-  // for the app account. So acceptAdmin should work when called from the EOA.
-  // The execution order in the batch ensures createApp completes before acceptAdmin runs.
   const acceptAdminData = encodeFunctionData({
     abi: PermissionControllerABI,
     functionName: "acceptAdmin",
@@ -239,8 +292,7 @@ export async function deployApp(
   });
 
   // 4. Assemble executions
-  // CRITICAL: Order matters! createApp must complete first to call initialize(admin)
-  // which adds the EOA as a pending admin. Then acceptAdmin can be called.
+  // CRITICAL: Order matters! createApp must complete first
   const executions: Array<{
     target: Address;
     value: bigint;
@@ -277,23 +329,63 @@ export async function deployApp(
     });
   }
 
-  // 6. Execute batch via EIP-7702 delegator
+  return {
+    appAddress,
+    salt,
+    executions,
+    walletClient,
+    publicClient,
+    environmentConfig,
+    privateKeyHex,
+  };
+}
+
+/**
+ * Execute a prepared deploy batch
+ */
+export async function executeDeployBatch(
+  prepared: PreparedDeployBatch,
+  gas: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } | undefined,
+  logger: Logger,
+): Promise<{ appAddress: Address; txHash: Hex }> {
   const pendingMessage = "Deploying new app...";
 
   const txHash = await executeBatch(
     {
-      walletClient,
-      publicClient,
-      environmentConfig,
-      executions,
+      walletClient: prepared.walletClient,
+      publicClient: prepared.publicClient,
+      environmentConfig: prepared.environmentConfig,
+      executions: prepared.executions,
       pendingMessage,
-      privateKey: privateKeyHex, // Pass private key for manual transaction signing
+      privateKey: prepared.privateKeyHex,
       gas,
     },
     logger,
   );
 
-  return { appAddress, txHash };
+  return { appAddress: prepared.appAddress, txHash };
+}
+
+/**
+ * Deploy app on-chain (convenience wrapper that prepares and executes)
+ */
+export async function deployApp(
+  options: DeployAppOptions,
+  logger: Logger,
+): Promise<{ appAddress: Address; txHash: Hex }> {
+  const prepared = await prepareDeployBatch(
+    {
+      privateKey: options.privateKey,
+      rpcUrl: options.rpcUrl,
+      environmentConfig: options.environmentConfig,
+      salt: options.salt,
+      release: options.release,
+      publicLogs: options.publicLogs,
+    },
+    logger,
+  );
+
+  return executeDeployBatch(prepared, options.gas, logger);
 }
 
 export interface UpgradeAppOptions {
@@ -313,9 +405,26 @@ export interface UpgradeAppOptions {
 }
 
 /**
- * Upgrade app on-chain
+ * Options for preparing an upgrade batch
  */
-export async function upgradeApp(options: UpgradeAppOptions, logger: Logger): Promise<Hex> {
+export interface PrepareUpgradeBatchOptions {
+  privateKey: string;
+  rpcUrl: string;
+  environmentConfig: EnvironmentConfig;
+  appID: Address;
+  release: Release;
+  publicLogs: boolean;
+  needsPermissionChange: boolean;
+}
+
+/**
+ * Prepare upgrade batch - creates executions without sending transaction
+ * 
+ * Use this to get the prepared batch for gas estimation before executing.
+ */
+export async function prepareUpgradeBatch(
+  options: PrepareUpgradeBatchOptions,
+): Promise<PreparedUpgradeBatch> {
   const {
     privateKey,
     rpcUrl,
@@ -324,7 +433,6 @@ export async function upgradeApp(options: UpgradeAppOptions, logger: Logger): Pr
     release,
     publicLogs,
     needsPermissionChange,
-    gas,
   } = options;
 
   const privateKeyHex = addHexPrefix(privateKey) as Hex;
@@ -414,8 +522,25 @@ export async function upgradeApp(options: UpgradeAppOptions, logger: Logger): Pr
     }
   }
 
-  // 4. Execute batch via EIP-7702 delegator
-  const appName = getAppName(environmentConfig.name, appID);
+  return {
+    appID,
+    executions,
+    walletClient,
+    publicClient,
+    environmentConfig,
+    privateKeyHex,
+  };
+}
+
+/**
+ * Execute a prepared upgrade batch
+ */
+export async function executeUpgradeBatch(
+  prepared: PreparedUpgradeBatch,
+  gas: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } | undefined,
+  logger: Logger,
+): Promise<Hex> {
+  const appName = getAppName(prepared.environmentConfig.name, prepared.appID);
   let pendingMessage = "Upgrading app...";
   if (appName !== "") {
     pendingMessage = `Upgrading app '${appName}'...`;
@@ -423,18 +548,38 @@ export async function upgradeApp(options: UpgradeAppOptions, logger: Logger): Pr
 
   const txHash = await executeBatch(
     {
-      walletClient,
-      publicClient,
-      environmentConfig,
-      executions,
+      walletClient: prepared.walletClient,
+      publicClient: prepared.publicClient,
+      environmentConfig: prepared.environmentConfig,
+      executions: prepared.executions,
       pendingMessage,
-      privateKey: privateKeyHex, // Pass private key for manual transaction signing
+      privateKey: prepared.privateKeyHex,
       gas,
     },
     logger,
   );
 
   return txHash;
+}
+
+/**
+ * Upgrade app on-chain (convenience wrapper that prepares and executes)
+ */
+export async function upgradeApp(
+  options: UpgradeAppOptions,
+  logger: Logger,
+): Promise<Hex> {
+  const prepared = await prepareUpgradeBatch({
+    privateKey: options.privateKey,
+    rpcUrl: options.rpcUrl,
+    environmentConfig: options.environmentConfig,
+    appID: options.appID,
+    release: options.release,
+    publicLogs: options.publicLogs,
+    needsPermissionChange: options.needsPermissionChange,
+  });
+
+  return executeUpgradeBatch(prepared, options.gas, logger);
 }
 
 /**

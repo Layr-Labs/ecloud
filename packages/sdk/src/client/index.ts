@@ -26,8 +26,20 @@ export {
   getAvailableTemplates,
 } from "./modules/app/create";
 export { logs, LogsOptions, SDKLogsOptions } from "./modules/app/logs";
-export { SDKDeployOptions } from "./modules/app/deploy";
-export { SDKUpgradeOptions } from "./modules/app/upgrade";
+export { 
+  SDKDeployOptions,
+  prepareDeploy,
+  executeDeploy,
+  type PreparedDeploy,
+  type PrepareDeployResult,
+} from "./modules/app/deploy";
+export { 
+  SDKUpgradeOptions,
+  prepareUpgrade,
+  executeUpgrade,
+  type PreparedUpgrade,
+  type PrepareUpgradeResult,
+} from "./modules/app/upgrade";
 
 // Export modules for standalone use
 export {
@@ -85,7 +97,10 @@ export {
 } from "./common/contract/caller";
 
 // Export batch gas estimation
-export { estimateBatchGas, type EstimateBatchGasOptions } from "./common/contract/eip7702";
+export { 
+  estimateBatchGas, 
+  type EstimateBatchGasOptions,
+} from "./common/contract/eip7702";
 
 // Export instance type utilities
 export { getCurrentInstanceType } from "./common/utils/instance";
