@@ -19,17 +19,13 @@ export class BillingApiClient {
     this.config = config;
   }
 
-  async createSubscription(
-    productId: ProductID = "compute",
-  ): Promise<CreateSubscriptionResponse> {
+  async createSubscription(productId: ProductID = "compute"): Promise<CreateSubscriptionResponse> {
     const endpoint = `${this.config.billingApiServerURL}/products/${productId}/subscription`;
     const resp = await this.makeAuthenticatedRequest(endpoint, "POST", productId);
     return resp.json();
   }
 
-  async getSubscription(
-    productId: ProductID = "compute",
-  ): Promise<ProductSubscriptionResponse> {
+  async getSubscription(productId: ProductID = "compute"): Promise<ProductSubscriptionResponse> {
     const endpoint = `${this.config.billingApiServerURL}/products/${productId}/subscription`;
     const resp = await this.makeAuthenticatedRequest(endpoint, "GET", productId);
     return resp.json();
@@ -80,18 +76,16 @@ export class BillingApiClient {
       const statusText = status >= 200 && status < 300 ? "OK" : "Error";
 
       if (status < 200 || status >= 300) {
-        const body = typeof response.data === "string"
-          ? response.data
-          : JSON.stringify(response.data);
-        throw new Error(
-          `BillingAPI request failed: ${status} ${statusText} - ${body}`,
-        );
+        const body =
+          typeof response.data === "string" ? response.data : JSON.stringify(response.data);
+        throw new Error(`BillingAPI request failed: ${status} ${statusText} - ${body}`);
       }
 
       // Return Response-like object for compatibility
       return {
         json: async () => response.data,
-        text: async () => typeof response.data === "string" ? response.data : JSON.stringify(response.data),
+        text: async () =>
+          typeof response.data === "string" ? response.data : JSON.stringify(response.data),
       };
     } catch (error: any) {
       // Handle network errors

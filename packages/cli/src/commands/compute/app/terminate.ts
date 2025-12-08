@@ -1,8 +1,8 @@
 import { Command, Args, Flags } from "@oclif/core";
 import { createAppClient } from "../../../client";
 import { commonFlags } from "../../../flags";
-import { 
-  getEnvironmentConfig, 
+import {
+  getEnvironmentConfig,
   estimateTransactionGas,
   encodeTerminateAppData,
   isMainnet,
@@ -12,8 +12,7 @@ import { getPrivateKeyInteractive } from "../../../utils/prompts";
 import chalk from "chalk";
 
 export default class AppLifecycleTerminate extends Command {
-  static description =
-    "Terminate app (terminate GCP instance) permanently";
+  static description = "Terminate app (terminate GCP instance) permanently";
 
   static args = {
     "app-id": Args.string({
@@ -38,23 +37,21 @@ export default class AppLifecycleTerminate extends Command {
     // Get environment config
     const environment = flags.environment || "sepolia";
     const environmentConfig = getEnvironmentConfig(environment);
-  
+
     // Get RPC URL (needed for contract queries and authentication)
     const rpcUrl = flags.rpcUrl || environmentConfig.defaultRPCURL;
 
     // Get private key for gas estimation
-    const privateKey = flags["private-key"] || await getPrivateKeyInteractive(environment);
-    
+    const privateKey = flags["private-key"] || (await getPrivateKeyInteractive(environment));
+
     // Resolve app ID (prompt if not provided)
-    const appId = await getOrPromptAppID(
-      {
-        appID: args["app-id"],
-        environment: flags["environment"]!,
-        privateKey,
-        rpcUrl,
-        action: "terminate",
-      }
-    );
+    const appId = await getOrPromptAppID({
+      appID: args["app-id"],
+      environment: flags["environment"]!,
+      privateKey,
+      rpcUrl,
+      action: "terminate",
+    });
 
     // Estimate gas cost
     const callData = encodeTerminateAppData(appId as `0x${string}`);
@@ -68,7 +65,9 @@ export default class AppLifecycleTerminate extends Command {
 
     // Ask for confirmation unless forced
     if (!flags.force) {
-      const costInfo = isMainnet(environmentConfig) ? ` (cost: up to ${estimate.maxCostEth} ETH)` : "";
+      const costInfo = isMainnet(environmentConfig)
+        ? ` (cost: up to ${estimate.maxCostEth} ETH)`
+        : "";
       const confirmed = await confirm(`⚠️  Permanently destroy app ${appId}${costInfo}?`);
       if (!confirmed) {
         this.log(`\n${chalk.gray(`Termination aborted`)}`);
@@ -90,4 +89,3 @@ export default class AppLifecycleTerminate extends Command {
     }
   }
 }
-

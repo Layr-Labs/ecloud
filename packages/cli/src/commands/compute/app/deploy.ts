@@ -51,8 +51,7 @@ export default class AppDeploy extends Command {
     }),
     "instance-type": Flags.string({
       required: false,
-      description:
-        "Machine instance type to use e.g. g1-standard-4t, g1-standard-8t",
+      description: "Machine instance type to use e.g. g1-standard-4t, g1-standard-8t",
       env: "ECLOUD_INSTANCE_TYPE",
     }),
     "skip-profile": Flags.boolean({
@@ -76,10 +75,7 @@ export default class AppDeploy extends Command {
     const buildFromDockerfile = dockerfilePath !== "";
 
     // 2. Get image reference interactively (context-aware)
-    const imageRef = await getImageReferenceInteractive(
-      flags["image-ref"],
-      buildFromDockerfile
-    );
+    const imageRef = await getImageReferenceInteractive(flags["image-ref"], buildFromDockerfile);
 
     // 3. Get app name interactively
     const appName = await getOrPromptAppName(flags.name, environment, imageRef);
@@ -92,17 +88,17 @@ export default class AppDeploy extends Command {
     const availableTypes = await fetchAvailableInstanceTypes(
       environmentConfig,
       flags["private-key"],
-      rpcUrl
+      rpcUrl,
     );
     const instanceType = await getInstanceTypeInteractive(
       flags["instance-type"],
       "", // No default for new deployments
-      availableTypes
+      availableTypes,
     );
 
     // 6. Get log visibility interactively
     const logSettings = await getLogSettingsInteractive(
-      flags["log-visibility"] as LogVisibility | undefined
+      flags["log-visibility"] as LogVisibility | undefined,
     );
 
     // 7. Optionally collect app profile
@@ -111,9 +107,7 @@ export default class AppDeploy extends Command {
       try {
         // Extract suggested name from image reference
         const suggestedName = appName;
-        this.log(
-          "\nSet up a public profile for your app (you can skip this):"
-        );
+        this.log("\nSet up a public profile for your app (you can skip this):");
         profile = await getAppProfileInteractive(suggestedName, true);
       } catch {
         // Profile collection cancelled or failed - continue without profile
@@ -123,29 +117,29 @@ export default class AppDeploy extends Command {
 
     // 8. Estimate gas cost on mainnet and prompt for confirmation
     let gasParams: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } | undefined;
-    
+
     if (isMainnet(environmentConfig)) {
       const chain = mainnet;
       const publicClient = createPublicClient({
         chain,
         transport: http(rpcUrl),
       });
-      
+
       // Get current gas prices for estimation
       const fees = await publicClient.estimateFeesPerGas();
       // Deploy typically has 2-3 executions in the batch
       const estimatedGas = BigInt(300000); // Conservative estimate for deploy batch
       const maxCostWei = estimatedGas * fees.maxFeePerGas;
       const maxCostEth = formatETH(maxCostWei);
-      
+
       const confirmed = await confirm(
-        `This deployment will cost up to ${maxCostEth} ETH. Continue?`
+        `This deployment will cost up to ${maxCostEth} ETH. Continue?`,
       );
       if (!confirmed) {
         this.log(`\n${chalk.gray(`Deployment cancelled`)}`);
         return;
       }
-      
+
       gasParams = {
         maxFeePerGas: fees.maxFeePerGas,
         maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
@@ -169,12 +163,10 @@ export default class AppDeploy extends Command {
     });
 
     if (!res.tx || !res.ipAddress) {
-      this.log(
-        `\n${chalk.gray(`Deploy ${res.ipAddress ? "failed" : "aborted"}`)}`
-      );
+      this.log(`\n${chalk.gray(`Deploy ${res.ipAddress ? "failed" : "aborted"}`)}`);
     } else {
       this.log(
-        `\n✅ ${chalk.green(`App deployed successfully ${chalk.bold(`(id: ${res.appID}, ip: ${res.ipAddress})`)}`)}`
+        `\n✅ ${chalk.green(`App deployed successfully ${chalk.bold(`(id: ${res.appID}, ip: ${res.ipAddress})`)}`)}`,
       );
     }
   }
@@ -186,14 +178,10 @@ export default class AppDeploy extends Command {
 async function fetchAvailableInstanceTypes(
   environmentConfig: any,
   privateKey?: string,
-  rpcUrl?: string
+  rpcUrl?: string,
 ): Promise<Array<{ sku: string; description: string }>> {
   try {
-    const userApiClient = new UserApiClient(
-      environmentConfig,
-      privateKey,
-      rpcUrl
-    );
+    const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl);
 
     const skuList = await userApiClient.getSKUs();
     if (skuList.skus.length === 0) {

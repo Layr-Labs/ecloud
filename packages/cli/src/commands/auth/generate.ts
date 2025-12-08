@@ -6,11 +6,7 @@
 
 import { Command, Flags } from "@oclif/core";
 import { confirm } from "@inquirer/prompts";
-import {
-  generateNewPrivateKey,
-  storePrivateKey,
-  keyExists,
-} from "@layr-labs/ecloud-sdk";
+import { generateNewPrivateKey, storePrivateKey, keyExists } from "@layr-labs/ecloud-sdk";
 import { showPrivateKey, displayWarning } from "../../utils/security";
 
 export default class AuthGenerate extends Command {
@@ -94,7 +90,7 @@ Press 'q' to exit and continue...
 
         if (!confirmReplace) {
           this.log(
-            "\nKey not stored. If you did not save your new key when it was displayed, it is now lost and cannot be recovered."
+            "\nKey not stored. If you did not save your new key when it was displayed, it is now lost and cannot be recovered.",
           );
           return;
         }
@@ -105,9 +101,7 @@ Press 'q' to exit and continue...
         await storePrivateKey(privateKey);
         this.log(`\n✓ Private key stored in OS keyring`);
         this.log(`✓ Address: ${address}`);
-        this.log(
-          "\nYou can now use ecloud commands without --private-key flag."
-        );
+        this.log("\nYou can now use ecloud commands without --private-key flag.");
       } catch (err: any) {
         this.error(`Failed to store key: ${err.message}`);
       }

@@ -73,12 +73,10 @@ export function formatETH(wei: bigint): string {
 
 /**
  * Estimate gas cost for a transaction
- * 
+ *
  * Use this to get cost estimate before prompting user for confirmation.
  */
-export async function estimateTransactionGas(
-  options: EstimateGasOptions,
-): Promise<GasEstimate> {
+export async function estimateTransactionGas(options: EstimateGasOptions): Promise<GasEstimate> {
   const { privateKey, rpcUrl, environmentConfig, to, data, value = 0n } = options;
 
   const privateKeyHex = addHexPrefix(privateKey) as Hex;
@@ -169,9 +167,7 @@ export async function calculateAppID(
 
   // Ensure address is a string (viem might return Hex type)
   const accountAddress =
-    typeof account.address === "string"
-      ? account.address
-      : (account.address as Buffer).toString();
+    typeof account.address === "string" ? account.address : (account.address as Buffer).toString();
 
   const appID = await publicClient.readContract({
     address: environmentConfig.appControllerAddress as Address,
@@ -190,15 +186,7 @@ export async function deployApp(
   options: DeployAppOptions,
   logger: Logger,
 ): Promise<{ appAddress: Address; txHash: Hex }> {
-  const {
-    privateKey,
-    rpcUrl,
-    environmentConfig,
-    salt,
-    release,
-    publicLogs,
-    gas,
-  } = options;
+  const { privateKey, rpcUrl, environmentConfig, salt, release, publicLogs, gas } = options;
 
   const privateKeyHex = addHexPrefix(privateKey) as Hex;
   const account = privateKeyToAccount(privateKeyHex);
@@ -223,12 +211,7 @@ export async function deployApp(
 
   // 1. Calculate app ID
   logger.info("Calculating app ID...");
-  const appAddress = await calculateAppID(
-    privateKeyHex,
-    rpcUrl,
-    environmentConfig,
-    salt,
-  );
+  const appAddress = await calculateAppID(privateKeyHex, rpcUrl, environmentConfig, salt);
   logger.info(`App ID: ${appAddress}`);
 
   // Verify the app address calculation matches what createApp will deploy
@@ -248,15 +231,13 @@ export async function deployApp(
   const releaseForViem = {
     rmsRelease: {
       artifacts: release.rmsRelease.artifacts.map((artifact) => ({
-        digest:
-          `0x${Buffer.from(artifact.digest).toString("hex").padStart(64, "0")}` as Hex,
+        digest: `0x${Buffer.from(artifact.digest).toString("hex").padStart(64, "0")}` as Hex,
         registry: artifact.registry,
       })),
       upgradeByTime: release.rmsRelease.upgradeByTime,
     },
     publicEnv: `0x${Buffer.from(release.publicEnv).toString("hex")}` as Hex,
-    encryptedEnv:
-      `0x${Buffer.from(release.encryptedEnv).toString("hex")}` as Hex,
+    encryptedEnv: `0x${Buffer.from(release.encryptedEnv).toString("hex")}` as Hex,
   };
 
   const createData = encodeFunctionData({
@@ -352,10 +333,7 @@ export interface UpgradeAppOptions {
 /**
  * Upgrade app on-chain
  */
-export async function upgradeApp(
-  options: UpgradeAppOptions,
-  logger: Logger,
-): Promise<Hex> {
+export async function upgradeApp(options: UpgradeAppOptions, logger: Logger): Promise<Hex> {
   const {
     privateKey,
     rpcUrl,
@@ -393,15 +371,13 @@ export async function upgradeApp(
   const releaseForViem = {
     rmsRelease: {
       artifacts: release.rmsRelease.artifacts.map((artifact) => ({
-        digest:
-          `0x${Buffer.from(artifact.digest).toString("hex").padStart(64, "0")}` as Hex,
+        digest: `0x${Buffer.from(artifact.digest).toString("hex").padStart(64, "0")}` as Hex,
         registry: artifact.registry,
       })),
       upgradeByTime: release.rmsRelease.upgradeByTime,
     },
     publicEnv: `0x${Buffer.from(release.publicEnv).toString("hex")}` as Hex,
-    encryptedEnv:
-      `0x${Buffer.from(release.encryptedEnv).toString("hex")}` as Hex,
+    encryptedEnv: `0x${Buffer.from(release.encryptedEnv).toString("hex")}` as Hex,
   };
 
   const upgradeData = encodeFunctionData({
@@ -584,12 +560,8 @@ export async function sendAndWaitForTransaction(
         revertReason = callError.message || "Unknown reason";
       }
     }
-    logger.error(
-      `${txDescription} transaction (hash: ${hash}) reverted: ${revertReason}`,
-    );
-    throw new Error(
-      `${txDescription} transaction (hash: ${hash}) reverted: ${revertReason}`,
-    );
+    logger.error(`${txDescription} transaction (hash: ${hash}) reverted: ${revertReason}`);
+    throw new Error(`${txDescription} transaction (hash: ${hash}) reverted: ${revertReason}`);
   }
 
   return hash;
@@ -598,7 +570,10 @@ export async function sendAndWaitForTransaction(
 /**
  * Format AppController errors to user-friendly messages
  */
-function formatAppControllerError(decoded: { errorName: string; args?: readonly unknown[] }): Error {
+function formatAppControllerError(decoded: {
+  errorName: string;
+  args?: readonly unknown[];
+}): Error {
   const errorName = decoded.errorName;
 
   switch (errorName) {
@@ -777,21 +752,14 @@ export async function getAllAppsByDeveloper(
   rpcUrl: string,
   env: EnvironmentConfig,
   developer: Address,
-  pageSize: bigint = 100n
+  pageSize: bigint = 100n,
 ): Promise<{ apps: Address[]; appConfigs: AppConfig[] }> {
-
   let offset = 0n;
   const allApps: Address[] = [];
   const allConfigs: AppConfig[] = [];
 
   while (true) {
-    const { apps, appConfigs } = await getAppsByDeveloper(
-      rpcUrl,
-      env,
-      developer,
-      offset,
-      pageSize
-    );
+    const { apps, appConfigs } = await getAppsByDeveloper(rpcUrl, env, developer, offset, pageSize);
 
     if (apps.length === 0) break;
 

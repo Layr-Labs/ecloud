@@ -29,9 +29,11 @@ function extractHostname(registry: string): string {
  */
 function isDockerHub(registry: string): boolean {
   const hostname = extractHostname(registry);
-  return hostname === "docker.io" || 
-         hostname === "index.docker.io" || 
-         hostname === "registry-1.docker.io";
+  return (
+    hostname === "docker.io" ||
+    hostname === "index.docker.io" ||
+    hostname === "registry-1.docker.io"
+  );
 }
 
 /**
@@ -60,11 +62,7 @@ export function extractRegistry(imageRef: string): string {
   const firstPart = parts[0];
 
   // Check if first part is a registry (contains . or is a known registry)
-  if (
-    firstPart.includes(".") ||
-    firstPart === "ghcr.io" ||
-    isGCR(firstPart)
-  ) {
+  if (firstPart.includes(".") || firstPart === "ghcr.io" || isGCR(firstPart)) {
     return firstPart;
   }
 
@@ -79,9 +77,7 @@ export function extractRegistry(imageRef: string): string {
  */
 export async function getRegistryAuthConfig(
   registry: string,
-): Promise<
-  { username?: string; password?: string; auth?: string } | undefined
-> {
+): Promise<{ username?: string; password?: string; auth?: string } | undefined> {
   const authConfig = getDockerAuthConfig();
 
   // Helper to extract auth from config entry
@@ -115,10 +111,7 @@ export async function getRegistryAuthConfig(
       if (match) return match;
 
       // If entry exists but is empty (credential store), try to get from helper
-      if (
-        authConfig[variant] &&
-        Object.keys(authConfig[variant]).length === 0
-      ) {
+      if (authConfig[variant] && Object.keys(authConfig[variant]).length === 0) {
         const creds = await getCredentialsFromHelper("ghcr.io");
         if (creds) {
           return { username: creds.username, password: creds.password };
@@ -209,14 +202,8 @@ export async function pushDockerImage(
 
       // Check for success indicators
       const output = stdout + stderr;
-      if (
-        !output.includes("digest:") &&
-        !output.includes("pushed") &&
-        !output.includes("Pushed")
-      ) {
-        logger?.debug?.(
-          "No clear success indicator in push output, verifying...",
-        );
+      if (!output.includes("digest:") && !output.includes("pushed") && !output.includes("Pushed")) {
+        logger?.debug?.("No clear success indicator in push output, verifying...");
       }
 
       logger?.info?.("Image push completed successfully");
@@ -235,9 +222,7 @@ export async function pushDockerImage(
       const msg = error.message || String(error);
       if (msg.includes("command not found") || msg.includes("ENOENT")) {
         reject(
-          new Error(
-            `Docker CLI not found. Please ensure Docker is installed and in your PATH.`,
-          ),
+          new Error(`Docker CLI not found. Please ensure Docker is installed and in your PATH.`),
         );
       } else {
         reject(new Error(`Failed to start Docker push: ${msg}`));
@@ -273,10 +258,7 @@ async function verifyImageExists(
       const errorMsg = error.message || String(error);
 
       // If manifest inspect fails, wait and retry
-      if (
-        errorMsg.includes("manifest unknown") ||
-        errorMsg.includes("not found")
-      ) {
+      if (errorMsg.includes("manifest unknown") || errorMsg.includes("not found")) {
         retries--;
         if (retries > 0) {
           const waitTime = (6 - retries) * 2000; // 2s, 4s, 6s, 8s, 10s

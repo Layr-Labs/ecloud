@@ -1,6 +1,6 @@
 /**
  * Security utilities for CLI
- * 
+ *
  * Functions for securely displaying and handling sensitive content
  * like private keys.
  */
@@ -126,8 +126,7 @@ function runPager(pager: string, content: string): Promise<void> {
  */
 function commandExists(command: string): boolean {
   try {
-    const cmd =
-      platform() === "win32" ? `where ${command}` : `which ${command}`;
+    const cmd = platform() === "win32" ? `where ${command}` : `which ${command}`;
     execSync(cmd, { stdio: "ignore" });
     return true;
   } catch {
@@ -160,8 +159,7 @@ export async function getHiddenInput(message: string): Promise<string> {
  * Display multi-line warning for destructive operations
  */
 export function displayWarning(lines: string[]): void {
-  const width =
-    lines.length > 0 ? Math.max(...lines.map((l) => l.length)) + 4 : 4;
+  const width = lines.length > 0 ? Math.max(...lines.map((l) => l.length)) + 4 : 4;
   const border = "⚠".repeat(width);
 
   console.log("");

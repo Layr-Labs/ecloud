@@ -57,7 +57,7 @@ export async function storePrivateKey(privateKey: string): Promise<void> {
     await entry.setPassword(normalizedKey);
   } catch (err: any) {
     throw new Error(
-      `Failed to store key in OS keyring: ${err?.message ?? err}. Ensure keyring service is available.`
+      `Failed to store key in OS keyring: ${err?.message ?? err}. Ensure keyring service is available.`,
     );
   }
 }
@@ -111,9 +111,7 @@ export async function listStoredKeys(): Promise<StoredKey[]> {
   for (const cred of creds) {
     if (cred.account === ACCOUNT_NAME) {
       try {
-        const address = getAddressFromPrivateKey(
-          cred.password as `0x${string}`
-        );
+        const address = getAddressFromPrivateKey(cred.password as `0x${string}`);
         keys.push({ address });
       } catch (err) {
         console.warn(`Warning: Invalid key found, skipping: ${err}`);
@@ -161,7 +159,7 @@ export async function getLegacyKeys(): Promise<LegacyKey[]> {
         keys.push({ environment, address, source: "eigenx" });
       } catch (err) {
         console.warn(
-          `Warning: Invalid key found for ${environment} (eigenx-cli), skipping: ${err}`
+          `Warning: Invalid key found for ${environment} (eigenx-cli), skipping: ${err}`,
         );
       }
     }
@@ -188,7 +186,7 @@ export async function getLegacyKeys(): Promise<LegacyKey[]> {
         keys.push({ environment, address, source: "eigenx-dev" });
       } catch (err) {
         console.warn(
-          `Warning: Invalid key found for ${environment} (eigenx-dev), skipping: ${err}`
+          `Warning: Invalid key found for ${environment} (eigenx-dev), skipping: ${err}`,
         );
       }
     }
@@ -204,10 +202,9 @@ export async function getLegacyKeys(): Promise<LegacyKey[]> {
  */
 export async function getLegacyPrivateKey(
   environment: string,
-  source: "eigenx" | "eigenx-dev"
+  source: "eigenx" | "eigenx-dev",
 ): Promise<string | null> {
-  const serviceName =
-    source === "eigenx" ? EIGENX_SERVICE_NAME : EIGENX_DEV_SERVICE_NAME;
+  const serviceName = source === "eigenx" ? EIGENX_SERVICE_NAME : EIGENX_DEV_SERVICE_NAME;
 
   // eigenx-cli stores keys with account name "eigenx-<environment>"
   const accountName = EIGENX_ACCOUNT_PREFIX + environment;
@@ -235,10 +232,9 @@ export async function getLegacyPrivateKey(
  */
 export async function deleteLegacyPrivateKey(
   environment: string,
-  source: "eigenx" | "eigenx-dev"
+  source: "eigenx" | "eigenx-dev",
 ): Promise<boolean> {
-  const serviceName =
-    source === "eigenx" ? EIGENX_SERVICE_NAME : EIGENX_DEV_SERVICE_NAME;
+  const serviceName = source === "eigenx" ? EIGENX_SERVICE_NAME : EIGENX_DEV_SERVICE_NAME;
 
   // eigenx-cli stores keys with account name "eigenx-<environment>"
   const accountName = EIGENX_ACCOUNT_PREFIX + environment;

@@ -11,9 +11,7 @@ export const defaultLogger: Logger = {
   debug: (...args) => console.debug(...args),
 };
 
-export const getLogger: (verbose?: boolean) => Logger = (
-  verbose?: boolean,
-) => ({
+export const getLogger: (verbose?: boolean) => Logger = (verbose?: boolean) => ({
   info: (...args) => console.info(...args),
   warn: (...args) => console.warn(...args),
   error: (...args) => console.error(...args),

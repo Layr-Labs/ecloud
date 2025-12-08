@@ -35,4 +35,3 @@ export async function getCurrentInstanceType(
     return ""; // API call failed, skip default
   }
 }
-

@@ -3,7 +3,7 @@
  *
  * This is the main entry point for upgrading existing applications on ecloud TEE.
  * It orchestrates all the steps: build, push, encrypt, and upgrade on-chain.
- * 
+ *
  * NOTE: This SDK function is non-interactive. All required parameters must be
  * provided explicitly. Use the CLI for interactive parameter collection.
  */
@@ -113,7 +113,7 @@ function validateUpgradeOptions(options: SDKUpgradeOptions, environment: string)
  * Upgrade an existing application on ECloud TEE
  *
  * This function is non-interactive and requires all parameters to be provided explicitly.
- * 
+ *
  * Flow:
  * 1. Validate all required parameters
  * 2. Preflight checks (auth, network, etc.)
@@ -122,7 +122,7 @@ function validateUpgradeOptions(options: SDKUpgradeOptions, environment: string)
  * 5. Check current permission state and determine if change is needed
  * 6. Upgrade the app on-chain
  * 7. Watch until upgrade completes
- * 
+ *
  * @param options - Required upgrade options
  * @param logger - Optional logger instance
  * @returns UpgradeResult with appID, imageRef, and txHash
@@ -176,11 +176,7 @@ export async function upgrade(
 
   // 5. Check current permission state and determine if change is needed
   logger.debug("Checking current log permission state...");
-  const currentlyPublic = await checkAppLogPermission(
-    preflightCtx,
-    appID,
-    logger,
-  );
+  const currentlyPublic = await checkAppLogPermission(preflightCtx, appID, logger);
   const needsPermissionChange = currentlyPublic !== publicLogs;
 
   // 6. Upgrade the app

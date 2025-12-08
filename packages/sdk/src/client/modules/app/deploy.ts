@@ -3,7 +3,7 @@
  *
  * This is the main entry point for deploying applications to ecloud TEE.
  * It orchestrates all the steps: build, push, encrypt, and deploy on-chain.
- * 
+ *
  * NOTE: This SDK function is non-interactive. All required parameters must be
  * provided explicitly. Use the CLI for interactive parameter collection.
  */
@@ -108,7 +108,7 @@ function validateDeployOptions(options: SDKDeployOptions): void {
  * Deploy an application to ECloud TEE
  *
  * This function is non-interactive and requires all parameters to be provided explicitly.
- * 
+ *
  * Flow:
  * 1. Validate all required parameters
  * 2. Preflight checks (auth, network, etc.)
@@ -120,7 +120,7 @@ function validateDeployOptions(options: SDKDeployOptions): void {
  * 8. Upload profile if provided
  * 9. Save the app name mapping
  * 10. Watch until app is running
- * 
+ *
  * @param options - Required deployment options
  * @param logger - Optional logger instance
  * @returns DeployResult with appID, txHash, appName, imageRef, and ipAddress
@@ -267,9 +267,7 @@ export async function deploy(
  * Check quota availability - verifies that the user has deployment quota available
  * by checking their allowlist status on the contract
  */
-async function checkQuotaAvailable(
-  preflightCtx: PreflightContext,
-): Promise<void> {
+async function checkQuotaAvailable(preflightCtx: PreflightContext): Promise<void> {
   const rpcUrl = preflightCtx.rpcUrl;
   const environmentConfig = preflightCtx.environmentConfig;
   const userAddress = preflightCtx.selfAddress;
@@ -277,11 +275,7 @@ async function checkQuotaAvailable(
   // Check user's quota limit from contract
   let maxQuota: number;
   try {
-    maxQuota = await getMaxActiveAppsPerUser(
-      rpcUrl,
-      environmentConfig,
-      userAddress,
-    );
+    maxQuota = await getMaxActiveAppsPerUser(rpcUrl, environmentConfig, userAddress);
   } catch (err: any) {
     throw new Error(`failed to get quota limit: ${err.message}`);
   }
@@ -296,11 +290,7 @@ async function checkQuotaAvailable(
   // Check current active app count from contract
   let activeCount: number;
   try {
-    activeCount = await getActiveAppCount(
-      rpcUrl,
-      environmentConfig,
-      userAddress,
-    );
+    activeCount = await getActiveAppCount(rpcUrl, environmentConfig, userAddress);
   } catch (err: any) {
     throw new Error(`failed to get active app count: ${err.message}`);
   }

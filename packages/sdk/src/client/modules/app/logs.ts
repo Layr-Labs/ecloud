@@ -2,7 +2,7 @@
  * Logs command
  *
  * View app logs with optional watch mode
- * 
+ *
  * NOTE: This SDK function is non-interactive. All required parameters must be
  * provided explicitly. Use the CLI for interactive parameter collection.
  */
@@ -62,11 +62,7 @@ const WATCH_POLL_INTERVAL_SECONDS = 5;
 /**
  * Format app display
  */
-function formatAppDisplay(
-  environmentName: string,
-  appID: Address,
-  profileName: string,
-): string {
+function formatAppDisplay(environmentName: string, appID: Address, profileName: string): string {
   if (profileName) {
     return `${profileName} (${environmentName}:${appID})`;
   }
@@ -172,9 +168,9 @@ async function watchLogs(
 
 /**
  * View app logs
- * 
+ *
  * This function is non-interactive and requires appID to be provided explicitly.
- * 
+ *
  * @param options - Required options including appID
  * @param logger - Optional logger instance
  * @throws Error if appID is missing or invalid
@@ -205,18 +201,10 @@ export async function logs(
 
   // Get app profile name
   const profileName = getAppName(environment, appID);
-  const formattedApp = formatAppDisplay(
-    environmentConfig.name,
-    appID,
-    profileName,
-  );
+  const formattedApp = formatAppDisplay(environmentConfig.name, appID, profileName);
 
   // Create user API client
-  const userApiClient = new UserApiClient(
-    environmentConfig,
-    options.privateKey,
-    rpcUrl,
-  );
+  const userApiClient = new UserApiClient(environmentConfig, options.privateKey, rpcUrl);
 
   // Fetch logs
   let logsText: string;
@@ -258,27 +246,19 @@ export async function logs(
             );
             return;
           case AppStatusResuming:
-            logger.info(
-              `${formattedApp} is currently resuming. Logs will be available shortly.`,
-            );
+            logger.info(`${formattedApp} is currently resuming. Logs will be available shortly.`);
             return;
           case AppStatusStopping:
-            logger.info(
-              `${formattedApp} is currently stopping. Logs may be limited.`,
-            );
+            logger.info(`${formattedApp} is currently stopping. Logs may be limited.`);
             return;
           case AppStatusStopped:
           case AppStatusTerminating:
           case AppStatusTerminated:
           case AppStatusSuspended:
-            logger.info(
-              `${formattedApp} is ${status.toLowerCase()}. Logs are not available.`,
-            );
+            logger.info(`${formattedApp} is ${status.toLowerCase()}. Logs are not available.`);
             return;
           case AppStatusFailed:
-            logger.info(
-              `${formattedApp} has failed. Check the app status for more information.`,
-            );
+            logger.info(`${formattedApp} has failed. Check the app status for more information.`);
             return;
         }
       }

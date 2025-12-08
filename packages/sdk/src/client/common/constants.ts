@@ -14,8 +14,7 @@ export const CADDYFILE_NAME = "Caddyfile";
 export const TEMP_IMAGE_PREFIX = "ecloud-temp-";
 export const LAYERED_BUILD_DIR_PREFIX = "ecloud-layered-build";
 export const SHA256_PREFIX = "sha256:";
-export const JWT_FILE_PATH =
-  "/run/container_launcher/attestation_verifier_claims_token";
+export const JWT_FILE_PATH = "/run/container_launcher/attestation_verifier_claims_token";
 
 // Template paths (relative to templates directory)
 export const LAYERED_DOCKERFILE_TEMPLATE_PATH = "Dockerfile.layered.tmpl";

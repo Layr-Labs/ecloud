@@ -37,9 +37,7 @@ export default class BillingCancel extends Command {
 
     // Check if there's an active subscription to cancel
     if (!isSubscriptionActive(status.subscriptionStatus)) {
-      this.log(
-        `\n${chalk.gray("You don't have an active subscription to cancel.")}`,
-      );
+      this.log(`\n${chalk.gray("You don't have an active subscription to cancel.")}`);
       this.log(chalk.gray(`Current status: ${status.subscriptionStatus}`));
       return;
     }
@@ -65,9 +63,7 @@ export default class BillingCancel extends Command {
     if (result.type === "canceled") {
       this.log(`\n${chalk.green("✓")} Subscription canceled successfully.`);
     } else {
-      this.log(
-        `\n${chalk.gray("Subscription status changed. Current status:")} ${result.status}`,
-      );
+      this.log(`\n${chalk.gray("Subscription status changed. Current status:")} ${result.status}`);
     }
   }
 }

@@ -49,8 +49,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          registry-url: 'https://registry.npmjs.org'
-          cache: 'pnpm'
+          registry-url: "https://registry.npmjs.org"
+          cache: "pnpm"
 
       - name: Install dependencies
         working-directory: .
@@ -74,7 +74,7 @@ jobs:
         run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
         env:
           GITHUB_SHA: ${{ github.sha }}
-          
+
       - name: Generate SDK VERSION file
         working-directory: ./packages/sdk
         env:
@@ -129,4 +129,3 @@ jobs:
           echo "📦 CLI Package: @layr-labs/ecloud-cli@${{ env.PACKAGE_VERSION }} (tag: dev)"
           echo "🏷️  Tag: dev"
           echo "🔗 Install with: npm install -g @layr-labs/ecloud-cli@dev"
-

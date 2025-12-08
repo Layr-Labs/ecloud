@@ -23,4 +23,3 @@ fs.writeFileSync(versionFilePath, versionContent, "utf8");
 console.log(`Generated VERSION file: ${versionFilePath}`);
 console.log(`  version: ${version}`);
 console.log(`  commit: ${commit}`);
-

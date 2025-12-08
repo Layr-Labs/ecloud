@@ -1,6 +1,6 @@
 /**
  * Non-interactive validation utilities for SDK
- * 
+ *
  * These functions validate parameters without any interactive prompts.
  * They either return the validated value or throw an error.
  */
@@ -140,7 +140,7 @@ export function assertValidFilePath(value: string): void {
  */
 export function validateInstanceTypeSKU(
   sku: string,
-  availableTypes: Array<{ sku: string }>
+  availableTypes: Array<{ sku: string }>,
 ): string {
   if (!sku) {
     throw new Error("Instance type SKU cannot be empty");
@@ -155,9 +155,7 @@ export function validateInstanceTypeSKU(
 
   // Build helpful error message with valid options
   const validSKUs = availableTypes.map((it) => it.sku).join(", ");
-  throw new Error(
-    `Invalid instance-type value: ${sku} (must be one of: ${validSKUs})`
-  );
+  throw new Error(`Invalid instance-type value: ${sku} (must be one of: ${validSKUs})`);
 }
 
 // ==================== Private Key Validation ====================
@@ -187,7 +185,9 @@ export function assertValidPrivateKey(key: string): void {
     throw new Error("Private key is required");
   }
   if (!validatePrivateKeyFormat(key)) {
-    throw new Error("Invalid private key format (must be 64 hex characters, optionally prefixed with 0x)");
+    throw new Error(
+      "Invalid private key format (must be 64 hex characters, optionally prefixed with 0x)",
+    );
   }
 }
 
@@ -321,19 +321,13 @@ export function validateImagePath(filePath: string): string | undefined {
  * @returns Resolved app address
  * @throws Error if app ID cannot be resolved
  */
-export function resolveAppID(
-  appIDOrName: string | Address,
-  environment: string
-): Address {
+export function resolveAppID(appIDOrName: string | Address, environment: string): Address {
   if (!appIDOrName) {
     throw new Error("App ID or name is required");
   }
 
   // Normalize the input
-  const normalized =
-    typeof appIDOrName === "string"
-      ? addHexPrefix(appIDOrName)
-      : appIDOrName;
+  const normalized = typeof appIDOrName === "string" ? addHexPrefix(appIDOrName) : appIDOrName;
 
   // Check if it's a valid address
   if (isAddress(normalized)) {
@@ -349,9 +343,7 @@ export function resolveAppID(
   }
 
   // Name not found
-  throw new Error(
-    `App name '${appIDOrName}' not found in environment '${environment}'`
-  );
+  throw new Error(`App name '${appIDOrName}' not found in environment '${environment}'`);
 }
 
 // ==================== Log Visibility Validation ====================
@@ -364,9 +356,10 @@ export type LogVisibility = "public" | "private" | "off";
  * @returns Object with logRedirect and publicLogs settings
  * @throws Error if log visibility value is invalid
  */
-export function validateLogVisibility(
-  logVisibility: LogVisibility
-): { logRedirect: string; publicLogs: boolean } {
+export function validateLogVisibility(logVisibility: LogVisibility): {
+  logRedirect: string;
+  publicLogs: boolean;
+} {
   switch (logVisibility) {
     case "public":
       return { logRedirect: "always", publicLogs: true };
@@ -376,7 +369,7 @@ export function validateLogVisibility(
       return { logRedirect: "", publicLogs: false };
     default:
       throw new Error(
-        `Invalid log-visibility value: ${logVisibility} (must be public, private, or off)`
+        `Invalid log-visibility value: ${logVisibility} (must be public, private, or off)`,
       );
   }
 }
@@ -582,7 +575,7 @@ export function validateCreateAppParams(params: Partial<CreateAppParams>): void 
   if (!params.name) {
     throw new Error("Project name is required");
   }
-  
+
   // Validate project name (no spaces)
   if (params.name.includes(" ")) {
     throw new Error("Project name cannot contain spaces");

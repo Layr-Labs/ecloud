@@ -36,18 +36,17 @@ export default class AppCreate extends Command {
       info: (msg: string, ...args: any[]) => console.log(msg, ...args),
       warn: (msg: string, ...args: any[]) => console.warn(msg, ...args),
       error: (msg: string, ...args: any[]) => console.error(msg, ...args),
-      debug: (msg: string, ...args: any[]) =>
-        flags.verbose && console.debug(msg, ...args),
+      debug: (msg: string, ...args: any[]) => flags.verbose && console.debug(msg, ...args),
     };
 
     // 1. Get project name interactively if not provided
-    const name = flags.name || await promptProjectName();
+    const name = flags.name || (await promptProjectName());
 
     // 2. Get language interactively if not provided
-    const language = flags.language || await promptLanguage();
+    const language = flags.language || (await promptLanguage());
 
     // 3. Get template interactively if not provided
-    const template = flags.template || await selectTemplateInteractive(language);
+    const template = flags.template || (await selectTemplateInteractive(language));
 
     // 4. Call SDK with all gathered parameters
     return createApp(
@@ -58,7 +57,7 @@ export default class AppCreate extends Command {
         templateVersion: flags.templateVersion,
         verbose: flags.verbose,
       },
-      logger
+      logger,
     );
   }
 }

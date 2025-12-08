@@ -35,9 +35,7 @@ export default class BillingSubscribe extends Command {
 
     // Handle already active subscription
     if (result.type === "already_active") {
-      this.log(
-        `\n${chalk.green("✓")} You're already subscribed to ${flags.product}.`,
-      );
+      this.log(`\n${chalk.green("✓")} You're already subscribed to ${flags.product}.`);
       this.log(chalk.gray("Run 'ecloud billing status' for details."));
       return;
     }
@@ -79,9 +77,7 @@ export default class BillingSubscribe extends Command {
           this.log(
             `\n${chalk.green("✓")} Subscription activated successfully for ${flags.product}!`,
           );
-          this.log(
-            `\n${chalk.gray("Start deploying with:")} ecloud app deploy`,
-          );
+          this.log(`\n${chalk.gray("Start deploying with:")} ecloud app deploy`);
           return;
         }
       } catch (error) {
@@ -90,13 +86,7 @@ export default class BillingSubscribe extends Command {
     }
 
     // Timeout reached
-    this.log(
-      `\n${chalk.yellow("⚠")} Payment confirmation timed out after 5 minutes.`,
-    );
-    this.log(
-      chalk.gray(
-        `If you completed payment, run 'ecloud billing status' to check status.`,
-      ),
-    );
+    this.log(`\n${chalk.yellow("⚠")} Payment confirmation timed out after 5 minutes.`);
+    this.log(chalk.gray(`If you completed payment, run 'ecloud billing status' to check status.`));
   }
 }

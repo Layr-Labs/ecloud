@@ -39,14 +39,12 @@ export interface EstimateBatchGasOptions {
 
 /**
  * Estimate gas cost for a batch transaction
- * 
+ *
  * Use this to get cost estimate before prompting user for confirmation.
  * Note: This provides a conservative estimate since batch transactions
  * through EIP-7702 can have variable costs.
  */
-export async function estimateBatchGas(
-  options: EstimateBatchGasOptions,
-): Promise<GasEstimate> {
+export async function estimateBatchGas(options: EstimateBatchGasOptions): Promise<GasEstimate> {
   const { publicClient, executions } = options;
 
   // Get current gas prices
@@ -56,8 +54,8 @@ export async function estimateBatchGas(
   // Each execution adds ~50k gas, plus base cost of ~100k for the delegator call
   const baseGas = 100000n;
   const perExecutionGas = 50000n;
-  const estimatedGas = baseGas + (BigInt(executions.length) * perExecutionGas);
-  
+  const estimatedGas = baseGas + BigInt(executions.length) * perExecutionGas;
+
   // Add 20% buffer for safety
   const gasLimit = (estimatedGas * 120n) / 100n;
 
@@ -120,10 +118,7 @@ export async function checkERC7702Delegation(
  * 2. Creating authorization if needed
  * 3. Passing the right parameters to viem
  */
-export async function executeBatch(
-  options: ExecuteBatchOptions,
-  logger: Logger,
-): Promise<Hex> {
+export async function executeBatch(options: ExecuteBatchOptions, logger: Logger): Promise<Hex> {
   const {
     walletClient,
     publicClient,

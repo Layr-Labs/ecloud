@@ -4,11 +4,7 @@
  */
 
 import { Buffer } from "buffer";
-import {
-  importSPKI,
-  CompactEncrypt,
-  type CompactJWEHeaderParameters,
-} from "jose";
+import { importSPKI, CompactEncrypt, type CompactJWEHeaderParameters } from "jose";
 
 /**
  * Get app protected headers for encryption
@@ -29,9 +25,7 @@ export async function encryptRSAOAEPAndAES256GCM(
   protectedHeaders?: Record<string, string> | null,
 ): Promise<string> {
   const pemString =
-    typeof encryptionKeyPEM === "string"
-      ? encryptionKeyPEM
-      : encryptionKeyPEM.toString("utf-8");
+    typeof encryptionKeyPEM === "string" ? encryptionKeyPEM : encryptionKeyPEM.toString("utf-8");
 
   // Import RSA public key from PEM format
   // jose handles both PKIX and PKCS#1 formats automatically

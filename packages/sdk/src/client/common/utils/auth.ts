@@ -30,8 +30,7 @@ export interface PermissionSignatureResult {
 export async function calculatePermissionSignature(
   options: PermissionSignatureOptions,
 ): Promise<PermissionSignatureResult> {
-  const { permission, expiry, appControllerAddress, publicClient, account } =
-    options;
+  const { permission, expiry, appControllerAddress, publicClient, account } = options;
 
   // Calculate permission digest hash using AppController contract
   const digest = (await publicClient.readContract({

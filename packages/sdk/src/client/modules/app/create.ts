@@ -2,7 +2,7 @@
  * Create command
  *
  * Creates a new app project from a template
- * 
+ *
  * NOTE: This SDK function is non-interactive. All required parameters must be
  * provided explicitly. Use the CLI for interactive parameter collection.
  */
@@ -96,7 +96,7 @@ function validateLanguage(language: string): void {
 
   if (!PRIMARY_LANGUAGES.includes(language)) {
     throw new Error(
-      `Invalid language: ${language}. Must be one of: ${PRIMARY_LANGUAGES.join(", ")}`
+      `Invalid language: ${language}. Must be one of: ${PRIMARY_LANGUAGES.join(", ")}`,
     );
   }
 }
@@ -117,7 +117,7 @@ function isURL(str: string): boolean {
  * Get available template categories for a language
  */
 export async function getAvailableTemplates(
-  language: string
+  language: string,
 ): Promise<Array<{ name: string; description: string }>> {
   const catalog = await fetchTemplateCatalog();
   const categoryDescriptions = getCategoryDescriptions(catalog, language);
@@ -137,9 +137,9 @@ export async function getAvailableTemplates(
 
 /**
  * Create a new app project from template
- * 
+ *
  * This function is non-interactive and requires all parameters to be provided explicitly.
- * 
+ *
  * @param options - Required options including name and language
  * @param logger - Optional logger instance
  * @throws Error if required parameters are missing or invalid
@@ -159,7 +159,7 @@ export async function createApp(
       name: options.name!,
       language: options.language!,
     },
-    logger
+    logger,
   );
 
   // 3. Check if directory exists
@@ -176,12 +176,7 @@ export async function createApp(
 
     // 6. Post-process template
     if (cfg.subPath && cfg.language && cfg.templateEntry) {
-      await postProcessTemplate(
-        cfg.name,
-        cfg.language,
-        cfg.templateEntry,
-        logger,
-      );
+      await postProcessTemplate(cfg.name, cfg.language, cfg.templateEntry, logger);
     }
 
     logger.info(`Successfully created ${cfg.language || "project"} project: ${cfg.name}`);
@@ -219,7 +214,7 @@ async function gatherProjectConfig(
 
   // Get template name (category)
   let templateName = customTemplateRepo; // If provided and not a URL, it's a template name
-  
+
   if (!templateName) {
     // Default to first available template for the language
     const availableTemplates = await getAvailableTemplates(options.language);
@@ -282,13 +277,7 @@ async function populateProjectFromTemplate(
 
   // Fetch from remote repository
   if (cfg.subPath) {
-    await fetchTemplateSubdirectory(
-      cfg.repoURL,
-      cfg.ref,
-      cfg.subPath,
-      cfg.name,
-      logger,
-    );
+    await fetchTemplateSubdirectory(cfg.repoURL, cfg.ref, cfg.subPath, cfg.name, logger);
   } else {
     await fetchTemplate(
       cfg.repoURL,

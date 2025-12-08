@@ -101,8 +101,6 @@ export async function isDockerRunning(): Promise<boolean> {
 export async function ensureDockerIsRunning(): Promise<void> {
   const running = await isDockerRunning();
   if (!running) {
-    throw new Error(
-      "Docker is not running. Please start Docker and try again.",
-    );
+    throw new Error("Docker is not running. Please start Docker and try again.");
   }
 }

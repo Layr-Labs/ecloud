@@ -31,10 +31,7 @@ export async function createAppClient(flags: CommonFlags) {
   });
 }
 
-export async function createBillingClient(flags: {
-  "private-key"?: string;
-  verbose?: boolean;
-}) {
+export async function createBillingClient(flags: { "private-key"?: string; verbose?: boolean }) {
   const result = await getPrivateKeyWithSource({
     privateKey: flags["private-key"],
   });

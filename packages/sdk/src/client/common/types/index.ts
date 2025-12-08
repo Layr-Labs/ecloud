@@ -225,9 +225,7 @@ export interface NoActiveSubscriptionResponse {
   status: SubscriptionStatus;
 }
 
-export type CancelResponse =
-  | CancelSuccessResponse
-  | NoActiveSubscriptionResponse;
+export type CancelResponse = CancelSuccessResponse | NoActiveSubscriptionResponse;
 
 export interface ProductSubscriptionResponse {
   productId: ProductID;

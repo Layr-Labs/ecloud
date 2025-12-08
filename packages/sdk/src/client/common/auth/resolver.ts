@@ -31,7 +31,7 @@ export async function getPrivateKeyWithSource(options: {
   if (options.privateKey) {
     if (!validatePrivateKey(options.privateKey)) {
       throw new Error(
-        "Invalid private key format provided via command flag. Please check and try again."
+        "Invalid private key format provided via command flag. Please check and try again.",
       );
     }
     return {
@@ -45,7 +45,7 @@ export async function getPrivateKeyWithSource(options: {
   if (envKey) {
     if (!validatePrivateKey(envKey)) {
       throw new Error(
-        "Invalid private key format provided via environment variable. Please check and try again."
+        "Invalid private key format provided via environment variable. Please check and try again.",
       );
     }
     return {
@@ -81,7 +81,7 @@ export async function requirePrivateKey(options: {
       `Private key required. Please provide it via:\n` +
         `  • Keyring: ecloud auth login\n` +
         `  • Flag: --private-key YOUR_KEY\n` +
-        `  • Environment: export ECLOUD_PRIVATE_KEY=YOUR_KEY`
+        `  • Environment: export ECLOUD_PRIVATE_KEY=YOUR_KEY`,
     );
   }
 
