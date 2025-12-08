@@ -9,10 +9,17 @@
  */
 
 import { Address } from "viem";
-import { Logger } from "../../common/types";
+import { Logger, EnvironmentConfig } from "../../common/types";
 import { ensureDockerIsRunning } from "../../common/docker/build";
 import { prepareRelease } from "../../common/release/prepare";
-import { upgradeApp } from "../../common/contract/caller";
+import {
+  upgradeApp,
+  prepareUpgradeBatch,
+  executeUpgradeBatch,
+  type PreparedUpgradeBatch,
+  type GasEstimate,
+} from "../../common/contract/caller";
+import { estimateBatchGas } from "../../common/contract/eip7702";
 import { watchUntilUpgradeComplete } from "../../common/contract/watcher";
 import {
   resolveAppID,
@@ -30,7 +37,7 @@ import { defaultLogger } from "../../common/utils";
  */
 export interface SDKUpgradeOptions {
   /** App ID to upgrade - required */
-  appID: string | Address;
+  appId: string | Address;
   /** Private key for signing transactions (hex string with or without 0x prefix) */
   privateKey: string;
   /** RPC URL for blockchain connection - optional, uses environment default if not provided */
@@ -56,11 +63,39 @@ export interface SDKUpgradeOptions {
 
 export interface UpgradeResult {
   /** App ID (contract address) */
-  appID: string;
+  appId: string;
   /** Final image reference */
   imageRef: string;
   /** Transaction hash */
   txHash: `0x${string}`;
+}
+
+/**
+ * Prepared upgrade ready for gas estimation and execution
+ */
+export interface PreparedUpgrade {
+  /** The prepared batch (executions, clients, etc.) */
+  batch: PreparedUpgradeBatch;
+  /** App ID being upgraded */
+  appId: string;
+  /** Final image reference */
+  imageRef: string;
+  /** Preflight context for post-upgrade operations */
+  preflightCtx: {
+    privateKey: string;
+    rpcUrl: string;
+    environmentConfig: EnvironmentConfig;
+  };
+}
+
+/**
+ * Result from prepareUpgrade - includes prepared batch and gas estimate
+ */
+export interface PrepareUpgradeResult {
+  /** Prepared upgrade state */
+  prepared: PreparedUpgrade;
+  /** Gas estimate for the batch transaction */
+  gasEstimate: GasEstimate;
 }
 
 /**
@@ -73,11 +108,11 @@ function validateUpgradeOptions(options: SDKUpgradeOptions, environment: string)
   }
 
   // App ID is required
-  if (!options.appID) {
-    throw new Error("appID is required for upgrade");
+  if (!options.appId) {
+    throw new Error("appId is required for upgrade");
   }
   // Resolve app ID (validates and returns Address)
-  const resolvedAppID = resolveAppID(options.appID, environment);
+  const resolvedAppID = resolveAppID(options.appId, environment);
 
   // Must have either dockerfilePath or imageRef
   if (!options.dockerfilePath && !options.imageRef) {
@@ -169,7 +204,7 @@ export async function upgrade(
       logRedirect,
       instanceType,
       environmentConfig: preflightCtx.environmentConfig,
-      appID: appID as string,
+      appId: appID as string,
     },
     logger,
   );
@@ -186,7 +221,7 @@ export async function upgrade(
       privateKey: preflightCtx.privateKey,
       rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
       environmentConfig: preflightCtx.environmentConfig,
-      appID,
+      appId: appID,
       release,
       publicLogs,
       needsPermissionChange,
@@ -203,14 +238,144 @@ export async function upgrade(
       privateKey: preflightCtx.privateKey,
       rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
       environmentConfig: preflightCtx.environmentConfig,
-      appID,
+      appId: appID,
     },
     logger,
   );
 
   return {
-    appID: appID as string,
+    appId: appID as string,
     imageRef: finalImageRef,
+    txHash,
+  };
+}
+
+/**
+ * Prepare upgrade - does all work up to the transaction
+ *
+ * This allows CLI to:
+ * 1. Call prepareUpgrade to build image, prepare release, get gas estimate
+ * 2. Prompt user to confirm the cost
+ * 3. Call executeUpgrade with confirmed gas params
+ */
+export async function prepareUpgrade(
+  options: Omit<SDKUpgradeOptions, "gas">,
+  logger: Logger = defaultLogger,
+): Promise<PrepareUpgradeResult> {
+  // 1. Do preflight checks (auth, network, etc.) first
+  logger.debug("Performing preflight checks...");
+  const preflightCtx = await doPreflightChecks(
+    {
+      privateKey: options.privateKey,
+      rpcUrl: options.rpcUrl,
+      environment: options.environment,
+    },
+    logger,
+  );
+
+  // 2. Validate all required parameters upfront (now that we have environment)
+  const appID = validateUpgradeOptions(
+    options as SDKUpgradeOptions,
+    preflightCtx.environmentConfig.name,
+  );
+
+  // Convert log visibility to internal format
+  const { logRedirect, publicLogs } = validateLogVisibility(options.logVisibility);
+
+  // 3. Check if docker is running, else try to start it
+  logger.debug("Checking Docker...");
+  await ensureDockerIsRunning();
+
+  // Use provided values (already validated)
+  const dockerfilePath = options.dockerfilePath || "";
+  const imageRef = options.imageRef || "";
+  const envFilePath = options.envFilePath || "";
+  const instanceType = options.instanceType;
+
+  // 4. Prepare the release (includes build/push if needed)
+  logger.info("Preparing release...");
+  const { release, finalImageRef } = await prepareRelease(
+    {
+      dockerfilePath,
+      imageRef,
+      envFilePath,
+      logRedirect,
+      instanceType,
+      environmentConfig: preflightCtx.environmentConfig,
+      appId: appID as string,
+    },
+    logger,
+  );
+
+  // 5. Check current permission state and determine if change is needed
+  logger.debug("Checking current log permission state...");
+  const currentlyPublic = await checkAppLogPermission(preflightCtx, appID, logger);
+  const needsPermissionChange = currentlyPublic !== publicLogs;
+
+  // 6. Prepare the upgrade batch (creates executions without sending)
+  logger.debug("Preparing upgrade batch...");
+  const batch = await prepareUpgradeBatch({
+    privateKey: preflightCtx.privateKey,
+    rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
+    environmentConfig: preflightCtx.environmentConfig,
+    appId: appID,
+    release,
+    publicLogs,
+    needsPermissionChange,
+  });
+
+  // 7. Estimate gas for the batch
+  logger.debug("Estimating gas...");
+  const gasEstimate = await estimateBatchGas({
+    publicClient: batch.publicClient,
+    environmentConfig: batch.environmentConfig,
+    executions: batch.executions,
+  });
+
+  return {
+    prepared: {
+      batch,
+      appId: appID as string,
+      imageRef: finalImageRef,
+      preflightCtx: {
+        privateKey: preflightCtx.privateKey,
+        rpcUrl: preflightCtx.rpcUrl,
+        environmentConfig: preflightCtx.environmentConfig,
+      },
+    },
+    gasEstimate,
+  };
+}
+
+/**
+ * Execute a prepared upgrade
+ *
+ * Call this after prepareUpgrade and user confirmation.
+ */
+export async function executeUpgrade(
+  prepared: PreparedUpgrade,
+  gas: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } | undefined,
+  logger: Logger = defaultLogger,
+): Promise<UpgradeResult> {
+  // 1. Execute the batch transaction
+  logger.info("Upgrading on-chain...");
+  const txHash = await executeUpgradeBatch(prepared.batch, gas, logger);
+
+  // 2. Watch until upgrade completes
+  logger.info("Waiting for upgrade to complete...");
+  await watchUntilUpgradeComplete(
+    {
+      privateKey: prepared.preflightCtx.privateKey,
+      rpcUrl: prepared.preflightCtx.rpcUrl,
+      environmentConfig: prepared.preflightCtx.environmentConfig,
+      appId: prepared.appId as Address,
+    },
+    logger,
+  );
+
+  return {
+    appId: prepared.appId,
+    imageRef: prepared.imageRef,
     txHash,
   };
 }

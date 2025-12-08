@@ -1,6 +1,11 @@
 import { Command, Args, Flags } from "@oclif/core";
-import { getEnvironmentConfig, UserApiClient, formatETH, isMainnet } from "@layr-labs/ecloud-sdk";
-import { createAppClient } from "../../../client";
+import {
+  getEnvironmentConfig,
+  UserApiClient,
+  isMainnet,
+  prepareUpgrade,
+  executeUpgrade,
+} from "@layr-labs/ecloud-sdk";
 import { commonFlags } from "../../../flags";
 import {
   getDockerfileInteractive,
@@ -11,10 +16,9 @@ import {
   getOrPromptAppID,
   LogVisibility,
   confirm,
+  getPrivateKeyInteractive,
 } from "../../../utils/prompts";
 import chalk from "chalk";
-import { Address, createPublicClient, http } from "viem";
-import { mainnet } from "viem/chains";
 
 export default class AppUpgrade extends Command {
   static description = "Upgrade existing deployment";
@@ -59,18 +63,28 @@ export default class AppUpgrade extends Command {
 
   async run() {
     const { args, flags } = await this.parse(AppUpgrade);
-    const app = await createAppClient(flags);
+
+    // Create CLI logger
+    const logger = {
+      info: (msg: string) => this.log(msg),
+      warn: (msg: string) => this.warn(msg),
+      error: (msg: string) => this.error(msg),
+      debug: (msg: string) => flags.verbose && this.log(msg),
+    };
 
     // Get environment config
     const environment = flags.environment || "sepolia";
     const environmentConfig = getEnvironmentConfig(environment);
     const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
 
+    // Get private key interactively if not provided
+    const privateKey = flags["private-key"] || (await getPrivateKeyInteractive());
+
     // 1. Get app ID interactively if not provided
     const appID = await getOrPromptAppID({
       appID: args["app-id"],
       environment,
-      privateKey: flags["private-key"],
+      privateKey,
       rpcUrl,
       action: "upgrade",
     });
@@ -88,7 +102,7 @@ export default class AppUpgrade extends Command {
     // 5. Get current instance type (best-effort, used as default)
     let currentInstanceType = "";
     try {
-      const userApiClient = new UserApiClient(environmentConfig, flags["private-key"], rpcUrl);
+      const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl);
       const infos = await userApiClient.getInfos([appID], 1);
       if (infos.length > 0) {
         currentInstanceType = infos[0].machineType || "";
@@ -98,11 +112,7 @@ export default class AppUpgrade extends Command {
     }
 
     // 6. Get instance type interactively
-    const availableTypes = await fetchAvailableInstanceTypes(
-      environmentConfig,
-      flags["private-key"],
-      rpcUrl,
-    );
+    const availableTypes = await fetchAvailableInstanceTypes(environmentConfig, privateKey, rpcUrl);
     const instanceType = await getInstanceTypeInteractive(
       flags["instance-type"],
       currentInstanceType,
@@ -114,56 +124,52 @@ export default class AppUpgrade extends Command {
       flags["log-visibility"] as LogVisibility | undefined,
     );
 
-    // 8. Estimate gas cost on mainnet and prompt for confirmation
-    let gasParams: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } | undefined;
+    // 8. Prepare upgrade (builds image, pushes to registry, prepares batch, estimates gas)
+    const logVisibility = logSettings.publicLogs
+      ? "public"
+      : logSettings.logRedirect
+        ? "private"
+        : "off";
+
+    const { prepared, gasEstimate } = await prepareUpgrade(
+      {
+        appId: appID,
+        privateKey,
+        rpcUrl,
+        environment,
+        dockerfilePath,
+        imageRef,
+        envFilePath,
+        instanceType,
+        logVisibility,
+      },
+      logger,
+    );
+
+    // 9. Show gas estimate and prompt for confirmation on mainnet
+    this.log(`\nEstimated transaction cost: ${chalk.cyan(gasEstimate.maxCostEth)} ETH`);
 
     if (isMainnet(environmentConfig)) {
-      const chain = mainnet;
-      const publicClient = createPublicClient({
-        chain,
-        transport: http(rpcUrl),
-      });
-
-      // Get current gas prices for estimation
-      const fees = await publicClient.estimateFeesPerGas();
-      // Upgrade typically has 1-2 executions in the batch
-      const estimatedGas = BigInt(250000); // Conservative estimate for upgrade batch
-      const maxCostWei = estimatedGas * fees.maxFeePerGas;
-      const maxCostEth = formatETH(maxCostWei);
-
-      const confirmed = await confirm(`This upgrade will cost up to ${maxCostEth} ETH. Continue?`);
+      const confirmed = await confirm(`Continue with upgrade?`);
       if (!confirmed) {
         this.log(`\n${chalk.gray(`Upgrade cancelled`)}`);
         return;
       }
-
-      gasParams = {
-        maxFeePerGas: fees.maxFeePerGas,
-        maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
-      };
     }
 
-    // 9. Upgrade with all gathered parameters
-    const res = await app.upgrade(appID as Address, {
-      dockerfile: dockerfilePath,
-      envFile: envFilePath,
-      imageRef: imageRef,
-      logVisibility: logSettings.publicLogs
-        ? "public"
-        : logSettings.logRedirect
-          ? "private"
-          : "off",
-      instanceType,
-      gas: gasParams,
-    });
+    // 10. Execute the upgrade
+    const res = await executeUpgrade(
+      prepared,
+      {
+        maxFeePerGas: gasEstimate.maxFeePerGas,
+        maxPriorityFeePerGas: gasEstimate.maxPriorityFeePerGas,
+      },
+      logger,
+    );
 
-    if (!res.tx) {
-      this.log(`\n${chalk.gray(`Upgrade failed`)}`);
-    } else {
-      this.log(
-        `\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${res.appID}, image: ${res.imageRef})`)}`)}`,
-      );
-    }
+    this.log(
+      `\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${res.appId}, image: ${res.imageRef})`)}`)}`,
+    );
   }
 }
 

@@ -8,7 +8,7 @@
  * provided explicitly. Use the CLI for interactive parameter collection.
  */
 
-import { DeployResult, Logger, AppProfile } from "../../common/types";
+import { DeployResult, Logger, AppProfile, EnvironmentConfig } from "../../common/types";
 import { ensureDockerIsRunning } from "../../common/docker/build";
 import { prepareRelease } from "../../common/release/prepare";
 import {
@@ -16,7 +16,12 @@ import {
   calculateAppID,
   getMaxActiveAppsPerUser,
   getActiveAppCount,
+  prepareDeployBatch,
+  executeDeployBatch,
+  type PreparedDeployBatch,
 } from "../../common/contract/caller";
+import { estimateBatchGas } from "../../common/contract/eip7702";
+import { type GasEstimate } from "../../common/contract/caller";
 import { watchUntilRunning } from "../../common/contract/watcher";
 import {
   validateAppName,
@@ -59,6 +64,36 @@ export interface SDKDeployOptions {
     maxFeePerGas?: bigint;
     maxPriorityFeePerGas?: bigint;
   };
+}
+
+/**
+ * Prepared deployment ready for gas estimation and execution
+ */
+export interface PreparedDeploy {
+  /** The prepared batch (executions, clients, etc.) */
+  batch: PreparedDeployBatch;
+  /** App name */
+  appName: string;
+  /** Final image reference */
+  imageRef: string;
+  /** Optional profile to upload */
+  profile?: AppProfile;
+  /** Preflight context for post-deploy operations */
+  preflightCtx: {
+    privateKey: string;
+    rpcUrl: string;
+    environmentConfig: EnvironmentConfig;
+  };
+}
+
+/**
+ * Result from prepareDeploy - includes prepared batch and gas estimate
+ */
+export interface PrepareDeployResult {
+  /** Prepared deployment state */
+  prepared: PreparedDeploy;
+  /** Gas estimate for the batch transaction */
+  gasEstimate: GasEstimate;
 }
 
 /**
@@ -189,14 +224,14 @@ export async function deploy(
       logRedirect,
       instanceType,
       environmentConfig: preflightCtx.environmentConfig,
-      appID: appIDToBeDeployed,
+      appId: appIDToBeDeployed,
     },
     logger,
   );
 
   // 8. Deploy the app
   logger.info("Deploying on-chain...");
-  const deployedAppID = await deployApp(
+  const deployResult = await deployApp(
     {
       privateKey: preflightCtx.privateKey,
       rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
@@ -221,7 +256,7 @@ export async function deploy(
       );
 
       await userApiClient.uploadAppProfile(
-        deployedAppID.appAddress,
+        deployResult.appId,
         options.profile.name,
         options.profile.website,
         options.profile.description,
@@ -236,7 +271,7 @@ export async function deploy(
 
   // 10. Save the app name mapping
   try {
-    await setAppName(environment, deployedAppID.appAddress, appName);
+    await setAppName(environment, deployResult.appId, appName);
     logger.info(`App saved with name: ${appName}`);
   } catch (err: any) {
     logger.warn(`Failed to save app name: ${err.message}`);
@@ -249,14 +284,14 @@ export async function deploy(
       privateKey: preflightCtx.privateKey,
       rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
       environmentConfig: preflightCtx.environmentConfig,
-      appID: deployedAppID.appAddress,
+      appId: deployResult.appId,
     },
     logger,
   );
 
   return {
-    appID: deployedAppID.appAddress,
-    txHash: deployedAppID.txHash,
+    appId: deployResult.appId,
+    txHash: deployResult.txHash,
     appName,
     imageRef: finalImageRef,
     ipAddress,
@@ -310,6 +345,187 @@ function generateRandomSalt(): Uint8Array {
   const salt = new Uint8Array(32);
   crypto.getRandomValues(salt);
   return salt;
+}
+
+/**
+ * Prepare deployment - does all work up to the transaction
+ *
+ * This allows CLI to:
+ * 1. Call prepareDeploy to build image, prepare release, get gas estimate
+ * 2. Prompt user to confirm the cost
+ * 3. Call executeDeploy with confirmed gas params
+ */
+export async function prepareDeploy(
+  options: Omit<SDKDeployOptions, "gas">,
+  logger: Logger = defaultLogger,
+): Promise<PrepareDeployResult> {
+  // 1. Validate all required parameters upfront
+  validateDeployOptions(options as SDKDeployOptions);
+
+  // Convert log visibility to internal format
+  const { logRedirect, publicLogs } = validateLogVisibility(options.logVisibility);
+
+  // 2. Do preflight checks (auth, network, etc.)
+  logger.debug("Performing preflight checks...");
+  const preflightCtx = await doPreflightChecks(
+    {
+      privateKey: options.privateKey,
+      rpcUrl: options.rpcUrl,
+      environment: options.environment,
+    },
+    logger,
+  );
+
+  // 3. Check quota availability
+  logger.debug("Checking quota availability...");
+  await checkQuotaAvailable(preflightCtx);
+
+  // 4. Check if docker is running, else try to start it
+  logger.debug("Checking Docker...");
+  await ensureDockerIsRunning();
+
+  // Use provided values (already validated)
+  const dockerfilePath = options.dockerfilePath || "";
+  const imageRef = options.imageRef || "";
+  const appName = options.appName;
+  const envFilePath = options.envFilePath || "";
+  const instanceType = options.instanceType;
+
+  // 5. Generate random salt
+  const salt = generateRandomSalt();
+  logger.debug(`Generated salt: ${Buffer.from(salt).toString("hex")}`);
+
+  // 6. Get app ID (calculate from salt and address)
+  logger.debug("Calculating app ID...");
+  const appIDToBeDeployed = await calculateAppID(
+    preflightCtx.privateKey,
+    options.rpcUrl || preflightCtx.rpcUrl,
+    preflightCtx.environmentConfig,
+    salt,
+  );
+  logger.info(``);
+  logger.info(`App ID: ${appIDToBeDeployed}`);
+  logger.info(``);
+
+  // 7. Prepare the release (includes build/push if needed)
+  logger.info("Preparing release...");
+  const { release, finalImageRef } = await prepareRelease(
+    {
+      dockerfilePath,
+      imageRef,
+      envFilePath,
+      logRedirect,
+      instanceType,
+      environmentConfig: preflightCtx.environmentConfig,
+      appId: appIDToBeDeployed,
+    },
+    logger,
+  );
+
+  // 8. Prepare the deploy batch (creates executions without sending)
+  logger.debug("Preparing deploy batch...");
+  const batch = await prepareDeployBatch(
+    {
+      privateKey: preflightCtx.privateKey,
+      rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
+      environmentConfig: preflightCtx.environmentConfig,
+      salt,
+      release,
+      publicLogs,
+    },
+    logger,
+  );
+
+  // 9. Estimate gas for the batch
+  logger.debug("Estimating gas...");
+  const gasEstimate = await estimateBatchGas({
+    publicClient: batch.publicClient,
+    environmentConfig: batch.environmentConfig,
+    executions: batch.executions,
+  });
+
+  return {
+    prepared: {
+      batch,
+      appName,
+      imageRef: finalImageRef,
+      profile: options.profile,
+      preflightCtx: {
+        privateKey: preflightCtx.privateKey,
+        rpcUrl: preflightCtx.rpcUrl,
+        environmentConfig: preflightCtx.environmentConfig,
+      },
+    },
+    gasEstimate,
+  };
+}
+
+/**
+ * Execute a prepared deployment
+ *
+ * Call this after prepareDeploy and user confirmation.
+ */
+export async function executeDeploy(
+  prepared: PreparedDeploy,
+  gas: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } | undefined,
+  logger: Logger = defaultLogger,
+): Promise<DeployResult> {
+  // 1. Execute the batch transaction
+  logger.info("Deploying on-chain...");
+  const { appId, txHash } = await executeDeployBatch(prepared.batch, gas, logger);
+
+  // 2. Upload profile if provided (non-blocking)
+  if (prepared.profile) {
+    logger.info("Uploading app profile...");
+    try {
+      const userApiClient = new UserApiClient(
+        prepared.preflightCtx.environmentConfig,
+        prepared.preflightCtx.privateKey,
+        prepared.preflightCtx.rpcUrl,
+      );
+
+      await userApiClient.uploadAppProfile(
+        appId,
+        prepared.profile.name,
+        prepared.profile.website,
+        prepared.profile.description,
+        prepared.profile.xURL,
+        prepared.profile.imagePath,
+      );
+      logger.info("✓ Profile uploaded successfully");
+    } catch (err: any) {
+      logger.warn(`Failed to upload profile: ${err.message}`);
+    }
+  }
+
+  // 3. Save the app name mapping
+  const environment = prepared.preflightCtx.environmentConfig.name;
+  try {
+    await setAppName(environment, appId, prepared.appName);
+    logger.info(`App saved with name: ${prepared.appName}`);
+  } catch (err: any) {
+    logger.warn(`Failed to save app name: ${err.message}`);
+  }
+
+  // 4. Watch until app is running
+  logger.info("Waiting for app to start...");
+  const ipAddress = await watchUntilRunning(
+    {
+      privateKey: prepared.preflightCtx.privateKey,
+      rpcUrl: prepared.preflightCtx.rpcUrl,
+      environmentConfig: prepared.preflightCtx.environmentConfig,
+      appId,
+    },
+    logger,
+  );
+
+  return {
+    appId,
+    txHash,
+    appName: prepared.appName,
+    imageRef: prepared.imageRef,
+    ipAddress,
+  };
 }
 
 // Re-export for convenience
