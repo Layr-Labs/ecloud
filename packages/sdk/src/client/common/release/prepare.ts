@@ -23,7 +23,7 @@ export interface PrepareReleaseOptions {
   logRedirect: string;
   instanceType: string;
   environmentConfig: EnvironmentConfig;
-  appID: string;
+  appId: string;
 }
 
 export interface PrepareReleaseResult {
@@ -146,7 +146,7 @@ export async function prepareRelease(
     environmentConfig.name,
     environmentConfig.build,
   );
-  const protectedHeaders = getAppProtectedHeaders(options.appID);
+  const protectedHeaders = getAppProtectedHeaders(options.appId);
   const privateEnvBytes = Buffer.from(JSON.stringify(privateEnv));
   const encryptedEnvStr = await encryptRSAOAEPAndAES256GCM(
     encryptionKey,

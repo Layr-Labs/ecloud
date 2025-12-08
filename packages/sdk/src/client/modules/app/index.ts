@@ -58,16 +58,16 @@ export function encodeTerminateAppData(appId: AppId): `0x${string}` {
 export interface AppModule {
   create: (opts: CreateAppOpts) => Promise<void>;
   deploy: (opts: DeployAppOpts) => Promise<{
-    appID: AppId;
+    appId: AppId;
     tx: `0x${string}`;
     appName: string;
     imageRef: string;
     ipAddress?: string;
   }>;
   upgrade: (
-    appID: AppId,
+    appId: AppId,
     opts: UpgradeAppOpts,
-  ) => Promise<{ tx: `0x${string}`; appID: string; imageRef: string }>;
+  ) => Promise<{ tx: `0x${string}`; appId: string; imageRef: string }>;
   logs: (opts: LogsOptions) => Promise<void>;
   start: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: `0x${string}` | false }>;
   stop: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: `0x${string}` | false }>;
@@ -116,7 +116,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
       );
 
       return {
-        appID: result.appID as AppId,
+        appId: result.appId as AppId,
         tx: result.txHash,
         ipAddress: result.ipAddress,
         appName: result.appName,
@@ -124,11 +124,11 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
       };
     },
 
-    async upgrade(appID, opts) {
+    async upgrade(appId, opts) {
       // Map UpgradeAppOpts to SDKUpgradeOptions and call the upgrade function
       const result = await upgradeApp(
         {
-          appID: appID,
+          appId: appId,
           privateKey,
           rpcUrl: ctx.rpcUrl,
           environment: ctx.environment,
@@ -144,7 +144,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
 
       return {
         tx: result.txHash,
-        appID: result.appID,
+        appId: result.appId,
         imageRef: result.imageRef,
       };
     },

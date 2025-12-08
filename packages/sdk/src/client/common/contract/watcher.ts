@@ -12,7 +12,7 @@ export interface WatchUntilRunningOptions {
   privateKey: string;
   rpcUrl: string;
   environmentConfig: EnvironmentConfig;
-  appID: Address;
+  appId: Address;
 }
 
 const WATCH_POLL_INTERVAL_SECONDS = 5;
@@ -27,7 +27,7 @@ export async function watchUntilRunning(
   options: WatchUntilRunningOptions,
   logger: Logger,
 ): Promise<string | undefined> {
-  const { environmentConfig, appID, privateKey, rpcUrl } = options;
+  const { environmentConfig, appId, privateKey, rpcUrl } = options;
 
   // Create UserAPI client
   const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl);
@@ -77,7 +77,7 @@ export async function watchUntilRunning(
   while (true) {
     try {
       // Fetch app info
-      const info = await userApiClient.getInfos([appID], 1);
+      const info = await userApiClient.getInfos([appId], 1);
       if (info.length === 0) {
         await sleep(WATCH_POLL_INTERVAL_SECONDS * 1000);
         continue;
@@ -105,7 +105,7 @@ export interface WatchUntilUpgradeCompleteOptions {
   privateKey: string;
   rpcUrl: string;
   environmentConfig: EnvironmentConfig;
-  appID: Address;
+  appId: Address;
 }
 
 const APP_STATUS_STOPPED = "Stopped";
@@ -119,7 +119,7 @@ export async function watchUntilUpgradeComplete(
   options: WatchUntilUpgradeCompleteOptions,
   logger: Logger,
 ): Promise<void> {
-  const { environmentConfig, appID, privateKey, rpcUrl } = options;
+  const { environmentConfig, appId, privateKey, rpcUrl } = options;
 
   // Create UserAPI client
   const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl);
@@ -140,7 +140,7 @@ export async function watchUntilUpgradeComplete(
       if (status === APP_STATUS_STOPPED && ip) {
         logger.info("App upgrade complete.");
         logger.info(`Status: ${status}`);
-        logger.info(`To start the app, run: eigenx app start ${appID}`);
+        logger.info(`To start the app, run: eigenx app start ${appId}`);
         return true;
       }
     }
@@ -154,7 +154,7 @@ export async function watchUntilUpgradeComplete(
     if (status === APP_STATUS_STOPPED && ip && hasChanged) {
       logger.info("App upgrade complete.");
       logger.info(`Status: ${status}`);
-      logger.info(`To start the app, run: eigenx app start ${appID}`);
+      logger.info(`To start the app, run: eigenx app start ${appId}`);
       return true;
     }
 
@@ -180,7 +180,7 @@ export async function watchUntilUpgradeComplete(
   while (true) {
     try {
       // Fetch app info
-      const info = await userApiClient.getInfos([appID], 1);
+      const info = await userApiClient.getInfos([appId], 1);
       if (info.length === 0) {
         await sleep(WATCH_POLL_INTERVAL_SECONDS * 1000);
         continue;

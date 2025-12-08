@@ -224,14 +224,14 @@ export async function deploy(
       logRedirect,
       instanceType,
       environmentConfig: preflightCtx.environmentConfig,
-      appID: appIDToBeDeployed,
+      appId: appIDToBeDeployed,
     },
     logger,
   );
 
   // 8. Deploy the app
   logger.info("Deploying on-chain...");
-  const deployedAppID = await deployApp(
+  const deployResult = await deployApp(
     {
       privateKey: preflightCtx.privateKey,
       rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
@@ -256,7 +256,7 @@ export async function deploy(
       );
 
       await userApiClient.uploadAppProfile(
-        deployedAppID.appAddress,
+        deployResult.appId,
         options.profile.name,
         options.profile.website,
         options.profile.description,
@@ -271,7 +271,7 @@ export async function deploy(
 
   // 10. Save the app name mapping
   try {
-    await setAppName(environment, deployedAppID.appAddress, appName);
+    await setAppName(environment, deployResult.appId, appName);
     logger.info(`App saved with name: ${appName}`);
   } catch (err: any) {
     logger.warn(`Failed to save app name: ${err.message}`);
@@ -284,14 +284,14 @@ export async function deploy(
       privateKey: preflightCtx.privateKey,
       rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
       environmentConfig: preflightCtx.environmentConfig,
-      appID: deployedAppID.appAddress,
+      appId: deployResult.appId,
     },
     logger,
   );
 
   return {
-    appID: deployedAppID.appAddress,
-    txHash: deployedAppID.txHash,
+    appId: deployResult.appId,
+    txHash: deployResult.txHash,
     appName,
     imageRef: finalImageRef,
     ipAddress,
@@ -417,7 +417,7 @@ export async function prepareDeploy(
       logRedirect,
       instanceType,
       environmentConfig: preflightCtx.environmentConfig,
-      appID: appIDToBeDeployed,
+      appId: appIDToBeDeployed,
     },
     logger,
   );
@@ -472,7 +472,7 @@ export async function executeDeploy(
 ): Promise<DeployResult> {
   // 1. Execute the batch transaction
   logger.info("Deploying on-chain...");
-  const { appAddress, txHash } = await executeDeployBatch(prepared.batch, gas, logger);
+  const { appId, txHash } = await executeDeployBatch(prepared.batch, gas, logger);
 
   // 2. Upload profile if provided (non-blocking)
   if (prepared.profile) {
@@ -485,7 +485,7 @@ export async function executeDeploy(
       );
 
       await userApiClient.uploadAppProfile(
-        appAddress,
+        appId,
         prepared.profile.name,
         prepared.profile.website,
         prepared.profile.description,
@@ -501,7 +501,7 @@ export async function executeDeploy(
   // 3. Save the app name mapping
   const environment = prepared.preflightCtx.environmentConfig.name;
   try {
-    await setAppName(environment, appAddress, prepared.appName);
+    await setAppName(environment, appId, prepared.appName);
     logger.info(`App saved with name: ${prepared.appName}`);
   } catch (err: any) {
     logger.warn(`Failed to save app name: ${err.message}`);
@@ -514,13 +514,13 @@ export async function executeDeploy(
       privateKey: prepared.preflightCtx.privateKey,
       rpcUrl: prepared.preflightCtx.rpcUrl,
       environmentConfig: prepared.preflightCtx.environmentConfig,
-      appID: appAddress,
+      appId,
     },
     logger,
   );
 
   return {
-    appID: appAddress,
+    appId,
     txHash,
     appName: prepared.appName,
     imageRef: prepared.imageRef,

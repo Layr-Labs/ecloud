@@ -170,7 +170,7 @@ export default class AppDeploy extends Command {
     );
 
     this.log(
-      `\n✅ ${chalk.green(`App deployed successfully ${chalk.bold(`(id: ${res.appID}, ip: ${res.ipAddress})`)}`)}`,
+      `\n✅ ${chalk.green(`App deployed successfully ${chalk.bold(`(id: ${res.appId}, ip: ${res.ipAddress})`)}`)}`,
     );
   }
 }

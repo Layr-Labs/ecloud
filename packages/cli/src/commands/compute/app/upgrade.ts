@@ -168,7 +168,7 @@ export default class AppUpgrade extends Command {
     );
 
     this.log(
-      `\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${res.appID}, image: ${res.imageRef})`)}`)}`,
+      `\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${res.appId}, image: ${res.imageRef})`)}`)}`,
     );
   }
 }

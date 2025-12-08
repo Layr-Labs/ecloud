@@ -77,7 +77,7 @@ export interface DeployOptions {
 
 export interface DeployResult {
   /** App ID (contract address) */
-  appID: string;
+  appId: string;
   /** App name */
   appName: string;
   /** Final image reference */

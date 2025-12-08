@@ -133,8 +133,8 @@ export interface DeployAppOptions {
  * Prepared deploy batch ready for gas estimation and execution
  */
 export interface PreparedDeployBatch {
-  /** The app address that will be deployed */
-  appAddress: Address;
+  /** The app ID that will be deployed */
+  appId: Address;
   /** The salt used for deployment */
   salt: Uint8Array;
   /** Batch executions to be sent */
@@ -154,7 +154,7 @@ export interface PreparedDeployBatch {
  */
 export interface PreparedUpgradeBatch {
   /** The app ID being upgraded */
-  appID: Address;
+  appId: Address;
   /** Batch executions to be sent */
   executions: Array<{ target: Address; value: bigint; callData: Hex }>;
   /** Wallet client for sending transaction */
@@ -246,11 +246,11 @@ export async function prepareDeployBatch(
 
   // 1. Calculate app ID
   logger.info("Calculating app ID...");
-  const appAddress = await calculateAppID(privateKeyHex, rpcUrl, environmentConfig, salt);
-  logger.info(`App ID: ${appAddress}`);
+  const appId = await calculateAppID(privateKeyHex, rpcUrl, environmentConfig, salt);
+  logger.info(`App ID: ${appId}`);
 
-  // Verify the app address calculation matches what createApp will deploy
-  logger.debug(`App address calculated: ${appAddress}`);
+  // Verify the app ID calculation matches what createApp will deploy
+  logger.debug(`App ID calculated: ${appId}`);
   logger.debug(`This address will be used for acceptAdmin call`);
 
   // 2. Pack create app call
@@ -281,7 +281,7 @@ export async function prepareDeployBatch(
   const acceptAdminData = encodeFunctionData({
     abi: PermissionControllerABI,
     functionName: "acceptAdmin",
-    args: [appAddress],
+    args: [appId],
   });
 
   // 4. Assemble executions
@@ -309,7 +309,7 @@ export async function prepareDeployBatch(
       abi: PermissionControllerABI,
       functionName: "setAppointee",
       args: [
-        appAddress,
+        appId,
         "0x493219d9949348178af1f58740655951a8cd110c" as Address, // AnyoneCanCallAddress
         "0x57ee1fb74c1087e26446abc4fb87fd8f07c43d8d" as Address, // ApiPermissionsTarget
         "0x2fd3f2fe" as Hex, // CanViewAppLogsPermission
@@ -323,7 +323,7 @@ export async function prepareDeployBatch(
   }
 
   return {
-    appAddress,
+    appId,
     salt,
     executions,
     walletClient,
@@ -340,7 +340,7 @@ export async function executeDeployBatch(
   prepared: PreparedDeployBatch,
   gas: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } | undefined,
   logger: Logger,
-): Promise<{ appAddress: Address; txHash: Hex }> {
+): Promise<{ appId: Address; txHash: Hex }> {
   const pendingMessage = "Deploying new app...";
 
   const txHash = await executeBatch(
@@ -356,7 +356,7 @@ export async function executeDeployBatch(
     logger,
   );
 
-  return { appAddress: prepared.appAddress, txHash };
+  return { appId: prepared.appId, txHash };
 }
 
 /**
@@ -365,7 +365,7 @@ export async function executeDeployBatch(
 export async function deployApp(
   options: DeployAppOptions,
   logger: Logger,
-): Promise<{ appAddress: Address; txHash: Hex }> {
+): Promise<{ appId: Address; txHash: Hex }> {
   const prepared = await prepareDeployBatch(
     {
       privateKey: options.privateKey,
@@ -385,7 +385,7 @@ export interface UpgradeAppOptions {
   privateKey: string; // Will be converted to Hex
   rpcUrl: string;
   environmentConfig: EnvironmentConfig;
-  appID: Address;
+  appId: Address;
   release: Release;
   publicLogs: boolean;
   needsPermissionChange: boolean;
@@ -404,7 +404,7 @@ export interface PrepareUpgradeBatchOptions {
   privateKey: string;
   rpcUrl: string;
   environmentConfig: EnvironmentConfig;
-  appID: Address;
+  appId: Address;
   release: Release;
   publicLogs: boolean;
   needsPermissionChange: boolean;
@@ -422,7 +422,7 @@ export async function prepareUpgradeBatch(
     privateKey,
     rpcUrl,
     environmentConfig,
-    appID,
+    appId,
     release,
     publicLogs,
     needsPermissionChange,
@@ -460,7 +460,7 @@ export async function prepareUpgradeBatch(
   const upgradeData = encodeFunctionData({
     abi: AppControllerABI,
     functionName: "upgradeApp",
-    args: [appID, releaseForViem],
+    args: [appId, releaseForViem],
   });
 
   // 2. Start with upgrade execution
@@ -484,7 +484,7 @@ export async function prepareUpgradeBatch(
         abi: PermissionControllerABI,
         functionName: "setAppointee",
         args: [
-          appID,
+          appId,
           "0x493219d9949348178af1f58740655951a8cd110c" as Address, // AnyoneCanCallAddress
           "0x57ee1fb74c1087e26446abc4fb87fd8f07c43d8d" as Address, // ApiPermissionsTarget
           "0x2fd3f2fe" as Hex, // CanViewAppLogsPermission
@@ -501,7 +501,7 @@ export async function prepareUpgradeBatch(
         abi: PermissionControllerABI,
         functionName: "removeAppointee",
         args: [
-          appID,
+          appId,
           "0x493219d9949348178af1f58740655951a8cd110c" as Address, // AnyoneCanCallAddress
           "0x57ee1fb74c1087e26446abc4fb87fd8f07c43d8d" as Address, // ApiPermissionsTarget
           "0x2fd3f2fe" as Hex, // CanViewAppLogsPermission
@@ -516,7 +516,7 @@ export async function prepareUpgradeBatch(
   }
 
   return {
-    appID,
+    appId,
     executions,
     walletClient,
     publicClient,
@@ -533,7 +533,7 @@ export async function executeUpgradeBatch(
   gas: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } | undefined,
   logger: Logger,
 ): Promise<Hex> {
-  const appName = getAppName(prepared.environmentConfig.name, prepared.appID);
+  const appName = getAppName(prepared.environmentConfig.name, prepared.appId);
   let pendingMessage = "Upgrading app...";
   if (appName !== "") {
     pendingMessage = `Upgrading app '${appName}'...`;
@@ -563,7 +563,7 @@ export async function upgradeApp(options: UpgradeAppOptions, logger: Logger): Pr
     privateKey: options.privateKey,
     rpcUrl: options.rpcUrl,
     environmentConfig: options.environmentConfig,
-    appID: options.appID,
+    appId: options.appId,
     release: options.release,
     publicLogs: options.publicLogs,
     needsPermissionChange: options.needsPermissionChange,

@@ -37,7 +37,7 @@ import { defaultLogger } from "../../common/utils";
  */
 export interface SDKUpgradeOptions {
   /** App ID to upgrade - required */
-  appID: string | Address;
+  appId: string | Address;
   /** Private key for signing transactions (hex string with or without 0x prefix) */
   privateKey: string;
   /** RPC URL for blockchain connection - optional, uses environment default if not provided */
@@ -63,7 +63,7 @@ export interface SDKUpgradeOptions {
 
 export interface UpgradeResult {
   /** App ID (contract address) */
-  appID: string;
+  appId: string;
   /** Final image reference */
   imageRef: string;
   /** Transaction hash */
@@ -77,7 +77,7 @@ export interface PreparedUpgrade {
   /** The prepared batch (executions, clients, etc.) */
   batch: PreparedUpgradeBatch;
   /** App ID being upgraded */
-  appID: string;
+  appId: string;
   /** Final image reference */
   imageRef: string;
   /** Preflight context for post-upgrade operations */
@@ -108,11 +108,11 @@ function validateUpgradeOptions(options: SDKUpgradeOptions, environment: string)
   }
 
   // App ID is required
-  if (!options.appID) {
-    throw new Error("appID is required for upgrade");
+  if (!options.appId) {
+    throw new Error("appId is required for upgrade");
   }
   // Resolve app ID (validates and returns Address)
-  const resolvedAppID = resolveAppID(options.appID, environment);
+  const resolvedAppID = resolveAppID(options.appId, environment);
 
   // Must have either dockerfilePath or imageRef
   if (!options.dockerfilePath && !options.imageRef) {
@@ -204,7 +204,7 @@ export async function upgrade(
       logRedirect,
       instanceType,
       environmentConfig: preflightCtx.environmentConfig,
-      appID: appID as string,
+      appId: appID as string,
     },
     logger,
   );
@@ -221,7 +221,7 @@ export async function upgrade(
       privateKey: preflightCtx.privateKey,
       rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
       environmentConfig: preflightCtx.environmentConfig,
-      appID,
+      appId: appID,
       release,
       publicLogs,
       needsPermissionChange,
@@ -238,13 +238,13 @@ export async function upgrade(
       privateKey: preflightCtx.privateKey,
       rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
       environmentConfig: preflightCtx.environmentConfig,
-      appID,
+      appId: appID,
     },
     logger,
   );
 
   return {
-    appID: appID as string,
+    appId: appID as string,
     imageRef: finalImageRef,
     txHash,
   };
@@ -302,7 +302,7 @@ export async function prepareUpgrade(
       logRedirect,
       instanceType,
       environmentConfig: preflightCtx.environmentConfig,
-      appID: appID as string,
+      appId: appID as string,
     },
     logger,
   );
@@ -318,7 +318,7 @@ export async function prepareUpgrade(
     privateKey: preflightCtx.privateKey,
     rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
     environmentConfig: preflightCtx.environmentConfig,
-    appID,
+    appId: appID,
     release,
     publicLogs,
     needsPermissionChange,
@@ -335,7 +335,7 @@ export async function prepareUpgrade(
   return {
     prepared: {
       batch,
-      appID: appID as string,
+      appId: appID as string,
       imageRef: finalImageRef,
       preflightCtx: {
         privateKey: preflightCtx.privateKey,
@@ -368,13 +368,13 @@ export async function executeUpgrade(
       privateKey: prepared.preflightCtx.privateKey,
       rpcUrl: prepared.preflightCtx.rpcUrl,
       environmentConfig: prepared.preflightCtx.environmentConfig,
-      appID: prepared.appID as Address,
+      appId: prepared.appId as Address,
     },
     logger,
   );
 
   return {
-    appID: prepared.appID,
+    appId: prepared.appId,
     imageRef: prepared.imageRef,
     txHash,
   };
