@@ -15,25 +15,19 @@ import {
   getEnvironmentConfig,
   getAvailableEnvironments,
   isEnvironmentAvailable,
-  listApps,
   getAllAppsByDeveloper,
-  getDefaultEnvironment,
   getCategoryDescriptions,
   fetchTemplateCatalog,
   PRIMARY_LANGUAGES,
   AppProfile,
-} from "@layr-labs/ecloud-sdk";
-
-// Re-export helper functions from SDK for use in validation
-import {
   validateAppName,
   validateImageReference,
   validateFilePath,
   validatePrivateKeyFormat,
   extractAppNameFromImage,
-  isAppNameAvailable,
-  findAvailableName,
 } from "@layr-labs/ecloud-sdk";
+import { getDefaultEnvironment } from "./globalConfig";
+import { listApps, isAppNameAvailable, findAvailableName } from "./appNames";
 
 // Helper to add hex prefix
 function addHexPrefix(value: string): `0x${string}` {

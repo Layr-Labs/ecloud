@@ -3,8 +3,8 @@ import {
   getEnvironmentConfig,
   getAvailableEnvironments,
   isEnvironmentAvailable,
-  setDefaultEnvironment,
 } from "@layr-labs/ecloud-sdk";
+import { setDefaultEnvironment } from "../../../utils/globalConfig";
 import { getEnvironmentInteractive } from "../../../utils/prompts";
 import { confirm } from "@inquirer/prompts";
 

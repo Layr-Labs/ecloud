@@ -22,7 +22,7 @@ import {
 import { estimateBatchGas } from "../../common/contract/eip7702";
 import { watchUntilUpgradeComplete } from "../../common/contract/watcher";
 import {
-  resolveAppID,
+  validateAppID,
   validateLogVisibility,
   assertValidImageReference,
   assertValidFilePath,
@@ -101,7 +101,7 @@ export interface PrepareUpgradeResult {
 /**
  * Validate upgrade options and throw descriptive errors for missing/invalid params
  */
-function validateUpgradeOptions(options: SDKUpgradeOptions, environment: string): Address {
+function validateUpgradeOptions(options: SDKUpgradeOptions): Address {
   // Private key is required
   if (!options.privateKey) {
     throw new Error("privateKey is required for upgrade");
@@ -111,8 +111,8 @@ function validateUpgradeOptions(options: SDKUpgradeOptions, environment: string)
   if (!options.appId) {
     throw new Error("appId is required for upgrade");
   }
-  // Resolve app ID (validates and returns Address)
-  const resolvedAppID = resolveAppID(options.appId, environment);
+  // Validate app ID (must be a valid address - name resolution is done by CLI)
+  const resolvedAppID = validateAppID(options.appId);
 
   // Must have either dockerfilePath or imageRef
   if (!options.dockerfilePath && !options.imageRef) {
@@ -178,8 +178,8 @@ export async function upgrade(
     logger,
   );
 
-  // 2. Validate all required parameters upfront (now that we have environment)
-  const appID = validateUpgradeOptions(options, preflightCtx.environmentConfig.name);
+  // 2. Validate all required parameters upfront
+  const appID = validateUpgradeOptions(options);
 
   // Convert log visibility to internal format
   const { logRedirect, publicLogs } = validateLogVisibility(options.logVisibility);
@@ -273,11 +273,8 @@ export async function prepareUpgrade(
     logger,
   );
 
-  // 2. Validate all required parameters upfront (now that we have environment)
-  const appID = validateUpgradeOptions(
-    options as SDKUpgradeOptions,
-    preflightCtx.environmentConfig.name,
-  );
+  // 2. Validate all required parameters upfront
+  const appID = validateUpgradeOptions(options as SDKUpgradeOptions);
 
   // Convert log visibility to internal format
   const { logRedirect, publicLogs } = validateLogVisibility(options.logVisibility);

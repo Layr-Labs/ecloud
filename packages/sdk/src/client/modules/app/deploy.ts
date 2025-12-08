@@ -32,7 +32,6 @@ import {
 } from "../../common/utils/validation";
 import { doPreflightChecks, PreflightContext } from "../../common/utils/preflight";
 import { UserApiClient } from "../../common/utils/userapi";
-import { setAppName } from "../../common/registry/appNames";
 import { defaultLogger } from "../../common/utils";
 
 /**
@@ -196,7 +195,6 @@ export async function deploy(
   const appName = options.appName;
   const envFilePath = options.envFilePath || "";
   const instanceType = options.instanceType;
-  const environment = preflightCtx.environmentConfig.name;
 
   // 5. Generate random salt
   const salt = generateRandomSalt();
@@ -269,15 +267,7 @@ export async function deploy(
     }
   }
 
-  // 10. Save the app name mapping
-  try {
-    await setAppName(environment, deployResult.appId, appName);
-    logger.info(`App saved with name: ${appName}`);
-  } catch (err: any) {
-    logger.warn(`Failed to save app name: ${err.message}`);
-  }
-
-  // 11. Watch until app is running
+  // 10. Watch until app is running
   logger.info("Waiting for app to start...");
   const ipAddress = await watchUntilRunning(
     {
@@ -498,16 +488,7 @@ export async function executeDeploy(
     }
   }
 
-  // 3. Save the app name mapping
-  const environment = prepared.preflightCtx.environmentConfig.name;
-  try {
-    await setAppName(environment, appId, prepared.appName);
-    logger.info(`App saved with name: ${prepared.appName}`);
-  } catch (err: any) {
-    logger.warn(`Failed to save app name: ${err.message}`);
-  }
-
-  // 4. Watch until app is running
+  // 3. Watch until app is running
   logger.info("Waiting for app to start...");
   const ipAddress = await watchUntilRunning(
     {

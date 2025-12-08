@@ -12,8 +12,7 @@ import { Logger } from "../../common/types";
 import { defaultLogger } from "../../common/utils";
 import { UserApiClient } from "../../common/utils/userapi";
 import { getEnvironmentConfig } from "../../common/config/environment";
-import { getAppName } from "../../common/registry/appNames";
-import { resolveAppID } from "../../common/utils/validation";
+import { validateAppID } from "../../common/utils/validation";
 import chalk from "chalk";
 
 /**
@@ -196,12 +195,11 @@ export async function logs(
     throw new Error("RPC URL is required for authenticated requests");
   }
 
-  // Resolve app ID (validates and returns Address)
-  const appID = resolveAppID(options.appID, environment);
+  // Validate app ID (must be a valid address - name resolution is done by CLI)
+  const appID = validateAppID(options.appID);
 
-  // Get app profile name
-  const profileName = getAppName(environment, appID);
-  const formattedApp = formatAppDisplay(environmentConfig.name, appID, profileName);
+  // Format app display (no profile name in SDK - CLI handles that)
+  const formattedApp = formatAppDisplay(environmentConfig.name, appID, "");
 
   // Create user API client
   const userApiClient = new UserApiClient(environmentConfig, options.privateKey, rpcUrl);

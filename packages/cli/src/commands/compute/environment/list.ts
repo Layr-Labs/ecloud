@@ -1,9 +1,6 @@
 import { Command } from "@oclif/core";
-import {
-  getAvailableEnvironments,
-  getEnvironmentConfig,
-  getDefaultEnvironment,
-} from "@layr-labs/ecloud-sdk";
+import { getAvailableEnvironments, getEnvironmentConfig } from "@layr-labs/ecloud-sdk";
+import { getDefaultEnvironment } from "../../../utils/globalConfig";
 import chalk from "chalk";
 
 /**

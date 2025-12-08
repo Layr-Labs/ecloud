@@ -1,9 +1,6 @@
 import { Command } from "@oclif/core";
-import {
-  getDefaultEnvironment,
-  getEnvironmentConfig,
-  getAvailableEnvironments,
-} from "@layr-labs/ecloud-sdk";
+import { getEnvironmentConfig, getAvailableEnvironments } from "@layr-labs/ecloud-sdk";
+import { getDefaultEnvironment } from "../../../utils/globalConfig";
 import chalk from "chalk";
 
 export default class EnvironmentShow extends Command {

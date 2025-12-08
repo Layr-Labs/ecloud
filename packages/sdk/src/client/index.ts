@@ -61,19 +61,6 @@ export {
 } from "./common/config/environment";
 export { isSubscriptionActive } from "./common/utils/billing";
 
-// Export global config functions
-export {
-  loadGlobalConfig,
-  saveGlobalConfig,
-  getDefaultEnvironment,
-  setDefaultEnvironment,
-  isFirstRun,
-  markFirstRunComplete,
-  getGlobalTelemetryPreference,
-  setGlobalTelemetryPreference,
-  type GlobalConfig,
-} from "./common/config/globalConfig";
-
 // Export auth utilities
 export * from "./common/auth";
 
@@ -83,9 +70,6 @@ export {
   getTemplate,
   getCategoryDescriptions,
 } from "./common/templates/catalog";
-
-// Export registry utilities
-export { listApps, getAppName, setAppName } from "./common/registry/appNames";
 
 // Export contract utilities
 export {
