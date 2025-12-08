@@ -19,6 +19,7 @@ import {
   confirm,
   getPrivateKeyInteractive,
 } from "../../../utils/prompts";
+import { setAppName } from "../../../utils/appNames";
 import chalk from "chalk";
 
 export default class AppDeploy extends Command {
@@ -168,6 +169,14 @@ export default class AppDeploy extends Command {
       },
       logger,
     );
+
+    // 11. Save the app name mapping locally
+    try {
+      await setAppName(environment, res.appId, appName);
+      logger.info(`App saved with name: ${appName}`);
+    } catch (err: any) {
+      logger.warn(`Failed to save app name: ${err.message}`);
+    }
 
     this.log(
       `\n✅ ${chalk.green(`App deployed successfully ${chalk.bold(`(id: ${res.appId}, ip: ${res.ipAddress})`)}`)}`,

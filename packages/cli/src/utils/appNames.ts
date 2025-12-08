@@ -86,9 +86,9 @@ function saveAppRegistry(environment: string, registry: AppRegistry): void {
 }
 
 /**
- * Resolve app ID or name to app ID
+ * Resolve app ID or name to app ID (for CLI use)
  */
-function resolveAppID(environment: string, appIDOrName: string): string | null {
+export function resolveAppIDFromRegistry(environment: string, appIDOrName: string): string | null {
   // First check if it's already a valid hex address
   if (/^0x[a-fA-F0-9]{40}$/.test(appIDOrName)) {
     return appIDOrName;
@@ -117,7 +117,7 @@ export async function setAppName(
   const registry = loadAppRegistry(environment);
 
   // Resolve the target app ID
-  let targetAppID: string | null = resolveAppID(environment, appIDOrName);
+  let targetAppID: string | null = resolveAppIDFromRegistry(environment, appIDOrName);
   if (!targetAppID) {
     // If can't resolve, check if it's a valid app ID
     if (/^0x[a-fA-F0-9]{40}$/.test(appIDOrName)) {
@@ -186,4 +186,35 @@ export function listApps(environment: string): Record<string, string> {
   }
 
   return result;
+}
+
+/**
+ * Check if an app name is available in the given environment
+ */
+export function isAppNameAvailable(environment: string, name: string): boolean {
+  const apps = listApps(environment);
+  return !apps[name];
+}
+
+/**
+ * Find an available app name by appending numbers if needed
+ */
+export function findAvailableName(environment: string, baseName: string): string {
+  const apps = listApps(environment);
+
+  // Check if base name is available
+  if (!apps[baseName]) {
+    return baseName;
+  }
+
+  // Try with incrementing numbers
+  for (let i = 2; i <= 100; i++) {
+    const candidate = `${baseName}-${i}`;
+    if (!apps[candidate]) {
+      return candidate;
+    }
+  }
+
+  // Fallback to timestamp if somehow we have 100+ duplicates
+  return `${baseName}-${Date.now()}`;
 }

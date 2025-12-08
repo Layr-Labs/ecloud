@@ -9,7 +9,6 @@ import fs from "fs";
 import path from "path";
 import { Address, isAddress } from "viem";
 import { stripHexPrefix, addHexPrefix } from "./helpers";
-import { listApps } from "../registry/appNames";
 
 // ==================== App Name Validation ====================
 
@@ -27,37 +26,6 @@ export function validateAppName(name: string): void {
   if (name.length > 50) {
     throw new Error("App name cannot be longer than 50 characters");
   }
-}
-
-/**
- * Check if an app name is available in the given environment
- */
-export function isAppNameAvailable(environment: string, name: string): boolean {
-  const apps = listApps(environment);
-  return !apps[name];
-}
-
-/**
- * Find an available app name by appending numbers if needed
- */
-export function findAvailableName(environment: string, baseName: string): string {
-  const apps = listApps(environment);
-
-  // Check if base name is available
-  if (!apps[baseName]) {
-    return baseName;
-  }
-
-  // Try with incrementing numbers
-  for (let i = 2; i <= 100; i++) {
-    const candidate = `${baseName}-${i}`;
-    if (!apps[candidate]) {
-      return candidate;
-    }
-  }
-
-  // Fallback to timestamp if somehow we have 100+ duplicates
-  return `${baseName}-${Date.now()}`;
 }
 
 // ==================== Image Reference Validation ====================
@@ -312,38 +280,31 @@ export function validateImagePath(filePath: string): string | undefined {
   return undefined;
 }
 
-// ==================== App ID Resolution ====================
+// ==================== App ID Validation ====================
 
 /**
- * Resolve app ID from name or address
- * @param appIDOrName - App ID (address) or app name
- * @param environment - Environment name
- * @returns Resolved app address
- * @throws Error if app ID cannot be resolved
+ * Validate and normalize app ID address
+ * @param appID - App ID (must be a valid address)
+ * @returns Normalized app address
+ * @throws Error if app ID is not a valid address
+ *
+ * Note: Name resolution should be handled by CLI before calling SDK functions.
+ * The SDK only accepts resolved addresses.
  */
-export function resolveAppID(appIDOrName: string | Address, environment: string): Address {
-  if (!appIDOrName) {
-    throw new Error("App ID or name is required");
+export function validateAppID(appID: string | Address): Address {
+  if (!appID) {
+    throw new Error("App ID is required");
   }
 
   // Normalize the input
-  const normalized = typeof appIDOrName === "string" ? addHexPrefix(appIDOrName) : appIDOrName;
+  const normalized = typeof appID === "string" ? addHexPrefix(appID) : appID;
 
   // Check if it's a valid address
   if (isAddress(normalized)) {
     return normalized as Address;
   }
 
-  // If not a valid address, treat as app name and look it up
-  const apps = listApps(environment);
-  const foundAppID = apps[appIDOrName as string];
-  if (foundAppID) {
-    // Ensure it has 0x prefix
-    return addHexPrefix(foundAppID) as Address;
-  }
-
-  // Name not found
-  throw new Error(`App name '${appIDOrName}' not found in environment '${environment}'`);
+  throw new Error(`Invalid app ID: '${appID}' is not a valid address`);
 }
 
 // ==================== Log Visibility Validation ====================
@@ -517,13 +478,13 @@ export interface UpgradeParams {
  * Validate upgrade parameters
  * @throws Error if required parameters are missing or invalid
  */
-export function validateUpgradeParams(params: Partial<UpgradeParams>, environment: string): void {
+export function validateUpgradeParams(params: Partial<UpgradeParams>): void {
   // App ID is required
   if (!params.appID) {
     throw new Error("App ID is required for upgrade");
   }
-  // Validate app ID can be resolved (throws if not)
-  resolveAppID(params.appID, environment);
+  // Validate app ID is a valid address (throws if not)
+  validateAppID(params.appID);
 
   // Must have either dockerfilePath or imageRef
   if (!params.dockerfilePath && !params.imageRef) {
@@ -595,10 +556,10 @@ export interface LogsParams {
  * Validate logs parameters
  * @throws Error if required parameters are missing or invalid
  */
-export function validateLogsParams(params: Partial<LogsParams>, environment: string): void {
+export function validateLogsParams(params: Partial<LogsParams>): void {
   if (!params.appID) {
     throw new Error("App ID is required for viewing logs");
   }
-  // Validate app ID can be resolved (throws if not)
-  resolveAppID(params.appID, environment);
+  // Validate app ID is a valid address (throws if not)
+  validateAppID(params.appID);
 }

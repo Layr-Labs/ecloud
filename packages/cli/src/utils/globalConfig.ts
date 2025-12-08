@@ -14,7 +14,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { load as loadYaml, dump as dumpYaml } from "js-yaml";
-import { getBuildType } from "./environment";
+import { getBuildType } from "@layr-labs/ecloud-sdk";
 
 const GLOBAL_CONFIG_FILE = "config.yaml";
 

@@ -23,7 +23,6 @@ import { addHexPrefix, getChainFromID } from "../utils";
 
 import { EnvironmentConfig, Logger } from "../types";
 import { Release } from "../types";
-import { getAppName } from "../registry/appNames";
 
 import AppControllerABI from "../abis/AppController.json";
 import PermissionControllerABI from "../abis/PermissionController.json";
@@ -526,11 +525,7 @@ export async function executeUpgradeBatch(
   gas: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } | undefined,
   logger: Logger,
 ): Promise<Hex> {
-  const appName = getAppName(prepared.environmentConfig.name, prepared.appId);
-  let pendingMessage = "Upgrading app...";
-  if (appName !== "") {
-    pendingMessage = `Upgrading app '${appName}'...`;
-  }
+  const pendingMessage = `Upgrading app ${prepared.appId}...`;
 
   const txHash = await executeBatch(
     {

@@ -8,7 +8,6 @@ import { upgrade as upgradeApp } from "./upgrade";
 import { createApp, CreateAppOpts } from "./create";
 import { logs, LogsOptions } from "./logs";
 
-import { getAppName } from "../../common/registry/appNames";
 import { getEnvironmentConfig } from "../../common/config/environment";
 import { sendAndWaitForTransaction, undelegate } from "../../common/contract/caller";
 
@@ -162,11 +161,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
     },
 
     async start(appId, opts) {
-      const appName = getAppName(ctx.environment, appId);
-      let pendingMessage = "Starting app...";
-      if (appName !== "") {
-        pendingMessage = `Starting app '${appName}'...`;
-      }
+      const pendingMessage = `Starting app ${appId}...`;
 
       const data = encodeFunctionData({
         abi: CONTROLLER_ABI,
@@ -191,11 +186,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
     },
 
     async stop(appId, opts) {
-      const appName = getAppName(ctx.environment, appId);
-      let pendingMessage = "Stopping app...";
-      if (appName !== "") {
-        pendingMessage = `Stopping app '${appName}'...`;
-      }
+      const pendingMessage = `Stopping app ${appId}...`;
 
       const data = encodeFunctionData({
         abi: CONTROLLER_ABI,
@@ -220,11 +211,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
     },
 
     async terminate(appId, opts) {
-      const appName = getAppName(ctx.environment, appId);
-      let pendingMessage = "Terminating app...";
-      if (appName !== "") {
-        pendingMessage = `Terminating app '${appName}'...`;
-      }
+      const pendingMessage = `Terminating app ${appId}...`;
 
       const data = encodeFunctionData({
         abi: CONTROLLER_ABI,
