@@ -2,7 +2,6 @@
  * Main App namespace entry point
  */
 
-import chalk from "chalk";
 import { parseAbi, encodeFunctionData } from "viem";
 import { deploy as deployApp } from "./deploy";
 import { upgrade as upgradeApp } from "./upgrade";
@@ -80,7 +79,6 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           imageRef: opts.imageRef,
           logVisibility: opts.logVisibility,
           profile: opts.profile,
-          onConfirm: opts.onConfirm,
         },
         logger,
       );
@@ -107,7 +105,6 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           envFilePath: opts.envFile,
           imageRef: opts.imageRef,
           logVisibility: opts.logVisibility,
-          onConfirm: opts.onConfirm,
         },
         logger,
       );
@@ -131,13 +128,10 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
       );
     },
 
-    async start(appId, opts) {
-      // Get app name for confirmation prompt (matches Go implementation)
+    async start(appId) {
       const appName = getAppName(ctx.environment, appId);
-      let confirmationPrompt = "Start app";
       let pendingMessage = "Starting app...";
       if (appName !== "") {
-        confirmationPrompt = `${confirmationPrompt} '${appName}'`;
         pendingMessage = `Starting app '${appName}'...`;
       }
 
@@ -154,24 +148,18 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           environmentConfig: environment,
           to: environment.appControllerAddress as `0x${string}`,
           data,
-          needsConfirmation: environment.chainID === 1n, // Mainnet needs confirmation
-          confirmationPrompt,
           pendingMessage,
           txDescription: "StartApp",
-          onConfirm: opts?.onConfirm,
         },
         logger,
       );
       return { tx };
     },
 
-    async stop(appId, opts) {
-      // Get app name for confirmation prompt (matches Go implementation)
+    async stop(appId) {
       const appName = getAppName(ctx.environment, appId);
-      let confirmationPrompt = "Stop app";
       let pendingMessage = "Stopping app...";
       if (appName !== "") {
-        confirmationPrompt = `${confirmationPrompt} '${appName}'`;
         pendingMessage = `Stopping app '${appName}'...`;
       }
 
@@ -188,29 +176,20 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           environmentConfig: environment,
           to: environment.appControllerAddress as `0x${string}`,
           data,
-          needsConfirmation: environment.chainID === 1n, // Mainnet needs confirmation
-          confirmationPrompt,
           pendingMessage,
           txDescription: "StopApp",
-          onConfirm: opts?.onConfirm,
         },
         logger,
       );
       return { tx };
     },
 
-    async terminate(appId, opts) {
-      // Get app name for confirmation prompt (matches Go implementation)
+    async terminate(appId) {
       const appName = getAppName(ctx.environment, appId);
-      let confirmationPrompt = `⚠️  ${chalk.bold("Permanently")} ${chalk.reset("destroy app")}`;
       let pendingMessage = "Terminating app...";
       if (appName !== "") {
-        confirmationPrompt = `${confirmationPrompt} '${chalk.bold(appName)}'`;
         pendingMessage = `Terminating app '${appName}'...`;
       }
-
-      // Note: Terminate always needs confirmation unless force is specified
-      const force = opts?.force || false;
 
       const data = encodeFunctionData({
         abi: CONTROLLER_ABI,
@@ -225,11 +204,8 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           environmentConfig: environment,
           to: environment.appControllerAddress as `0x${string}`,
           data,
-          needsConfirmation: !force, // Terminate always needs confirmation unless force is specified
-          confirmationPrompt,
           pendingMessage,
           txDescription: "TerminateApp",
-          onConfirm: opts?.onConfirm,
         },
         logger,
       );

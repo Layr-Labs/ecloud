@@ -41,20 +41,13 @@ export default class AppCreate extends Command {
     };
 
     // 1. Get project name interactively if not provided
-    let name = flags.name;
-    if (!name) {
-      name = await promptProjectName();
-    }
+    const name = flags.name || await promptProjectName();
 
     // 2. Get language interactively if not provided
     const language = flags.language || await promptLanguage();
 
     // 3. Get template interactively if not provided
-    let template = flags.template;
-    if (!template) {
-      // Only prompt for template if it's not a URL (custom template)
-      template = await selectTemplateInteractive(language);
-    }
+    const template = flags.template || await selectTemplateInteractive(language);
 
     // 4. Call SDK with all gathered parameters
     return createApp(

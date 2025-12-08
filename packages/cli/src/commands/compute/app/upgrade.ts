@@ -9,7 +9,6 @@ import {
   getInstanceTypeInteractive,
   getLogSettingsInteractive,
   getOrPromptAppID,
-  confirm,
   LogVisibility,
 } from "../../../utils/prompts";
 import chalk from "chalk";
@@ -96,9 +95,7 @@ export default class AppUpgrade extends Command {
         flags["private-key"],
         rpcUrl
       );
-      const infos = await userApiClient.getInfos([appID], 1, { 
-        info: () => {}, warn: () => {}, error: () => {}, debug: () => {} 
-      });
+      const infos = await userApiClient.getInfos([appID], 1);
       if (infos.length > 0) {
         currentInstanceType = infos[0].machineType || "";
       }
@@ -124,21 +121,17 @@ export default class AppUpgrade extends Command {
     );
 
     // 8. Upgrade with all gathered parameters
-    // Note: onConfirm is available after SDK rebuild
     const res = await app.upgrade(appID as Address, {
-      dockerfile: dockerfilePath || undefined,
-      envFile: envFilePath || undefined,
-      imageRef: imageRef || undefined,
+      dockerfile: dockerfilePath,
+      envFile: envFilePath,
+      imageRef: imageRef,
       logVisibility: logSettings.publicLogs
         ? "public"
         : logSettings.logRedirect
           ? "private"
           : "off",
       instanceType,
-      onConfirm: async (prompt: string) => {
-        return confirm(prompt);
-      },
-    } as any);
+    });
 
     if (!res.tx) {
       this.log(`\n${chalk.gray(`Upgrade failed`)}`);

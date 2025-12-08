@@ -10,7 +10,6 @@ import {
   getInstanceTypeInteractive,
   getLogSettingsInteractive,
   getAppProfileInteractive,
-  confirm,
   LogVisibility,
 } from "../../../utils/prompts";
 import chalk from "chalk";
@@ -120,23 +119,19 @@ export default class AppDeploy extends Command {
     }
 
     // 8. Deploy with all gathered parameters
-    // Note: profile and onConfirm are available after SDK rebuild
     const res = await app.deploy({
       name: appName,
-      dockerfile: dockerfilePath || undefined,
-      envFile: envFilePath || undefined,
-      imageRef: imageRef || undefined,
+      dockerfile: dockerfilePath,
+      envFile: envFilePath,
+      imageRef: imageRef,
       logVisibility: logSettings.publicLogs
         ? "public"
         : logSettings.logRedirect
           ? "private"
           : "off",
       instanceType,
-      profile: profile || undefined,
-      onConfirm: async (prompt: string) => {
-        return confirm(prompt);
-      },
-    } as any);
+      profile,
+    });
 
     if (!res.tx || !res.ipAddress) {
       this.log(

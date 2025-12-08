@@ -1172,7 +1172,7 @@ function validateImagePath(filePath: string): string | undefined {
 export async function getAppProfileInteractive(
   defaultName: string = "",
   allowRetry: boolean = true
-): Promise<AppProfile | null> {
+): Promise<AppProfile | undefined> {
   while (true) {
     const name = await getAppNameForProfile(defaultName);
     const website = await getAppWebsiteInteractive();
@@ -1209,7 +1209,7 @@ export async function getAppProfileInteractive(
     });
 
     if (!retry) {
-      return null;
+      return undefined;
     }
 
     defaultName = name;

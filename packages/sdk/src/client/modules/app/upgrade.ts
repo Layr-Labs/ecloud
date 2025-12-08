@@ -47,8 +47,6 @@ export interface SDKUpgradeOptions {
   instanceType: string;
   /** Log visibility setting - required */
   logVisibility: LogVisibility;
-  /** Optional confirmation callback for mainnet transactions */
-  onConfirm?: (prompt: string, maxCostEth: string) => Promise<boolean>;
 }
 
 export interface UpgradeResult {
@@ -192,7 +190,6 @@ export async function upgrade(
       publicLogs,
       needsPermissionChange,
       imageRef: finalImageRef,
-      onConfirm: options.onConfirm,
     },
     logger,
   );

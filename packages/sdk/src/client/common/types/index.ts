@@ -8,11 +8,6 @@ export type AppId = Address;
 
 export type logVisibility = "public" | "private" | "off";
 
-/**
- * Confirmation callback type for mainnet transactions
- */
-export type ConfirmationCallback = (prompt: string, maxCostEth: string) => Promise<boolean>;
-
 export interface DeployAppOpts {
   /** App name - required */
   name: string;
@@ -28,8 +23,6 @@ export interface DeployAppOpts {
   logVisibility: logVisibility;
   /** Optional app profile to upload after deployment */
   profile?: AppProfile;
-  /** Optional confirmation callback for mainnet transactions */
-  onConfirm?: ConfirmationCallback;
 }
 
 export interface UpgradeAppOpts {
@@ -43,16 +36,11 @@ export interface UpgradeAppOpts {
   instanceType: string;
   /** Log visibility setting - required */
   logVisibility: logVisibility;
-  /** Optional confirmation callback for mainnet transactions */
-  onConfirm?: ConfirmationCallback;
   gas?: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint };
 }
 
 export interface LifecycleOpts {
   gas?: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint };
-  force?: boolean; // For terminate: skip confirmation if true
-  /** Optional confirmation callback for mainnet transactions */
-  onConfirm?: ConfirmationCallback;
 }
 
 export interface AppRecord {

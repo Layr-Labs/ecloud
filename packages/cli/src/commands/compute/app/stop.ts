@@ -2,7 +2,7 @@ import { Command, Args } from "@oclif/core";
 import { createAppClient } from "../../../client";
 import { commonFlags } from "../../../flags";
 import { getEnvironmentConfig } from "@layr-labs/ecloud-sdk";
-import { getOrPromptAppID, confirm } from "../../../utils/prompts";
+import { getOrPromptAppID } from "../../../utils/prompts";
 import chalk from "chalk";
 
 export default class AppLifecycleStop extends Command {
@@ -41,14 +41,10 @@ export default class AppLifecycleStop extends Command {
       }
     );
 
-    const res = await app.stop(appId, {
-      onConfirm: async (prompt: string) => {
-        return confirm(prompt);
-      },
-    });
+    const res = await app.stop(appId);
 
     if (!res.tx) {
-      this.log(`\n${chalk.gray(`Stop aborted`)}`);
+      this.log(`\n${chalk.gray(`Stop failed`)}`);
     } else {
       this.log(`\n✅ ${chalk.green(`App stopped successfully`)}`);
     }

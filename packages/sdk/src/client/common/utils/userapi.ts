@@ -9,8 +9,6 @@ import { calculatePermissionSignature } from "./auth";
 import { privateKeyToAccount } from "viem/accounts";
 import { sepolia, mainnet } from "viem/chains";
 import { EnvironmentConfig } from "../types";
-
-import { defaultLogger } from "./logger";
 import { addHexPrefix, stripHexPrefix } from "./helpers";
 
 export interface AppInfo {
@@ -61,7 +59,6 @@ export class UserApiClient {
   async getInfos(
     appIDs: Address[],
     addressCount = 1,
-    logger = defaultLogger,
   ): Promise<AppInfo[]> {
     const count = Math.min(addressCount, MAX_ADDRESS_COUNT);
 
@@ -73,9 +70,6 @@ export class UserApiClient {
       CanViewSensitiveAppInfoPermission,
     );
     const result: AppInfoResponse = await res.json();
-
-    // Print to debug logs
-    logger.debug(JSON.stringify(result, undefined, 2));
 
     // optional: verify signatures with KMS key
     // const { signingKey } = getKMSKeysForEnvironment(this.config.name);

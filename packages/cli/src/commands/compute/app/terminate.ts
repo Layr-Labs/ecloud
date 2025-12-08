@@ -47,12 +47,16 @@ export default class AppLifecycleTerminate extends Command {
       }
     );
 
-    const res = await app.terminate(appId, {
-      force: flags.force,
-      onConfirm: async (prompt: string) => {
-        return confirm(prompt);
-      },
-    });
+    // Ask for confirmation unless forced
+    if (!flags.force) {
+      const confirmed = await confirm(`⚠️  Permanently destroy app ${appId}?`);
+      if (!confirmed) {
+        this.log(`\n${chalk.gray(`Termination aborted`)}`);
+        return;
+      }
+    }
+
+    const res = await app.terminate(appId);
 
     if (!res.tx) {
       this.log(`\n${chalk.gray(`Termination aborted`)}`);

@@ -22,13 +22,6 @@ import { EnvironmentConfig, Logger } from "../types";
 
 import ERC7702DelegatorABI from "../abis/ERC7702Delegator.json";
 
-/**
- * Confirmation callback type for mainnet transactions
- * Called with the confirmation prompt and estimated max cost in ETH
- * Should return true to proceed or false to abort
- */
-export type ConfirmationCallback = (prompt: string, maxCostEth: string) => Promise<boolean>;
-
 export interface ExecuteBatchOptions {
   walletClient: WalletClient;
   publicClient: PublicClient;
@@ -38,12 +31,8 @@ export interface ExecuteBatchOptions {
     value: bigint;
     callData: Hex;
   }>;
-  needsConfirmation: boolean;
-  confirmationPrompt: string;
   pendingMessage: string;
   privateKey?: Hex; // Private key for signing raw hash (required for authorization signing)
-  /** Optional confirmation callback for mainnet transactions */
-  onConfirm?: ConfirmationCallback;
 }
 
 /**
@@ -82,11 +71,8 @@ export async function executeBatch(
     publicClient,
     environmentConfig,
     executions,
-    needsConfirmation,
-    confirmationPrompt,
     pendingMessage,
     privateKey,
-    onConfirm,
   } = options;
 
   const account = walletClient.account;
@@ -204,35 +190,7 @@ export async function executeBatch(
     ];
   }
 
-  // 5. Send transaction using viem
-  if (needsConfirmation) {
-    try {
-      const fees = await publicClient.estimateFeesPerGas();
-      const estimatedGas = 2000000n;
-      const maxCostWei = estimatedGas * fees.maxFeePerGas;
-      const costEth = formatETH(maxCostWei);
-      
-      // Use confirmation callback if provided
-      if (onConfirm) {
-        const fullPrompt = `${confirmationPrompt} on ${environmentConfig.name} (estimated max cost: ${costEth} ETH)`;
-        if (!(await onConfirm(fullPrompt, costEth))) {
-          throw new Error("Transaction cancelled by user");
-        }
-      } else {
-        // No callback provided - throw error for mainnet transactions
-        throw new Error(
-          `Mainnet transaction requires confirmation. Please provide an onConfirm callback or use the CLI for interactive confirmation.`
-        );
-      }
-    } catch (error: any) {
-      // Re-throw confirmation/cancellation errors
-      if (error.message?.includes("requires confirmation") || error.message?.includes("cancelled by user")) {
-        throw error;
-      }
-      logger.warn(`Could not estimate cost for confirmation: ${error}`);
-    }
-  }
-
+  // 5. Show pending message
   if (pendingMessage) {
     logger.info(pendingMessage);
   }
@@ -281,12 +239,4 @@ export async function executeBatch(
   }
 
   return hash;
-}
-
-/**
- * Format Wei to ETH string
- */
-function formatETH(wei: bigint): string {
-  const eth = Number(wei) / 1e18;
-  return eth.toFixed(6);
 }

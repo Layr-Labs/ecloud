@@ -54,8 +54,6 @@ export interface SDKDeployOptions {
   logVisibility: LogVisibility;
   /** Optional app profile to upload after deployment */
   profile?: AppProfile;
-  /** Optional confirmation callback for mainnet transactions */
-  onConfirm?: (prompt: string, maxCostEth: string) => Promise<boolean>;
 }
 
 /**
@@ -202,7 +200,6 @@ export async function deploy(
       release,
       publicLogs,
       imageRef: finalImageRef,
-      onConfirm: options.onConfirm,
     },
     logger,
   );
