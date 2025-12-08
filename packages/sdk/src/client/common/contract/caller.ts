@@ -28,6 +28,99 @@ import { getAppName } from "../registry/appNames";
 import AppControllerABI from "../abis/AppController.json";
 import PermissionControllerABI from "../abis/PermissionController.json";
 
+/**
+ * Gas estimation result
+ */
+export interface GasEstimate {
+  /** Estimated gas limit for the transaction */
+  gasLimit: bigint;
+  /** Max fee per gas (EIP-1559) */
+  maxFeePerGas: bigint;
+  /** Max priority fee per gas (EIP-1559) */
+  maxPriorityFeePerGas: bigint;
+  /** Maximum cost in wei (gasLimit * maxFeePerGas) */
+  maxCostWei: bigint;
+  /** Maximum cost formatted as ETH string */
+  maxCostEth: string;
+}
+
+/**
+ * Options for estimating transaction gas
+ */
+export interface EstimateGasOptions {
+  privateKey: string;
+  rpcUrl: string;
+  environmentConfig: EnvironmentConfig;
+  to: Address;
+  data: Hex;
+  value?: bigint;
+}
+
+/**
+ * Format Wei to ETH string
+ */
+export function formatETH(wei: bigint): string {
+  const eth = Number(wei) / 1e18;
+  const costStr = eth.toFixed(6);
+  // Remove trailing zeros and decimal point if needed
+  const trimmed = costStr.replace(/\.?0+$/, "");
+  // If result is "0", show "<0.000001" for small amounts
+  if (trimmed === "0" && wei > 0n) {
+    return "<0.000001";
+  }
+  return trimmed;
+}
+
+/**
+ * Estimate gas cost for a transaction
+ * 
+ * Use this to get cost estimate before prompting user for confirmation.
+ */
+export async function estimateTransactionGas(
+  options: EstimateGasOptions,
+): Promise<GasEstimate> {
+  const { privateKey, rpcUrl, environmentConfig, to, data, value = 0n } = options;
+
+  const privateKeyHex = addHexPrefix(privateKey) as Hex;
+  const account = privateKeyToAccount(privateKeyHex);
+
+  const chain =
+    environmentConfig.chainID === 11155111n
+      ? sepolia
+      : environmentConfig.chainID === 1n
+        ? mainnet
+        : sepolia;
+
+  const publicClient = createPublicClient({
+    chain,
+    transport: http(rpcUrl),
+  });
+
+  // Get current gas prices
+  const fees = await publicClient.estimateFeesPerGas();
+
+  // Estimate gas for the transaction
+  const gasLimit = await publicClient.estimateGas({
+    account: account.address,
+    to,
+    data,
+    value,
+  });
+
+  const maxFeePerGas = fees.maxFeePerGas;
+  const maxPriorityFeePerGas = fees.maxPriorityFeePerGas;
+  const maxCostWei = gasLimit * maxFeePerGas;
+  const maxCostEth = formatETH(maxCostWei);
+
+  return {
+    gasLimit,
+    maxFeePerGas,
+    maxPriorityFeePerGas,
+    maxCostWei,
+    maxCostEth,
+  };
+}
+
 export interface DeployAppOptions {
   privateKey: string; // Will be converted to Hex
   rpcUrl: string;
@@ -36,6 +129,11 @@ export interface DeployAppOptions {
   release: Release;
   publicLogs: boolean;
   imageRef: string;
+  /** Optional gas params from estimation */
+  gas?: {
+    maxFeePerGas?: bigint;
+    maxPriorityFeePerGas?: bigint;
+  };
 }
 
 /**
@@ -99,6 +197,7 @@ export async function deployApp(
     salt,
     release,
     publicLogs,
+    gas,
   } = options;
 
   const privateKeyHex = addHexPrefix(privateKey) as Hex;
@@ -226,6 +325,7 @@ export async function deployApp(
       executions,
       pendingMessage,
       privateKey: privateKeyHex, // Pass private key for manual transaction signing
+      gas,
     },
     logger,
   );
@@ -242,6 +342,11 @@ export interface UpgradeAppOptions {
   publicLogs: boolean;
   needsPermissionChange: boolean;
   imageRef: string;
+  /** Optional gas params from estimation */
+  gas?: {
+    maxFeePerGas?: bigint;
+    maxPriorityFeePerGas?: bigint;
+  };
 }
 
 /**
@@ -259,6 +364,7 @@ export async function upgradeApp(
     release,
     publicLogs,
     needsPermissionChange,
+    gas,
   } = options;
 
   const privateKeyHex = addHexPrefix(privateKey) as Hex;
@@ -371,6 +477,7 @@ export async function upgradeApp(
       executions,
       pendingMessage,
       privateKey: privateKeyHex, // Pass private key for manual transaction signing
+      gas,
     },
     logger,
   );
@@ -390,6 +497,11 @@ export interface SendTransactionOptions {
   value?: bigint;
   pendingMessage: string;
   txDescription: string;
+  /** Optional gas params from estimation */
+  gas?: {
+    maxFeePerGas?: bigint;
+    maxPriorityFeePerGas?: bigint;
+  };
 }
 
 export async function sendAndWaitForTransaction(
@@ -405,6 +517,7 @@ export async function sendAndWaitForTransaction(
     value = 0n,
     pendingMessage,
     txDescription,
+    gas,
   } = options;
 
   const privateKeyHex = addHexPrefix(privateKey) as Hex;
@@ -432,12 +545,14 @@ export async function sendAndWaitForTransaction(
     logger.info(`\n${pendingMessage}`);
   }
 
-  // Send transaction
+  // Send transaction with optional gas params
   const hash = await walletClient.sendTransaction({
     account,
     to,
     data,
     value,
+    ...(gas?.maxFeePerGas && { maxFeePerGas: gas.maxFeePerGas }),
+    ...(gas?.maxPriorityFeePerGas && { maxPriorityFeePerGas: gas.maxPriorityFeePerGas }),
   });
 
   logger.info(`Transaction sent: ${hash}`);

@@ -54,6 +54,11 @@ export interface SDKDeployOptions {
   logVisibility: LogVisibility;
   /** Optional app profile to upload after deployment */
   profile?: AppProfile;
+  /** Optional gas params from estimation */
+  gas?: {
+    maxFeePerGas?: bigint;
+    maxPriorityFeePerGas?: bigint;
+  };
 }
 
 /**
@@ -200,6 +205,7 @@ export async function deploy(
       release,
       publicLogs,
       imageRef: finalImageRef,
+      gas: options.gas,
     },
     logger,
   );

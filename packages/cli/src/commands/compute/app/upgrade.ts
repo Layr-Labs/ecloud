@@ -1,5 +1,5 @@
 import { Command, Args, Flags } from "@oclif/core";
-import { getEnvironmentConfig, UserApiClient } from "@layr-labs/ecloud-sdk";
+import { getEnvironmentConfig, UserApiClient, formatETH } from "@layr-labs/ecloud-sdk";
 import { createAppClient } from "../../../client";
 import { commonFlags } from "../../../flags";
 import {
@@ -10,9 +10,11 @@ import {
   getLogSettingsInteractive,
   getOrPromptAppID,
   LogVisibility,
+  confirm,
 } from "../../../utils/prompts";
 import chalk from "chalk";
-import { Address } from "viem";
+import { Address, createPublicClient, http } from "viem";
+import { mainnet } from "viem/chains";
 
 export default class AppUpgrade extends Command {
   static description = "Upgrade existing deployment";
@@ -120,7 +122,39 @@ export default class AppUpgrade extends Command {
       flags["log-visibility"] as LogVisibility | undefined
     );
 
-    // 8. Upgrade with all gathered parameters
+    // 8. Estimate gas cost on mainnet and prompt for confirmation
+    const isMainnet = environmentConfig.chainID === BigInt(1);
+    let gasParams: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } | undefined;
+    
+    if (isMainnet) {
+      const chain = mainnet;
+      const publicClient = createPublicClient({
+        chain,
+        transport: http(rpcUrl),
+      });
+      
+      // Get current gas prices for estimation
+      const fees = await publicClient.estimateFeesPerGas();
+      // Upgrade typically has 1-2 executions in the batch
+      const estimatedGas = BigInt(250000); // Conservative estimate for upgrade batch
+      const maxCostWei = estimatedGas * fees.maxFeePerGas;
+      const maxCostEth = formatETH(maxCostWei);
+      
+      const confirmed = await confirm(
+        `This upgrade will cost up to ${maxCostEth} ETH. Continue?`
+      );
+      if (!confirmed) {
+        this.log(`\n${chalk.gray(`Upgrade cancelled`)}`);
+        return;
+      }
+      
+      gasParams = {
+        maxFeePerGas: fees.maxFeePerGas,
+        maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
+      };
+    }
+
+    // 9. Upgrade with all gathered parameters
     const res = await app.upgrade(appID as Address, {
       dockerfile: dockerfilePath,
       envFile: envFilePath,
@@ -131,6 +165,7 @@ export default class AppUpgrade extends Command {
           ? "private"
           : "off",
       instanceType,
+      gas: gasParams,
     });
 
     if (!res.tx) {

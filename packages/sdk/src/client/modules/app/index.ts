@@ -27,6 +27,39 @@ const CONTROLLER_ABI = parseAbi([
   "function terminateApp(address appId)",
 ]);
 
+/**
+ * Encode start app call data for gas estimation
+ */
+export function encodeStartAppData(appId: AppId): `0x${string}` {
+  return encodeFunctionData({
+    abi: CONTROLLER_ABI,
+    functionName: "startApp",
+    args: [appId],
+  });
+}
+
+/**
+ * Encode stop app call data for gas estimation
+ */
+export function encodeStopAppData(appId: AppId): `0x${string}` {
+  return encodeFunctionData({
+    abi: CONTROLLER_ABI,
+    functionName: "stopApp",
+    args: [appId],
+  });
+}
+
+/**
+ * Encode terminate app call data for gas estimation
+ */
+export function encodeTerminateAppData(appId: AppId): `0x${string}` {
+  return encodeFunctionData({
+    abi: CONTROLLER_ABI,
+    functionName: "terminateApp",
+    args: [appId],
+  });
+}
+
 export interface AppModule {
   create: (opts: CreateAppOpts) => Promise<void>;
   deploy: (opts: DeployAppOpts) => Promise<{ appID: AppId; tx: `0x${string}`; appName: string; imageRef: string; ipAddress?: string; }>;
@@ -79,6 +112,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           imageRef: opts.imageRef,
           logVisibility: opts.logVisibility,
           profile: opts.profile,
+          gas: opts.gas,
         },
         logger,
       );
@@ -105,6 +139,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           envFilePath: opts.envFile,
           imageRef: opts.imageRef,
           logVisibility: opts.logVisibility,
+          gas: opts.gas,
         },
         logger,
       );
@@ -128,7 +163,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
       );
     },
 
-    async start(appId) {
+    async start(appId, opts) {
       const appName = getAppName(ctx.environment, appId);
       let pendingMessage = "Starting app...";
       if (appName !== "") {
@@ -150,13 +185,14 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           data,
           pendingMessage,
           txDescription: "StartApp",
+          gas: opts?.gas,
         },
         logger,
       );
       return { tx };
     },
 
-    async stop(appId) {
+    async stop(appId, opts) {
       const appName = getAppName(ctx.environment, appId);
       let pendingMessage = "Stopping app...";
       if (appName !== "") {
@@ -178,13 +214,14 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           data,
           pendingMessage,
           txDescription: "StopApp",
+          gas: opts?.gas,
         },
         logger,
       );
       return { tx };
     },
 
-    async terminate(appId) {
+    async terminate(appId, opts) {
       const appName = getAppName(ctx.environment, appId);
       let pendingMessage = "Terminating app...";
       if (appName !== "") {
@@ -206,6 +243,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           data,
           pendingMessage,
           txDescription: "TerminateApp",
+          gas: opts?.gas,
         },
         logger,
       );

@@ -47,6 +47,11 @@ export interface SDKUpgradeOptions {
   instanceType: string;
   /** Log visibility setting - required */
   logVisibility: LogVisibility;
+  /** Optional gas params from estimation */
+  gas?: {
+    maxFeePerGas?: bigint;
+    maxPriorityFeePerGas?: bigint;
+  };
 }
 
 export interface UpgradeResult {
@@ -190,6 +195,7 @@ export async function upgrade(
       publicLogs,
       needsPermissionChange,
       imageRef: finalImageRef,
+      gas: options.gas,
     },
     logger,
   );

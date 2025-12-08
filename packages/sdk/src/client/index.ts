@@ -20,7 +20,13 @@ export { SDKDeployOptions } from "./modules/app/deploy";
 export { SDKUpgradeOptions } from "./modules/app/upgrade";
 
 // Export modules for standalone use
-export { createAppModule, type AppModuleConfig } from "./modules/app";
+export { 
+  createAppModule, 
+  type AppModuleConfig,
+  encodeStartAppData,
+  encodeStopAppData,
+  encodeTerminateAppData,
+} from "./modules/app";
 export { createBillingModule, type BillingModuleConfig } from "./modules/billing";
 
 // Export environment config utilities
@@ -54,7 +60,16 @@ export {
 export { listApps, getAppName, setAppName } from "./common/registry/appNames";
 
 // Export contract utilities
-export { getAllAppsByDeveloper } from "./common/contract/caller";
+export { 
+  getAllAppsByDeveloper,
+  estimateTransactionGas,
+  formatETH,
+  type GasEstimate,
+  type EstimateGasOptions,
+} from "./common/contract/caller";
+
+// Export batch gas estimation
+export { estimateBatchGas, type EstimateBatchGasOptions } from "./common/contract/eip7702";
 
 // Export instance type utilities
 export { getCurrentInstanceType } from "./common/utils/instance";

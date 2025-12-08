@@ -23,6 +23,8 @@ export interface DeployAppOpts {
   logVisibility: logVisibility;
   /** Optional app profile to upload after deployment */
   profile?: AppProfile;
+  /** Optional gas params from estimation */
+  gas?: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint };
 }
 
 export interface UpgradeAppOpts {

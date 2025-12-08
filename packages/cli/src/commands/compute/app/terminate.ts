@@ -1,8 +1,13 @@
 import { Command, Args, Flags } from "@oclif/core";
 import { createAppClient } from "../../../client";
 import { commonFlags } from "../../../flags";
-import { getEnvironmentConfig } from "@layr-labs/ecloud-sdk";
+import { 
+  getEnvironmentConfig, 
+  estimateTransactionGas,
+  encodeTerminateAppData,
+} from "@layr-labs/ecloud-sdk";
 import { getOrPromptAppID, confirm } from "../../../utils/prompts";
+import { getPrivateKeyInteractive } from "../../../utils/prompts";
 import chalk from "chalk";
 
 export default class AppLifecycleTerminate extends Command {
@@ -35,31 +40,51 @@ export default class AppLifecycleTerminate extends Command {
   
     // Get RPC URL (needed for contract queries and authentication)
     const rpcUrl = flags.rpcUrl || environmentConfig.defaultRPCURL;
+
+    // Get private key for gas estimation
+    const privateKey = flags["private-key"] || await getPrivateKeyInteractive(environment);
     
     // Resolve app ID (prompt if not provided)
     const appId = await getOrPromptAppID(
       {
         appID: args["app-id"],
         environment: flags["environment"]!,
-        privateKey: flags["private-key"],
+        privateKey,
         rpcUrl,
         action: "terminate",
       }
     );
 
+    // Estimate gas cost
+    const callData = encodeTerminateAppData(appId as `0x${string}`);
+    const estimate = await estimateTransactionGas({
+      privateKey,
+      rpcUrl,
+      environmentConfig,
+      to: environmentConfig.appControllerAddress as `0x${string}`,
+      data: callData,
+    });
+
     // Ask for confirmation unless forced
     if (!flags.force) {
-      const confirmed = await confirm(`⚠️  Permanently destroy app ${appId}?`);
+      const isMainnet = environmentConfig.chainID === BigInt(1);
+      const costInfo = isMainnet ? ` (cost: up to ${estimate.maxCostEth} ETH)` : "";
+      const confirmed = await confirm(`⚠️  Permanently destroy app ${appId}${costInfo}?`);
       if (!confirmed) {
         this.log(`\n${chalk.gray(`Termination aborted`)}`);
         return;
       }
     }
 
-    const res = await app.terminate(appId);
+    const res = await app.terminate(appId, {
+      gas: {
+        maxFeePerGas: estimate.maxFeePerGas,
+        maxPriorityFeePerGas: estimate.maxPriorityFeePerGas,
+      },
+    });
 
     if (!res.tx) {
-      this.log(`\n${chalk.gray(`Termination aborted`)}`);
+      this.log(`\n${chalk.gray(`Termination failed`)}`);
     } else {
       this.log(`\n✅ ${chalk.green(`App terminated successfully`)}`);
     }

@@ -1,5 +1,7 @@
 import { Command, Flags } from "@oclif/core";
-import { getEnvironmentConfig, UserApiClient } from "@layr-labs/ecloud-sdk";
+import { getEnvironmentConfig, UserApiClient, formatETH } from "@layr-labs/ecloud-sdk";
+import { createPublicClient, http } from "viem";
+import { mainnet } from "viem/chains";
 import { createAppClient } from "../../../client";
 import { commonFlags } from "../../../flags";
 import {
@@ -11,6 +13,7 @@ import {
   getLogSettingsInteractive,
   getAppProfileInteractive,
   LogVisibility,
+  confirm,
 } from "../../../utils/prompts";
 import chalk from "chalk";
 
@@ -118,7 +121,39 @@ export default class AppDeploy extends Command {
       }
     }
 
-    // 8. Deploy with all gathered parameters
+    // 8. Estimate gas cost on mainnet and prompt for confirmation
+    const isMainnet = environmentConfig.chainID === BigInt(1);
+    let gasParams: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } | undefined;
+    
+    if (isMainnet) {
+      const chain = mainnet;
+      const publicClient = createPublicClient({
+        chain,
+        transport: http(rpcUrl),
+      });
+      
+      // Get current gas prices for estimation
+      const fees = await publicClient.estimateFeesPerGas();
+      // Deploy typically has 2-3 executions in the batch
+      const estimatedGas = BigInt(300000); // Conservative estimate for deploy batch
+      const maxCostWei = estimatedGas * fees.maxFeePerGas;
+      const maxCostEth = formatETH(maxCostWei);
+      
+      const confirmed = await confirm(
+        `This deployment will cost up to ${maxCostEth} ETH. Continue?`
+      );
+      if (!confirmed) {
+        this.log(`\n${chalk.gray(`Deployment cancelled`)}`);
+        return;
+      }
+      
+      gasParams = {
+        maxFeePerGas: fees.maxFeePerGas,
+        maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
+      };
+    }
+
+    // 9. Deploy with all gathered parameters
     const res = await app.deploy({
       name: appName,
       dockerfile: dockerfilePath,
@@ -131,6 +166,7 @@ export default class AppDeploy extends Command {
           : "off",
       instanceType,
       profile,
+      gas: gasParams,
     });
 
     if (!res.tx || !res.ipAddress) {
