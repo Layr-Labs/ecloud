@@ -26,14 +26,14 @@ export {
   getAvailableTemplates,
 } from "./modules/app/create";
 export { logs, LogsOptions, SDKLogsOptions } from "./modules/app/logs";
-export { 
+export {
   SDKDeployOptions,
   prepareDeploy,
   executeDeploy,
   type PreparedDeploy,
   type PrepareDeployResult,
 } from "./modules/app/deploy";
-export { 
+export {
   SDKUpgradeOptions,
   prepareUpgrade,
   executeUpgrade,
@@ -97,10 +97,7 @@ export {
 } from "./common/contract/caller";
 
 // Export batch gas estimation
-export { 
-  estimateBatchGas, 
-  type EstimateBatchGasOptions,
-} from "./common/contract/eip7702";
+export { estimateBatchGas, type EstimateBatchGasOptions } from "./common/contract/eip7702";
 
 // Export instance type utilities
 export { getCurrentInstanceType } from "./common/utils/instance";

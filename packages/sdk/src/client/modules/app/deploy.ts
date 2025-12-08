@@ -349,14 +349,14 @@ function generateRandomSalt(): Uint8Array {
 
 /**
  * Prepare deployment - does all work up to the transaction
- * 
+ *
  * This allows CLI to:
  * 1. Call prepareDeploy to build image, prepare release, get gas estimate
  * 2. Prompt user to confirm the cost
  * 3. Call executeDeploy with confirmed gas params
  */
 export async function prepareDeploy(
-  options: Omit<SDKDeployOptions, 'gas'>,
+  options: Omit<SDKDeployOptions, "gas">,
   logger: Logger = defaultLogger,
 ): Promise<PrepareDeployResult> {
   // 1. Validate all required parameters upfront
@@ -462,7 +462,7 @@ export async function prepareDeploy(
 
 /**
  * Execute a prepared deployment
- * 
+ *
  * Call this after prepareDeploy and user confirmation.
  */
 export async function executeDeploy(

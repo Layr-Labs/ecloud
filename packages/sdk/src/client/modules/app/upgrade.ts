@@ -252,14 +252,14 @@ export async function upgrade(
 
 /**
  * Prepare upgrade - does all work up to the transaction
- * 
+ *
  * This allows CLI to:
  * 1. Call prepareUpgrade to build image, prepare release, get gas estimate
  * 2. Prompt user to confirm the cost
  * 3. Call executeUpgrade with confirmed gas params
  */
 export async function prepareUpgrade(
-  options: Omit<SDKUpgradeOptions, 'gas'>,
+  options: Omit<SDKUpgradeOptions, "gas">,
   logger: Logger = defaultLogger,
 ): Promise<PrepareUpgradeResult> {
   // 1. Do preflight checks (auth, network, etc.) first
@@ -274,7 +274,10 @@ export async function prepareUpgrade(
   );
 
   // 2. Validate all required parameters upfront (now that we have environment)
-  const appID = validateUpgradeOptions(options as SDKUpgradeOptions, preflightCtx.environmentConfig.name);
+  const appID = validateUpgradeOptions(
+    options as SDKUpgradeOptions,
+    preflightCtx.environmentConfig.name,
+  );
 
   // Convert log visibility to internal format
   const { logRedirect, publicLogs } = validateLogVisibility(options.logVisibility);
@@ -306,11 +309,7 @@ export async function prepareUpgrade(
 
   // 5. Check current permission state and determine if change is needed
   logger.debug("Checking current log permission state...");
-  const currentlyPublic = await checkAppLogPermission(
-    preflightCtx,
-    appID,
-    logger,
-  );
+  const currentlyPublic = await checkAppLogPermission(preflightCtx, appID, logger);
   const needsPermissionChange = currentlyPublic !== publicLogs;
 
   // 6. Prepare the upgrade batch (creates executions without sending)
@@ -350,7 +349,7 @@ export async function prepareUpgrade(
 
 /**
  * Execute a prepared upgrade
- * 
+ *
  * Call this after prepareUpgrade and user confirmation.
  */
 export async function executeUpgrade(

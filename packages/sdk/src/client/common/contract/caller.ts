@@ -220,21 +220,14 @@ export interface PrepareDeployBatchOptions {
 
 /**
  * Prepare deploy batch - creates executions without sending transaction
- * 
+ *
  * Use this to get the prepared batch for gas estimation before executing.
  */
 export async function prepareDeployBatch(
   options: PrepareDeployBatchOptions,
   logger: Logger,
 ): Promise<PreparedDeployBatch> {
-  const {
-    privateKey,
-    rpcUrl,
-    environmentConfig,
-    salt,
-    release,
-    publicLogs,
-  } = options;
+  const { privateKey, rpcUrl, environmentConfig, salt, release, publicLogs } = options;
 
   const privateKeyHex = addHexPrefix(privateKey) as Hex;
   const account = privateKeyToAccount(privateKeyHex);
@@ -419,7 +412,7 @@ export interface PrepareUpgradeBatchOptions {
 
 /**
  * Prepare upgrade batch - creates executions without sending transaction
- * 
+ *
  * Use this to get the prepared batch for gas estimation before executing.
  */
 export async function prepareUpgradeBatch(
@@ -565,10 +558,7 @@ export async function executeUpgradeBatch(
 /**
  * Upgrade app on-chain (convenience wrapper that prepares and executes)
  */
-export async function upgradeApp(
-  options: UpgradeAppOptions,
-  logger: Logger,
-): Promise<Hex> {
+export async function upgradeApp(options: UpgradeAppOptions, logger: Logger): Promise<Hex> {
   const prepared = await prepareUpgradeBatch({
     privateKey: options.privateKey,
     rpcUrl: options.rpcUrl,

@@ -1,7 +1,7 @@
 import { Command, Args, Flags } from "@oclif/core";
-import { 
-  getEnvironmentConfig, 
-  UserApiClient, 
+import {
+  getEnvironmentConfig,
+  UserApiClient,
   isMainnet,
   prepareUpgrade,
   executeUpgrade,
@@ -63,7 +63,7 @@ export default class AppUpgrade extends Command {
 
   async run() {
     const { args, flags } = await this.parse(AppUpgrade);
-    
+
     // Create CLI logger
     const logger = {
       info: (msg: string) => this.log(msg),
@@ -76,9 +76,9 @@ export default class AppUpgrade extends Command {
     const environment = flags.environment || "sepolia";
     const environmentConfig = getEnvironmentConfig(environment);
     const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
-    
+
     // Get private key interactively if not provided
-    const privateKey = flags["private-key"] || await getPrivateKeyInteractive();
+    const privateKey = flags["private-key"] || (await getPrivateKeyInteractive());
 
     // 1. Get app ID interactively if not provided
     const appID = await getOrPromptAppID({
@@ -112,11 +112,7 @@ export default class AppUpgrade extends Command {
     }
 
     // 6. Get instance type interactively
-    const availableTypes = await fetchAvailableInstanceTypes(
-      environmentConfig,
-      privateKey,
-      rpcUrl,
-    );
+    const availableTypes = await fetchAvailableInstanceTypes(environmentConfig, privateKey, rpcUrl);
     const instanceType = await getInstanceTypeInteractive(
       flags["instance-type"],
       currentInstanceType,
@@ -152,7 +148,7 @@ export default class AppUpgrade extends Command {
 
     // 9. Show gas estimate and prompt for confirmation on mainnet
     this.log(`\nEstimated transaction cost: ${chalk.cyan(gasEstimate.maxCostEth)} ETH`);
-    
+
     if (isMainnet(environmentConfig)) {
       const confirmed = await confirm(`Continue with upgrade?`);
       if (!confirmed) {
@@ -163,7 +159,7 @@ export default class AppUpgrade extends Command {
 
     // 10. Execute the upgrade
     const res = await executeUpgrade(
-      prepared, 
+      prepared,
       {
         maxFeePerGas: gasEstimate.maxFeePerGas,
         maxPriorityFeePerGas: gasEstimate.maxPriorityFeePerGas,
@@ -172,7 +168,7 @@ export default class AppUpgrade extends Command {
     );
 
     this.log(
-      `\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${res.appID}, image: ${res.imageRef})`)}`)}`
+      `\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${res.appID}, image: ${res.imageRef})`)}`)}`,
     );
   }
 }

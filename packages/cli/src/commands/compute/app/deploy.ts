@@ -1,7 +1,7 @@
 import { Command, Flags } from "@oclif/core";
-import { 
-  getEnvironmentConfig, 
-  UserApiClient, 
+import {
+  getEnvironmentConfig,
+  UserApiClient,
   isMainnet,
   prepareDeploy,
   executeDeploy,
@@ -67,7 +67,7 @@ export default class AppDeploy extends Command {
 
   async run() {
     const { flags } = await this.parse(AppDeploy);
-    
+
     // Create CLI logger
     const logger = {
       info: (msg: string) => this.log(msg),
@@ -80,9 +80,9 @@ export default class AppDeploy extends Command {
     const environment = flags.environment || "sepolia";
     const environmentConfig = getEnvironmentConfig(environment);
     const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
-    
+
     // Get private key interactively if not provided
-    const privateKey = flags["private-key"] || await getPrivateKeyInteractive();
+    const privateKey = flags["private-key"] || (await getPrivateKeyInteractive());
 
     // 1. Get dockerfile path interactively
     const dockerfilePath = await getDockerfileInteractive(flags.dockerfile);
@@ -99,11 +99,7 @@ export default class AppDeploy extends Command {
 
     // 5. Get instance type interactively
     // First, fetch available instance types from backend
-    const availableTypes = await fetchAvailableInstanceTypes(
-      environmentConfig,
-      privateKey,
-      rpcUrl
-    );
+    const availableTypes = await fetchAvailableInstanceTypes(environmentConfig, privateKey, rpcUrl);
     const instanceType = await getInstanceTypeInteractive(
       flags["instance-type"],
       "", // No default for new deployments
@@ -154,7 +150,7 @@ export default class AppDeploy extends Command {
 
     // 9. Show gas estimate and prompt for confirmation on mainnet
     this.log(`\nEstimated transaction cost: ${chalk.cyan(gasEstimate.maxCostEth)} ETH`);
-    
+
     if (isMainnet(environmentConfig)) {
       const confirmed = await confirm(`Continue with deployment?`);
       if (!confirmed) {
@@ -165,7 +161,7 @@ export default class AppDeploy extends Command {
 
     // 10. Execute the deployment
     const res = await executeDeploy(
-      prepared, 
+      prepared,
       {
         maxFeePerGas: gasEstimate.maxFeePerGas,
         maxPriorityFeePerGas: gasEstimate.maxPriorityFeePerGas,
@@ -174,7 +170,7 @@ export default class AppDeploy extends Command {
     );
 
     this.log(
-      `\n✅ ${chalk.green(`App deployed successfully ${chalk.bold(`(id: ${res.appID}, ip: ${res.ipAddress})`)}`)}`
+      `\n✅ ${chalk.green(`App deployed successfully ${chalk.bold(`(id: ${res.appID}, ip: ${res.ipAddress})`)}`)}`,
     );
   }
 }
