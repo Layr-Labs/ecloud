@@ -77,7 +77,7 @@ export async function watchUntilRunning(
   while (true) {
     try {
       // Fetch app info
-      const info = await userApiClient.getInfos([appID], 1, logger);
+      const info = await userApiClient.getInfos([appID], 1);
       if (info.length === 0) {
         await sleep(WATCH_POLL_INTERVAL_SECONDS * 1000);
         continue;
@@ -180,7 +180,7 @@ export async function watchUntilUpgradeComplete(
   while (true) {
     try {
       // Fetch app info
-      const info = await userApiClient.getInfos([appID], 1, logger);
+      const info = await userApiClient.getInfos([appID], 1);
       if (info.length === 0) {
         await sleep(WATCH_POLL_INTERVAL_SECONDS * 1000);
         continue;

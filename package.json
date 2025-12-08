@@ -10,6 +10,7 @@
     "lint": "pnpm -r run lint",
     "format": "pnpm -r run format",
     "format:fix": "pnpm -r run format:fix",
+    "typecheck": "pnpm -r run typecheck",
     "ecloud": "pnpm -C packages/cli exec -- node ./bin/run.js"
   },
   "devDependencies": {
