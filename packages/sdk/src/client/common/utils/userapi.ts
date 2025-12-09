@@ -25,6 +25,11 @@ export interface AppMetrics {
   memory_total_bytes?: number;
 }
 
+export interface DerivedAddress {
+  address: string;
+  derivationPath: string;
+}
+
 export interface AppInfo {
   address: Address;
   status: string;
@@ -32,14 +37,16 @@ export interface AppInfo {
   machineType: string;
   profile?: AppProfileInfo;
   metrics?: AppMetrics;
+  evmAddresses: DerivedAddress[];
+  solanaAddresses: DerivedAddress[];
 }
 
 export interface AppInfoResponse {
   apps: Array<{
     addresses: {
       data: {
-        evmAddresses: Address[];
-        solanaAddresses: string[];
+        evmAddresses: DerivedAddress[];
+        solanaAddresses: DerivedAddress[];
       };
       signature: string;
     };
@@ -87,24 +94,27 @@ export class UserApiClient {
     // const { signingKey } = getKMSKeysForEnvironment(this.config.name);
 
     // Truncate without mutating the original object
+    // API returns apps in the same order as the request, so use appIDs[i] as the address
     return result.apps.map((app, i) => {
       // TODO: Implement signature verification
       // const valid = await verifyKMSSignature(appInfo.addresses, signingKey);
       // if (!valid) {
       //   throw new Error(`Invalid signature for app ${appIDs[i]}`);
       // }
-      const evm = app.addresses.data.evmAddresses.slice(0, count);
-      // const sol = app.addresses.data.solanaAddresses.slice(0, count);
-      // If the API ties each `apps[i]` to `appIDs[i]`, use i. Otherwise derive from `evm[0]`
-      const inferredAddress = evm[0] ?? appIDs[i] ?? appIDs[0];
+
+      // Slice derived addresses to requested count
+      const evmAddresses = app.addresses?.data?.evmAddresses?.slice(0, count) || [];
+      const solanaAddresses = app.addresses?.data?.solanaAddresses?.slice(0, count) || [];
 
       return {
-        address: inferredAddress as Address,
+        address: appIDs[i] as Address,
         status: app.app_status,
         ip: app.ip,
         machineType: app.machine_type,
         profile: app.profile,
         metrics: app.metrics,
+        evmAddresses,
+        solanaAddresses,
       };
     });
   }

@@ -10,13 +10,45 @@
 
 import { Address, isAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { UserApiClient, getAllAppsByDeveloper, EnvironmentConfig } from "@layr-labs/ecloud-sdk";
+import {
+  UserApiClient,
+  getAllAppsByDeveloper,
+  EnvironmentConfig,
+  AppInfo,
+} from "@layr-labs/ecloud-sdk";
 import { getProfileCache, setProfileCache, updateProfileCacheEntry } from "./globalConfig";
 import {
   listApps as listLocalApps,
   getAppName as getLocalAppName,
   resolveAppIDFromRegistry,
 } from "./appNames";
+
+const CHUNK_SIZE = 10;
+
+/**
+ * Fetch app infos in chunks (getInfos has a limit of 10 apps per request)
+ * Fetches all chunks concurrently for better performance
+ */
+export async function getAppInfosChunked(
+  userApiClient: UserApiClient,
+  appIds: Address[],
+  addressCount?: number,
+): Promise<AppInfo[]> {
+  if (appIds.length === 0) {
+    return [];
+  }
+
+  const chunks: Address[][] = [];
+  for (let i = 0; i < appIds.length; i += CHUNK_SIZE) {
+    chunks.push(appIds.slice(i, i + CHUNK_SIZE));
+  }
+
+  const chunkResults = await Promise.all(
+    chunks.map((chunk) => userApiClient.getInfos(chunk, addressCount)),
+  );
+
+  return chunkResults.flat();
+}
 
 /**
  * AppResolver handles app name resolution with remote profile support and caching
@@ -202,18 +234,8 @@ export class AppResolver {
       }
 
       // Fetch info for all apps to get profile names
-      // getInfos has a limit of 10 apps per request, so we chunk and fetch concurrently
       const userApiClient = new UserApiClient(this.environmentConfig, this.privateKey, this.rpcUrl);
-      const CHUNK_SIZE = 10;
-
-      const chunks: Address[][] = [];
-      for (let i = 0; i < apps.length; i += CHUNK_SIZE) {
-        chunks.push(apps.slice(i, i + CHUNK_SIZE));
-      }
-
-      const chunkResults = await Promise.all(chunks.map((chunk) => userApiClient.getInfos(chunk)));
-
-      const appInfos = chunkResults.flat();
+      const appInfos = await getAppInfosChunked(userApiClient, apps);
 
       // Build profile names map
       const profiles: Record<string, string> = {};
