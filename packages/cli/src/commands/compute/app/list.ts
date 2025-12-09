@@ -135,18 +135,18 @@ export default class AppList extends Command {
         if (flags.verbose) {
           this.warn(`Could not fetch app info from UserAPI: ${err}`);
         }
-        return [];
+        return [] as Awaited<ReturnType<typeof userApiClient.getInfos>>;
       }),
       getAppLatestReleaseBlockNumbers(rpcUrl, environmentConfig, filteredApps).catch((err) => {
         if (flags.verbose) {
           this.warn(`Could not fetch release block numbers: ${err}`);
         }
         return new Map<Address, number>();
-      }),
+      }) as Promise<Map<Address, number>>,
     ]);
 
     // Get unique block numbers and fetch their timestamps
-    const blockNumbers = [...releaseBlockNumbers.values()].filter((n) => n > 0);
+    const blockNumbers = Array.from(releaseBlockNumbers.values()).filter((n) => n > 0);
     const blockTimestamps =
       blockNumbers.length > 0
         ? await getBlockTimestamps(rpcUrl, environmentConfig, blockNumbers).catch((err) => {
