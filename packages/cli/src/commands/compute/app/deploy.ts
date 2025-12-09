@@ -84,7 +84,7 @@ export default class AppDeploy extends Command {
     const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
 
     // Get private key interactively if not provided
-    const privateKey = flags["private-key"] || (await getPrivateKeyInteractive());
+    const privateKey = await getPrivateKeyInteractive(flags["private-key"]);
 
     // 1. Get dockerfile path interactively
     const dockerfilePath = await getDockerfileInteractive(flags.dockerfile);

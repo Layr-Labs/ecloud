@@ -79,7 +79,7 @@ export default class AppUpgrade extends Command {
     const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
 
     // Get private key interactively if not provided
-    const privateKey = flags["private-key"] || (await getPrivateKeyInteractive());
+    const privateKey = await getPrivateKeyInteractive(flags["private-key"]);
 
     // 1. Get app ID interactively if not provided
     const appID = await getOrPromptAppID({

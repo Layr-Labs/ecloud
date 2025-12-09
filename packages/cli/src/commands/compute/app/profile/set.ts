@@ -53,7 +53,7 @@ export default class ProfileSet extends Command {
     const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
 
     // Get private key interactively if not provided
-    const privateKey = flags["private-key"] || (await getPrivateKeyInteractive());
+    const privateKey = await getPrivateKeyInteractive(flags["private-key"]);
 
     // Create app resolver for name resolution
     const resolver = createAppResolver(environment, environmentConfig, privateKey, rpcUrl);
