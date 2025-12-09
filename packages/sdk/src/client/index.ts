@@ -87,7 +87,12 @@ export { estimateBatchGas, type EstimateBatchGasOptions } from "./common/contrac
 export { getCurrentInstanceType } from "./common/utils/instance";
 
 // Export user API client
-export { UserApiClient } from "./common/utils/userapi";
+export {
+  UserApiClient,
+  type AppInfo,
+  type AppProfileInfo,
+  type AppMetrics,
+} from "./common/utils/userapi";
 
 export type Environment = "sepolia" | "sepolia-dev" | "mainnet-alpha";
 

@@ -55,6 +55,9 @@
       "compute:app": {
         "description": "Manage projects"
       },
+      "compute:app:profile": {
+        "description": "Manage app profiles"
+      },
       "compute:environment": {
         "description": "Manage deployment environment [alias: env]"
       },

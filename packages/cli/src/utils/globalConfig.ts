@@ -18,6 +18,11 @@ import { getBuildType } from "@layr-labs/ecloud-sdk";
 
 const GLOBAL_CONFIG_FILE = "config.yaml";
 
+export interface ProfileCacheEntry {
+  updated_at: number; // Unix timestamp in milliseconds
+  profiles: { [appId: string]: string }; // appId -> profile name
+}
+
 export interface GlobalConfig {
   first_run?: boolean;
   telemetry_enabled?: boolean;
@@ -25,7 +30,13 @@ export interface GlobalConfig {
   default_environment?: string;
   last_version_check?: number;
   last_known_version?: string;
+  profile_cache?: {
+    [environment: string]: ProfileCacheEntry;
+  };
 }
+
+// Profile cache TTL: 24 hours in milliseconds
+const PROFILE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Get the XDG-compliant directory where global ecloud config should be stored
@@ -147,5 +158,97 @@ export function setGlobalTelemetryPreference(enabled: boolean): void {
   const config = loadGlobalConfig();
   config.telemetry_enabled = enabled;
   config.first_run = false; // No longer first run after setting preference
+  saveGlobalConfig(config);
+}
+
+// ==================== Profile Cache Functions ====================
+
+/**
+ * Get cached profile names for an environment
+ * Returns null if cache is missing or expired (older than 24 hours)
+ */
+export function getProfileCache(environment: string): Record<string, string> | null {
+  const config = loadGlobalConfig();
+  const cacheEntry = config.profile_cache?.[environment];
+
+  if (!cacheEntry) {
+    return null;
+  }
+
+  // Check if cache is expired
+  const now = Date.now();
+  if (now - cacheEntry.updated_at > PROFILE_CACHE_TTL_MS) {
+    return null;
+  }
+
+  return cacheEntry.profiles;
+}
+
+/**
+ * Set cached profile names for an environment
+ */
+export function setProfileCache(environment: string, profiles: Record<string, string>): void {
+  const config = loadGlobalConfig();
+
+  if (!config.profile_cache) {
+    config.profile_cache = {};
+  }
+
+  config.profile_cache[environment] = {
+    updated_at: Date.now(),
+    profiles,
+  };
+
+  saveGlobalConfig(config);
+}
+
+/**
+ * Invalidate profile cache for a specific environment or all environments
+ */
+export function invalidateProfileCache(environment?: string): void {
+  const config = loadGlobalConfig();
+
+  if (!config.profile_cache) {
+    return;
+  }
+
+  if (environment) {
+    // Invalidate specific environment
+    delete config.profile_cache[environment];
+  } else {
+    // Invalidate all environments
+    config.profile_cache = {};
+  }
+
+  saveGlobalConfig(config);
+}
+
+/**
+ * Update a single profile name in the cache
+ * This is useful after deploy or profile set to update just one entry
+ */
+export function updateProfileCacheEntry(
+  environment: string,
+  appId: string,
+  profileName: string,
+): void {
+  const config = loadGlobalConfig();
+
+  if (!config.profile_cache) {
+    config.profile_cache = {};
+  }
+
+  if (!config.profile_cache[environment]) {
+    config.profile_cache[environment] = {
+      updated_at: Date.now(),
+      profiles: {},
+    };
+  }
+
+  // Normalize appId to lowercase for consistent lookups
+  const normalizedAppId = appId.toLowerCase();
+  config.profile_cache[environment].profiles[normalizedAppId] = profileName;
+  config.profile_cache[environment].updated_at = Date.now();
+
   saveGlobalConfig(config);
 }

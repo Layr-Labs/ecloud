@@ -10,11 +10,28 @@ import { privateKeyToAccount } from "viem/accounts";
 import { EnvironmentConfig } from "../types";
 import { addHexPrefix, stripHexPrefix, getChainFromID } from "./helpers";
 
+export interface AppProfileInfo {
+  name: string;
+  website?: string;
+  description?: string;
+  xURL?: string;
+  imageURL?: string;
+}
+
+export interface AppMetrics {
+  cpu_utilization_percent?: number;
+  memory_utilization_percent?: number;
+  memory_used_bytes?: number;
+  memory_total_bytes?: number;
+}
+
 export interface AppInfo {
   address: Address;
   status: string;
   ip: string;
   machineType: string;
+  profile?: AppProfileInfo;
+  metrics?: AppMetrics;
 }
 
 export interface AppInfoResponse {
@@ -29,6 +46,8 @@ export interface AppInfoResponse {
     app_status: string;
     ip: string;
     machine_type: string;
+    profile?: AppProfileInfo;
+    metrics?: AppMetrics;
   }>;
 }
 
@@ -84,6 +103,8 @@ export class UserApiClient {
         status: app.app_status,
         ip: app.ip,
         machineType: app.machine_type,
+        profile: app.profile,
+        metrics: app.metrics,
       };
     });
   }

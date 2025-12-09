@@ -19,7 +19,7 @@ import {
   confirm,
   getPrivateKeyInteractive,
 } from "../../../utils/prompts";
-import { setAppName } from "../../../utils/appNames";
+import { invalidateProfileCache } from "../../../utils/globalConfig";
 import chalk from "chalk";
 
 export default class AppDeploy extends Command {
@@ -112,21 +112,7 @@ export default class AppDeploy extends Command {
       flags["log-visibility"] as LogVisibility | undefined,
     );
 
-    // 7. Optionally collect app profile
-    let profile = undefined;
-    if (!flags["skip-profile"]) {
-      try {
-        // Extract suggested name from image reference
-        const suggestedName = appName;
-        this.log("\nSet up a public profile for your app (you can skip this):");
-        profile = await getAppProfileInteractive(suggestedName, true);
-      } catch {
-        // Profile collection cancelled or failed - continue without profile
-        profile = undefined;
-      }
-    }
-
-    // 8. Prepare deployment (builds image, pushes to registry, prepares batch, estimates gas)
+    // 7. Prepare deployment (builds image, pushes to registry, prepares batch, estimates gas)
     const logVisibility = logSettings.publicLogs
       ? "public"
       : logSettings.logRedirect
@@ -144,12 +130,11 @@ export default class AppDeploy extends Command {
         appName,
         instanceType,
         logVisibility,
-        profile,
       },
       logger,
     );
 
-    // 9. Show gas estimate and prompt for confirmation on mainnet
+    // 8. Show gas estimate and prompt for confirmation on mainnet
     this.log(`\nEstimated transaction cost: ${chalk.cyan(gasEstimate.maxCostEth)} ETH`);
 
     if (isMainnet(environmentConfig)) {
@@ -160,7 +145,7 @@ export default class AppDeploy extends Command {
       }
     }
 
-    // 10. Execute the deployment
+    // 9. Execute the deployment
     const res = await executeDeploy(
       prepared,
       {
@@ -170,12 +155,44 @@ export default class AppDeploy extends Command {
       logger,
     );
 
-    // 11. Save the app name mapping locally
-    try {
-      await setAppName(environment, res.appId, appName);
-      logger.info(`App saved with name: ${appName}`);
-    } catch (err: any) {
-      logger.warn(`Failed to save app name: ${err.message}`);
+    // 10. Collect app profile while deployment is in progress (optional)
+    if (!flags["skip-profile"]) {
+      this.log(
+        "\nDeployment confirmed onchain. While your instance provisions, set up a public profile:",
+      );
+
+      try {
+        const profile = await getAppProfileInteractive(appName, true);
+
+        if (profile) {
+          // 12. Upload profile if provided (non-blocking - warn on failure but don't fail deployment)
+          logger.info("Uploading app profile...");
+          try {
+            const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl);
+            await userApiClient.uploadAppProfile(
+              res.appId as `0x${string}`,
+              profile.name,
+              profile.website,
+              profile.description,
+              profile.xURL,
+              profile.imagePath,
+            );
+            logger.info("✓ Profile uploaded successfully");
+
+            // Invalidate profile cache to ensure fresh data on next command
+            try {
+              invalidateProfileCache(environment);
+            } catch (cacheErr: any) {
+              logger.debug(`Failed to invalidate profile cache: ${cacheErr.message}`);
+            }
+          } catch (uploadErr: any) {
+            logger.warn(`Failed to upload profile: ${uploadErr.message}`);
+          }
+        }
+      } catch {
+        // Profile collection cancelled or failed - continue without profile
+        logger.debug("Profile collection skipped or cancelled");
+      }
     }
 
     this.log(
