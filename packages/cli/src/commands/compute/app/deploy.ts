@@ -21,6 +21,7 @@ import {
   ResourceUsageMonitoring,
   confirm,
   getPrivateKeyInteractive,
+  imagePathToBlob,
 } from "../../../utils/prompts";
 import { invalidateProfileCache } from "../../../utils/globalConfig";
 import { getClientId } from "../../../utils/version";
@@ -178,14 +179,7 @@ export default class AppDeploy extends Command {
     }
 
     // 10. Execute the deployment
-    const res = await executeDeploy(
-      prepared,
-      {
-        maxFeePerGas: gasEstimate.maxFeePerGas,
-        maxPriorityFeePerGas: gasEstimate.maxPriorityFeePerGas,
-      },
-      logger,
-    );
+    const res = await executeDeploy(prepared, gasEstimate, logger);
 
     // 11. Collect app profile while deployment is in progress (optional)
     if (!flags["skip-profile"]) {
@@ -233,14 +227,14 @@ export default class AppDeploy extends Command {
             rpcUrl,
             getClientId(),
           );
-          await userApiClient.uploadAppProfile(
-            res.appId as `0x${string}`,
-            profile.name,
-            profile.website,
-            profile.description,
-            profile.xURL,
-            profile.imagePath,
-          );
+          const { image, imageName } = imagePathToBlob(profile.imagePath);
+          await userApiClient.uploadAppProfile(res.appId as `0x${string}`, profile.name, {
+            website: profile.website,
+            description: profile.description,
+            xURL: profile.xURL,
+            image,
+            imageName,
+          });
           logger.info("✓ Profile uploaded successfully");
 
           // Invalidate profile cache to ensure fresh data on next command

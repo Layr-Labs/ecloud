@@ -60,10 +60,7 @@ export interface SDKUpgradeOptions {
   /** Resource usage monitoring setting - optional, defaults to 'enable' */
   resourceUsageMonitoring?: ResourceUsageMonitoring;
   /** Optional gas params from estimation */
-  gas?: {
-    maxFeePerGas?: bigint;
-    maxPriorityFeePerGas?: bigint;
-  };
+  gas?: GasEstimate;
 }
 
 export interface UpgradeResult {
@@ -230,7 +227,7 @@ export async function upgrade(
       privateKey: preflightCtx.privateKey,
       rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
       environmentConfig: preflightCtx.environmentConfig,
-      appId: appID,
+      appID,
       release,
       publicLogs,
       needsPermissionChange,
@@ -328,10 +325,11 @@ export async function prepareUpgrade(
     privateKey: preflightCtx.privateKey,
     rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
     environmentConfig: preflightCtx.environmentConfig,
-    appId: appID,
+    appID,
     release,
     publicLogs,
     needsPermissionChange,
+    imageRef: finalImageRef,
   });
 
   // 7. Estimate gas for the batch
@@ -366,7 +364,7 @@ export async function prepareUpgrade(
  */
 export async function executeUpgrade(
   prepared: PreparedUpgrade,
-  gas: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } | undefined,
+  gas: GasEstimate | undefined,
   logger: Logger = defaultLogger,
 ): Promise<UpgradeResult> {
   // Execute the batch transaction

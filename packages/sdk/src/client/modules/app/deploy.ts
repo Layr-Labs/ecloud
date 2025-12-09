@@ -61,10 +61,7 @@ export interface SDKDeployOptions {
   /** Resource usage monitoring setting - optional, defaults to 'enable' */
   resourceUsageMonitoring?: ResourceUsageMonitoring;
   /** Optional gas params from estimation */
-  gas?: {
-    maxFeePerGas?: bigint;
-    maxPriorityFeePerGas?: bigint;
-  };
+  gas?: GasEstimate;
 }
 
 /**
@@ -203,12 +200,12 @@ export async function deploy(
 
   // 6. Get app ID (calculate from salt and address)
   logger.debug("Calculating app ID...");
-  const appIDToBeDeployed = await calculateAppID(
-    preflightCtx.privateKey,
-    options.rpcUrl || preflightCtx.rpcUrl,
-    preflightCtx.environmentConfig,
+  const appIDToBeDeployed = await calculateAppID({
+    privateKey: preflightCtx.privateKey,
+    rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
+    environmentConfig: preflightCtx.environmentConfig,
     salt,
-  );
+  });
   logger.info(``);
   logger.info(`App ID: ${appIDToBeDeployed}`);
   logger.info(``);
@@ -368,12 +365,12 @@ export async function prepareDeploy(
 
   // 6. Get app ID (calculate from salt and address)
   logger.debug("Calculating app ID...");
-  const appIDToBeDeployed = await calculateAppID(
-    preflightCtx.privateKey,
-    options.rpcUrl || preflightCtx.rpcUrl,
-    preflightCtx.environmentConfig,
+  const appIDToBeDeployed = await calculateAppID({
+    privateKey: preflightCtx.privateKey,
+    rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
+    environmentConfig: preflightCtx.environmentConfig,
     salt,
-  );
+  });
   logger.info(``);
   logger.info(`App ID: ${appIDToBeDeployed}`);
   logger.info(``);
@@ -404,6 +401,7 @@ export async function prepareDeploy(
       salt,
       release,
       publicLogs,
+      imageRef: finalImageRef,
     },
     logger,
   );
@@ -440,7 +438,7 @@ export async function prepareDeploy(
  */
 export async function executeDeploy(
   prepared: PreparedDeploy,
-  gas: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } | undefined,
+  gas: GasEstimate | undefined,
   logger: Logger = defaultLogger,
 ): Promise<DeployResult> {
   // Execute the batch transaction

@@ -60,6 +60,7 @@ export {
   isEnvironmentAvailable,
   getBuildType,
   isMainnet,
+  getBillingEnvironmentConfig,
 } from "./common/config/environment";
 export { isSubscriptionActive } from "./common/utils/billing";
 
@@ -97,6 +98,8 @@ export {
   type AppProfileInfo,
   type AppMetrics,
 } from "./common/utils/userapi";
+
+export { BillingApiClientWithSigner } from "./common/utils/billingapi";
 
 export type Environment = "sepolia" | "sepolia-dev" | "mainnet-alpha";
 

@@ -6,6 +6,7 @@ import {
   getAppProfileInteractive,
   getPrivateKeyInteractive,
   validateAppProfile,
+  imagePathToBlob,
 } from "../../../../utils/prompts";
 import { createAppResolver } from "../../../../utils/appResolver";
 import { invalidateProfileCache } from "../../../../utils/globalConfig";
@@ -114,14 +115,16 @@ export default class ProfileSet extends Command {
     const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl, getClientId());
 
     try {
-      const response = await userApiClient.uploadAppProfile(
-        appId,
-        profile.name,
-        profile.website,
-        profile.description,
-        profile.xURL,
-        profile.imagePath,
-      );
+      // Prepare image if provided
+      const { image, imageName } = imagePathToBlob(profile.imagePath);
+
+      const response = await userApiClient.uploadAppProfile(appId, profile.name, {
+        website: profile.website,
+        description: profile.description,
+        xURL: profile.xURL,
+        image,
+        imageName,
+      });
 
       // Update profile cache with new name
       resolver.updateCacheEntry(appId, response.name);
