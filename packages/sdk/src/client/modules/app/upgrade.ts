@@ -10,6 +10,7 @@
 
 import { Address } from "viem";
 import { Logger, EnvironmentConfig } from "../../common/types";
+import { getEnvironmentConfig } from "../../common/config/environment";
 import { ensureDockerIsRunning } from "../../common/docker/build";
 import { prepareRelease } from "../../common/release/prepare";
 import {
@@ -348,31 +349,48 @@ export async function prepareUpgrade(
  * Execute a prepared upgrade
  *
  * Call this after prepareUpgrade and user confirmation.
+ * Note: This only submits the on-chain transaction. Call watchUpgrade separately
+ * to wait for the upgrade to complete.
  */
 export async function executeUpgrade(
   prepared: PreparedUpgrade,
   gas: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } | undefined,
   logger: Logger = defaultLogger,
 ): Promise<UpgradeResult> {
-  // 1. Execute the batch transaction
+  // Execute the batch transaction
   logger.info("Upgrading on-chain...");
   const txHash = await executeUpgradeBatch(prepared.batch, gas, logger);
-
-  // 2. Watch until upgrade completes
-  logger.info("Waiting for upgrade to complete...");
-  await watchUntilUpgradeComplete(
-    {
-      privateKey: prepared.preflightCtx.privateKey,
-      rpcUrl: prepared.preflightCtx.rpcUrl,
-      environmentConfig: prepared.preflightCtx.environmentConfig,
-      appId: prepared.appId as Address,
-    },
-    logger,
-  );
 
   return {
     appId: prepared.appId,
     imageRef: prepared.imageRef,
     txHash,
   };
+}
+
+/**
+ * Watch an upgrade until it completes
+ *
+ * Call this after executeUpgrade to wait for the upgrade to finish.
+ * Can be called separately to allow for intermediate operations.
+ */
+export async function watchUpgrade(
+  appId: string,
+  privateKey: string,
+  rpcUrl: string,
+  environment: string,
+  logger: Logger = defaultLogger,
+): Promise<void> {
+  const environmentConfig = getEnvironmentConfig(environment);
+
+  logger.info("Waiting for upgrade to complete...");
+  await watchUntilUpgradeComplete(
+    {
+      privateKey,
+      rpcUrl,
+      environmentConfig,
+      appId: appId as Address,
+    },
+    logger,
+  );
 }

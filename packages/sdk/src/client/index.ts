@@ -30,6 +30,7 @@ export {
   SDKDeployOptions,
   prepareDeploy,
   executeDeploy,
+  watchDeployment,
   type PreparedDeploy,
   type PrepareDeployResult,
 } from "./modules/app/deploy";
@@ -37,6 +38,7 @@ export {
   SDKUpgradeOptions,
   prepareUpgrade,
   executeUpgrade,
+  watchUpgrade,
   type PreparedUpgrade,
   type PrepareUpgradeResult,
 } from "./modules/app/upgrade";

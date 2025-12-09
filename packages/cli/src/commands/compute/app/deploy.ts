@@ -5,6 +5,7 @@ import {
   isMainnet,
   prepareDeploy,
   executeDeploy,
+  watchDeployment,
 } from "@layr-labs/ecloud-sdk";
 import { commonFlags } from "../../../flags";
 import {
@@ -165,7 +166,7 @@ export default class AppDeploy extends Command {
         const profile = await getAppProfileInteractive(appName, true);
 
         if (profile) {
-          // 12. Upload profile if provided (non-blocking - warn on failure but don't fail deployment)
+          // Upload profile if provided (non-blocking - warn on failure but don't fail deployment)
           logger.info("Uploading app profile...");
           try {
             const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl);
@@ -195,8 +196,11 @@ export default class AppDeploy extends Command {
       }
     }
 
+    // 11. Watch until app is running
+    const ipAddress = await watchDeployment(res.appId, privateKey, rpcUrl, environment, logger);
+
     this.log(
-      `\n✅ ${chalk.green(`App deployed successfully ${chalk.bold(`(id: ${res.appId}, ip: ${res.ipAddress})`)}`)}`,
+      `\n✅ ${chalk.green(`App deployed successfully ${chalk.bold(`(id: ${res.appId}, ip: ${ipAddress})`)}`)}`,
     );
   }
 }

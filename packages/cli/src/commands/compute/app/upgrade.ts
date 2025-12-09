@@ -5,6 +5,7 @@ import {
   isMainnet,
   prepareUpgrade,
   executeUpgrade,
+  watchUpgrade,
 } from "@layr-labs/ecloud-sdk";
 import { commonFlags } from "../../../flags";
 import {
@@ -166,6 +167,9 @@ export default class AppUpgrade extends Command {
       },
       logger,
     );
+
+    // 11. Watch until upgrade completes
+    await watchUpgrade(res.appId, privateKey, rpcUrl, environment, logger);
 
     this.log(
       `\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${res.appId}, image: ${res.imageRef})`)}`)}`,
