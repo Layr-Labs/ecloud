@@ -5,6 +5,7 @@ import {
   getOrPromptAppID,
   getAppProfileInteractive,
   getPrivateKeyInteractive,
+  validateAppProfile,
 } from "../../../../utils/prompts";
 import { createAppResolver } from "../../../../utils/appResolver";
 import { invalidateProfileCache } from "../../../../utils/globalConfig";
@@ -81,6 +82,12 @@ export default class ProfileSet extends Command {
         xURL: flags["x-url"],
         imagePath: flags.image,
       };
+
+      // Validate profile fields
+      const validationError = validateAppProfile(profile);
+      if (validationError) {
+        this.error(validationError);
+      }
 
       // Show profile summary
       this.log("\n📋 Profile Summary:");

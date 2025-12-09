@@ -1127,7 +1127,7 @@ const MAX_IMAGE_SIZE = 4 * 1024 * 1024; // 4MB
 const VALID_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png"];
 const VALID_X_HOSTS = ["twitter.com", "www.twitter.com", "x.com", "www.x.com"];
 
-function validateURL(rawURL: string): string | undefined {
+export function validateURL(rawURL: string): string | undefined {
   if (!rawURL.trim()) {
     return "URL cannot be empty";
   }
@@ -1144,7 +1144,7 @@ function validateURL(rawURL: string): string | undefined {
   return undefined;
 }
 
-function validateXURL(rawURL: string): string | undefined {
+export function validateXURL(rawURL: string): string | undefined {
   const urlErr = validateURL(rawURL);
   if (urlErr) {
     return urlErr;
@@ -1168,7 +1168,7 @@ function validateXURL(rawURL: string): string | undefined {
   return undefined;
 }
 
-function validateDescription(description: string): string | undefined {
+export function validateDescription(description: string): string | undefined {
   if (!description.trim()) {
     return "Description cannot be empty";
   }
@@ -1180,7 +1180,7 @@ function validateDescription(description: string): string | undefined {
   return undefined;
 }
 
-function validateImagePath(filePath: string): string | undefined {
+export function validateImagePath(filePath: string): string | undefined {
   const cleanedPath = filePath.trim().replace(/^["']|["']$/g, "");
 
   if (!cleanedPath) {
@@ -1204,6 +1204,60 @@ function validateImagePath(filePath: string): string | undefined {
   const ext = path.extname(cleanedPath).toLowerCase();
   if (!VALID_IMAGE_EXTENSIONS.includes(ext)) {
     return "Image must be JPG or PNG format";
+  }
+
+  return undefined;
+}
+
+/**
+ * Validate an app profile object
+ * Returns an error message if validation fails, undefined if valid
+ */
+export function validateAppProfile(profile: {
+  name: string;
+  website?: string;
+  description?: string;
+  xURL?: string;
+  imagePath?: string;
+}): string | undefined {
+  // Name is required
+  if (!profile.name || !profile.name.trim()) {
+    return "Profile name is required";
+  }
+
+  try {
+    validateAppName(profile.name);
+  } catch (err: any) {
+    return `Invalid profile name: ${err.message}`;
+  }
+
+  // Validate optional fields if provided
+  if (profile.website) {
+    const websiteErr = validateURL(profile.website);
+    if (websiteErr) {
+      return `Invalid website: ${websiteErr}`;
+    }
+  }
+
+  if (profile.description) {
+    const descErr = validateDescription(profile.description);
+    if (descErr) {
+      return `Invalid description: ${descErr}`;
+    }
+  }
+
+  if (profile.xURL) {
+    const xURLErr = validateXURL(profile.xURL);
+    if (xURLErr) {
+      return `Invalid X URL: ${xURLErr}`;
+    }
+  }
+
+  if (profile.imagePath) {
+    const imageErr = validateImagePath(profile.imagePath);
+    if (imageErr) {
+      return `Invalid image: ${imageErr}`;
+    }
   }
 
   return undefined;
