@@ -10,31 +10,9 @@ import { commonFlags, validateCommonFlags } from "../../../flags";
 import { privateKeyToAccount } from "viem/accounts";
 import { Address } from "viem";
 import { getAppName } from "../../../utils/appNames";
+import { ContractAppStatusTerminated, getContractStatusString } from "../../../utils/prompts";
+import { getAppInfosChunked } from "../../../utils/appResolver";
 import chalk from "chalk";
-
-// Contract app status constants
-const ContractAppStatusStarted = 1;
-const ContractAppStatusStopped = 2;
-const ContractAppStatusTerminated = 3;
-const ContractAppStatusSuspended = 4;
-
-/**
- * Map contract status enum to display string
- */
-function getContractStatusString(status: number): string {
-  switch (status) {
-    case ContractAppStatusStarted:
-      return "Started";
-    case ContractAppStatusStopped:
-      return "Stopped";
-    case ContractAppStatusTerminated:
-      return "Terminated";
-    case ContractAppStatusSuspended:
-      return "Suspended";
-    default:
-      return "Unknown";
-  }
-}
 
 /**
  * Format bytes to human readable string
@@ -142,11 +120,11 @@ export default class AppList extends Command {
 
     // Fetch all data in parallel
     const [appInfos, releaseBlockNumbers] = await Promise.all([
-      userApiClient.getInfos(filteredApps, 1).catch((err) => {
+      getAppInfosChunked(userApiClient, filteredApps, 1).catch((err) => {
         if (flags.verbose) {
           this.warn(`Could not fetch app info from UserAPI: ${err}`);
         }
-        return [] as Awaited<ReturnType<typeof userApiClient.getInfos>>;
+        return [];
       }),
       getAppLatestReleaseBlockNumbers(rpcUrl, environmentConfig, filteredApps).catch((err) => {
         if (flags.verbose) {

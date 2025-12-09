@@ -621,12 +621,12 @@ export async function getLogSettingsInteractive(
 // ==================== App ID Selection ====================
 
 // Contract app status constants
-const ContractAppStatusStarted = 1;
-const ContractAppStatusStopped = 2;
-const ContractAppStatusTerminated = 3;
-const ContractAppStatusSuspended = 4;
+export const ContractAppStatusStarted = 1;
+export const ContractAppStatusStopped = 2;
+export const ContractAppStatusTerminated = 3;
+export const ContractAppStatusSuspended = 4;
 
-function getStatusString(status: number): string {
+export function getContractStatusString(status: number): string {
   switch (status) {
     case ContractAppStatusStarted:
       return "Started";
@@ -808,7 +808,7 @@ async function getAppIDInteractive(options: GetAppIDOptions): Promise<Address> {
       continue;
     }
 
-    const statusStr = getStatusString(status);
+    const statusStr = getContractStatusString(status);
     const profileName = profileNames[String(appAddr).toLowerCase()] || "";
     const displayName = formatAppDisplay(environmentConfig.name, appAddr, profileName);
 
