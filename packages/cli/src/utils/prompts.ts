@@ -25,8 +25,10 @@ import {
   validateFilePath,
   validatePrivateKeyFormat,
   extractAppNameFromImage,
+  UserApiClient,
 } from "@layr-labs/ecloud-sdk";
-import { getDefaultEnvironment, getProfileCache } from "./globalConfig";
+import { getAppInfosChunked } from "./appResolver";
+import { getDefaultEnvironment, getProfileCache, setProfileCache } from "./globalConfig";
 import { listApps, isAppNameAvailable, findAvailableName } from "./appNames";
 
 // Helper to add hex prefix
@@ -657,6 +659,33 @@ function getStatusPriority(status: number, isExited: boolean): number {
   }
 }
 
+/**
+ * Get sort priority for status string (lower = higher priority, shown first)
+ * Used for sorting apps in list and selection displays
+ */
+export function getStatusSortPriority(status: string): number {
+  switch (status.toLowerCase()) {
+    case "running":
+    case "started":
+      return 0; // Running apps first
+    case "deploying":
+    case "upgrading":
+    case "resuming":
+      return 1; // In-progress operations second
+    case "stopped":
+    case "stopping":
+      return 2; // Stopped third
+    case "suspended":
+      return 3; // Suspended fourth
+    case "failed":
+      return 4; // Failed fifth
+    case "terminated":
+      return 5; // Terminated last
+    default:
+      return 6;
+  }
+}
+
 function formatAppDisplay(environmentName: string, appID: Address, profileName: string): string {
   if (profileName) {
     return `${profileName} (${environmentName}:${appID})`;
@@ -757,15 +786,43 @@ async function getAppIDInteractive(options: GetAppIDOptions): Promise<Address> {
     throw new Error("no apps found for your address");
   }
 
-  // Build profile names from cache and local registry
+  // Build profile names from cache, API, and local registry
   const profileNames: Record<string, string> = {};
 
   // Load from profile cache first (remote profiles take priority)
-  const cachedProfiles = getProfileCache(environment);
-  if (cachedProfiles) {
-    for (const [appId, name] of Object.entries(cachedProfiles)) {
-      profileNames[appId.toLowerCase()] = name;
+  let cachedProfiles = getProfileCache(environment);
+
+  // If cache is empty/expired, fetch fresh profile names from API
+  if (!cachedProfiles) {
+    try {
+      const userApiClient = new UserApiClient(
+        environmentConfig,
+        options.privateKey,
+        options.rpcUrl,
+      );
+      const appInfos = await getAppInfosChunked(userApiClient, apps);
+
+      // Build and cache profile names
+      const freshProfiles: Record<string, string> = {};
+      for (const info of appInfos) {
+        if (info.profile?.name) {
+          const normalizedId = String(info.address).toLowerCase();
+          freshProfiles[normalizedId] = info.profile.name;
+        }
+      }
+
+      // Save to cache for future use
+      setProfileCache(environment, freshProfiles);
+      cachedProfiles = freshProfiles;
+    } catch {
+      // On error, continue without profile names
+      cachedProfiles = {};
     }
+  }
+
+  // Add cached profiles to profileNames
+  for (const [appId, name] of Object.entries(cachedProfiles)) {
+    profileNames[appId.toLowerCase()] = name;
   }
 
   // Also include local registry names (for apps without remote profiles)
@@ -950,6 +1007,39 @@ async function getAppIDInteractiveFromRegistry(
   }
 
   return addHexPrefix(selected) as Address;
+}
+
+// ==================== Resource Usage Monitoring Selection ====================
+
+export type ResourceUsageMonitoring = "enable" | "disable";
+
+/**
+ * Prompt for resource usage monitoring settings
+ */
+export async function getResourceUsageMonitoringInteractive(
+  resourceUsageMonitoring?: ResourceUsageMonitoring,
+): Promise<ResourceUsageMonitoring> {
+  if (resourceUsageMonitoring) {
+    switch (resourceUsageMonitoring) {
+      case "enable":
+      case "disable":
+        return resourceUsageMonitoring;
+      default:
+        throw new Error(
+          `Invalid resource-usage-monitoring: ${resourceUsageMonitoring} (must be enable or disable)`,
+        );
+    }
+  }
+
+  const choice = await select({
+    message: "Show resource usage (CPU/memory) for your app?",
+    choices: [
+      { name: "Yes, enable resource usage monitoring", value: "enable" },
+      { name: "No, disable resource usage monitoring", value: "disable" },
+    ],
+  });
+
+  return choice as ResourceUsageMonitoring;
 }
 
 // ==================== Confirmation ====================

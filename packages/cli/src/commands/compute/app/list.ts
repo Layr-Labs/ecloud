@@ -10,7 +10,11 @@ import { commonFlags, validateCommonFlags } from "../../../flags";
 import { privateKeyToAccount } from "viem/accounts";
 import { Address } from "viem";
 import { getAppName } from "../../../utils/appNames";
-import { ContractAppStatusTerminated, getContractStatusString } from "../../../utils/prompts";
+import {
+  ContractAppStatusTerminated,
+  getContractStatusString,
+  getStatusSortPriority,
+} from "../../../utils/prompts";
 import { getAppInfosChunked } from "../../../utils/appResolver";
 import chalk from "chalk";
 
@@ -146,32 +150,63 @@ export default class AppList extends Command {
           })
         : new Map<number, number>();
 
+    // Build app items with all data for sorting
+    interface AppDisplayItem {
+      appAddr: Address;
+      apiInfo: (typeof appInfos)[0] | undefined;
+      appName: string;
+      status: string;
+      releaseTimestamp: number | undefined;
+    }
+
+    const appItems: AppDisplayItem[] = [];
+    for (let i = 0; i < filteredApps.length; i++) {
+      const appAddr = filteredApps[i];
+      const config = filteredConfigs[i];
+
+      const apiInfo = appInfos.find(
+        (info) => info.address && String(info.address).toLowerCase() === appAddr.toLowerCase(),
+      );
+
+      const profileName = apiInfo?.profile?.name;
+      const localName = getAppName(environment, appAddr);
+      const appName = profileName || localName;
+
+      const status = apiInfo?.status || getContractStatusString(config.status);
+
+      const releaseBlockNumber = releaseBlockNumbers.get(appAddr);
+      const releaseTimestamp = releaseBlockNumber
+        ? blockTimestamps.get(releaseBlockNumber)
+        : undefined;
+
+      appItems.push({ appAddr, apiInfo, appName, status, releaseTimestamp });
+    }
+
+    // Sort apps: Running first, then by status priority, then by release time (newest first)
+    appItems.sort((a, b) => {
+      const aPriority = getStatusSortPriority(a.status);
+      const bPriority = getStatusSortPriority(b.status);
+
+      if (aPriority !== bPriority) {
+        return aPriority - bPriority;
+      }
+
+      // Within same status, sort by release time (newest first)
+      const aTime = a.releaseTimestamp || 0;
+      const bTime = b.releaseTimestamp || 0;
+      return bTime - aTime;
+    });
+
     // Print header
     console.log();
     this.log(chalk.bold(`Apps for ${developerAddr} (${environment}):`));
     console.log();
 
     // Print each app
-    for (let i = 0; i < filteredApps.length; i++) {
-      const appAddr = filteredApps[i];
-      const config = filteredConfigs[i];
+    for (let i = 0; i < appItems.length; i++) {
+      const { appAddr, apiInfo, appName, status, releaseTimestamp } = appItems[i];
 
-      // Get local app name from registry
-      const localName = getAppName(environment, appAddr);
-
-      // Get API info if available
-      const apiInfo = appInfos.find(
-        (info) => info.address && String(info.address).toLowerCase() === appAddr.toLowerCase(),
-      );
-
-      // Determine status (prefer API status over contract status)
-      const status = apiInfo?.status || getContractStatusString(config.status);
-
-      // Get release time from block timestamp
-      const releaseBlockNumber = releaseBlockNumbers.get(appAddr);
-      const releaseTimestamp = releaseBlockNumber
-        ? blockTimestamps.get(releaseBlockNumber)
-        : undefined;
+      // Format release time
       const releaseTimeDisplay = releaseTimestamp
         ? chalk.gray(new Date(releaseTimestamp * 1000).toISOString().replace("T", " ").slice(0, 19))
         : chalk.gray("-");
@@ -187,7 +222,7 @@ export default class AppList extends Command {
         : chalk.gray("-");
 
       // Build display
-      const nameDisplay = localName ? chalk.cyan(localName) : chalk.gray("(unnamed)");
+      const nameDisplay = appName ? chalk.cyan(appName) : chalk.gray("(unnamed)");
       const appIdDisplay = chalk.gray(appAddr);
       const statusDisplay = formatStatus(status);
       const ipDisplay =
@@ -229,7 +264,7 @@ export default class AppList extends Command {
       this.log(`    Solana Address: ${solanaDisplay}`);
 
       // Add separator between apps
-      if (i < filteredApps.length - 1) {
+      if (i < appItems.length - 1) {
         this.log(
           chalk.gray("  ────────────────────────────────────────────────────────────────────"),
         );
@@ -237,6 +272,6 @@ export default class AppList extends Command {
     }
 
     console.log();
-    this.log(chalk.gray(`Total: ${filteredApps.length} app(s)`));
+    this.log(chalk.gray(`Total: ${appItems.length} app(s)`));
   }
 }

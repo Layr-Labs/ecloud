@@ -335,6 +335,36 @@ export function validateLogVisibility(logVisibility: LogVisibility): {
   }
 }
 
+// ==================== Resource Usage Monitoring Validation ====================
+
+export type ResourceUsageMonitoring = "enable" | "disable";
+
+/**
+ * Validate and convert resource usage monitoring setting to internal format
+ * @param resourceUsageMonitoring - Resource usage monitoring setting
+ * @returns The resourceUsageAllow value for the Dockerfile label ("always" or "never")
+ * @throws Error if resource usage monitoring value is invalid
+ */
+export function validateResourceUsageMonitoring(
+  resourceUsageMonitoring: ResourceUsageMonitoring | undefined,
+): string {
+  // Default to "enable" (always) if not specified
+  if (!resourceUsageMonitoring) {
+    return "always";
+  }
+
+  switch (resourceUsageMonitoring) {
+    case "enable":
+      return "always";
+    case "disable":
+      return "never";
+    default:
+      throw new Error(
+        `Invalid resource-usage-monitoring value: ${resourceUsageMonitoring} (must be enable or disable)`,
+      );
+  }
+}
+
 // ==================== Sanitization Functions ====================
 
 /**

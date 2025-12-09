@@ -27,9 +27,11 @@ import { watchUntilRunning } from "../../common/contract/watcher";
 import {
   validateAppName,
   validateLogVisibility,
+  validateResourceUsageMonitoring,
   assertValidImageReference,
   assertValidFilePath,
   LogVisibility,
+  ResourceUsageMonitoring,
 } from "../../common/utils/validation";
 import { doPreflightChecks, PreflightContext } from "../../common/utils/preflight";
 import { defaultLogger } from "../../common/utils";
@@ -56,6 +58,8 @@ export interface SDKDeployOptions {
   instanceType: string;
   /** Log visibility setting - required */
   logVisibility: LogVisibility;
+  /** Resource usage monitoring setting - optional, defaults to 'enable' */
+  resourceUsageMonitoring?: ResourceUsageMonitoring;
   /** Optional gas params from estimation */
   gas?: {
     maxFeePerGas?: bigint;
@@ -164,6 +168,9 @@ export async function deploy(
   // Convert log visibility to internal format
   const { logRedirect, publicLogs } = validateLogVisibility(options.logVisibility);
 
+  // Convert resource usage monitoring to internal format (defaults to "always")
+  const resourceUsageAllow = validateResourceUsageMonitoring(options.resourceUsageMonitoring);
+
   // 2. Do preflight checks (auth, network, etc.)
   logger.debug("Performing preflight checks...");
   const preflightCtx = await doPreflightChecks(
@@ -214,6 +221,7 @@ export async function deploy(
       imageRef,
       envFilePath,
       logRedirect,
+      resourceUsageAllow,
       instanceType,
       environmentConfig: preflightCtx.environmentConfig,
       appId: appIDToBeDeployed,
@@ -325,6 +333,9 @@ export async function prepareDeploy(
   // Convert log visibility to internal format
   const { logRedirect, publicLogs } = validateLogVisibility(options.logVisibility);
 
+  // Convert resource usage monitoring to internal format (defaults to "always")
+  const resourceUsageAllow = validateResourceUsageMonitoring(options.resourceUsageMonitoring);
+
   // 2. Do preflight checks (auth, network, etc.)
   logger.debug("Performing preflight checks...");
   const preflightCtx = await doPreflightChecks(
@@ -375,6 +386,7 @@ export async function prepareDeploy(
       imageRef,
       envFilePath,
       logRedirect,
+      resourceUsageAllow,
       instanceType,
       environmentConfig: preflightCtx.environmentConfig,
       appId: appIDToBeDeployed,

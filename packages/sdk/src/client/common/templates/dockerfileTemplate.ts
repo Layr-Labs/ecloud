@@ -11,6 +11,7 @@ export interface DockerfileTemplateData {
   originalCmd: string; // JSON array string
   originalUser: string;
   logRedirect: string;
+  resourceUsageAllow: string; // "always" or "never" for memory monitoring
   includeTLS: boolean;
   ecloudCLIVersion: string;
 }

@@ -25,9 +25,11 @@ import { watchUntilUpgradeComplete } from "../../common/contract/watcher";
 import {
   validateAppID,
   validateLogVisibility,
+  validateResourceUsageMonitoring,
   assertValidImageReference,
   assertValidFilePath,
   LogVisibility,
+  ResourceUsageMonitoring,
 } from "../../common/utils/validation";
 import { doPreflightChecks } from "../../common/utils/preflight";
 import { checkAppLogPermission } from "../../common/utils/permissions";
@@ -55,6 +57,8 @@ export interface SDKUpgradeOptions {
   instanceType: string;
   /** Log visibility setting - required */
   logVisibility: LogVisibility;
+  /** Resource usage monitoring setting - optional, defaults to 'enable' */
+  resourceUsageMonitoring?: ResourceUsageMonitoring;
   /** Optional gas params from estimation */
   gas?: {
     maxFeePerGas?: bigint;
@@ -185,6 +189,9 @@ export async function upgrade(
   // Convert log visibility to internal format
   const { logRedirect, publicLogs } = validateLogVisibility(options.logVisibility);
 
+  // Convert resource usage monitoring to internal format (defaults to "always")
+  const resourceUsageAllow = validateResourceUsageMonitoring(options.resourceUsageMonitoring);
+
   // 3. Check if docker is running, else try to start it
   logger.debug("Checking Docker...");
   await ensureDockerIsRunning();
@@ -203,6 +210,7 @@ export async function upgrade(
       imageRef,
       envFilePath,
       logRedirect,
+      resourceUsageAllow,
       instanceType,
       environmentConfig: preflightCtx.environmentConfig,
       appId: appID as string,
@@ -280,6 +288,9 @@ export async function prepareUpgrade(
   // Convert log visibility to internal format
   const { logRedirect, publicLogs } = validateLogVisibility(options.logVisibility);
 
+  // Convert resource usage monitoring to internal format (defaults to "always")
+  const resourceUsageAllow = validateResourceUsageMonitoring(options.resourceUsageMonitoring);
+
   // 3. Check if docker is running, else try to start it
   logger.debug("Checking Docker...");
   await ensureDockerIsRunning();
@@ -298,6 +309,7 @@ export async function prepareUpgrade(
       imageRef,
       envFilePath,
       logRedirect,
+      resourceUsageAllow,
       instanceType,
       environmentConfig: preflightCtx.environmentConfig,
       appId: appID as string,

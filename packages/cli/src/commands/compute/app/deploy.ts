@@ -15,8 +15,10 @@ import {
   getEnvFileInteractive,
   getInstanceTypeInteractive,
   getLogSettingsInteractive,
+  getResourceUsageMonitoringInteractive,
   getAppProfileInteractive,
   LogVisibility,
+  ResourceUsageMonitoring,
   confirm,
   getPrivateKeyInteractive,
 } from "../../../utils/prompts";
@@ -64,6 +66,12 @@ export default class AppDeploy extends Command {
       required: false,
       description: "Skip app profile setup",
       default: false,
+    }),
+    "resource-usage-monitoring": Flags.string({
+      required: false,
+      description: "Resource usage monitoring: enable or disable",
+      options: ["enable", "disable"],
+      env: "ECLOUD_RESOURCE_USAGE_MONITORING",
     }),
   };
 
@@ -113,7 +121,12 @@ export default class AppDeploy extends Command {
       flags["log-visibility"] as LogVisibility | undefined,
     );
 
-    // 7. Prepare deployment (builds image, pushes to registry, prepares batch, estimates gas)
+    // 7. Get resource usage monitoring interactively
+    const resourceUsageMonitoring = await getResourceUsageMonitoringInteractive(
+      flags["resource-usage-monitoring"] as ResourceUsageMonitoring | undefined,
+    );
+
+    // 8. Prepare deployment (builds image, pushes to registry, prepares batch, estimates gas)
     const logVisibility = logSettings.publicLogs
       ? "public"
       : logSettings.logRedirect
@@ -131,11 +144,12 @@ export default class AppDeploy extends Command {
         appName,
         instanceType,
         logVisibility,
+        resourceUsageMonitoring,
       },
       logger,
     );
 
-    // 8. Show gas estimate and prompt for confirmation on mainnet
+    // 9. Show gas estimate and prompt for confirmation on mainnet
     this.log(`\nEstimated transaction cost: ${chalk.cyan(gasEstimate.maxCostEth)} ETH`);
 
     if (isMainnet(environmentConfig)) {
@@ -146,7 +160,7 @@ export default class AppDeploy extends Command {
       }
     }
 
-    // 9. Execute the deployment
+    // 10. Execute the deployment
     const res = await executeDeploy(
       prepared,
       {
@@ -156,7 +170,7 @@ export default class AppDeploy extends Command {
       logger,
     );
 
-    // 10. Collect app profile while deployment is in progress (optional)
+    // 11. Collect app profile while deployment is in progress (optional)
     if (!flags["skip-profile"]) {
       this.log(
         "\nDeployment confirmed onchain. While your instance provisions, set up a public profile:",
@@ -196,7 +210,7 @@ export default class AppDeploy extends Command {
       }
     }
 
-    // 11. Watch until app is running
+    // 12. Watch until app is running
     const ipAddress = await watchDeployment(res.appId, privateKey, rpcUrl, environment, logger);
 
     this.log(
