@@ -851,6 +851,83 @@ export async function getAllAppsByDeveloper(
 }
 
 /**
+ * Get latest release block numbers for multiple apps
+ */
+export async function getAppLatestReleaseBlockNumbers(
+  rpcUrl: string,
+  environmentConfig: EnvironmentConfig,
+  appIDs: Address[],
+): Promise<Map<Address, number>> {
+  const chain = getChainFromID(environmentConfig.chainID);
+
+  const publicClient = createPublicClient({
+    chain,
+    transport: http(rpcUrl),
+  });
+
+  // Fetch block numbers in parallel
+  const results = await Promise.all(
+    appIDs.map((appID) =>
+      publicClient
+        .readContract({
+          address: environmentConfig.appControllerAddress as Address,
+          abi: AppControllerABI,
+          functionName: "getAppLatestReleaseBlockNumber",
+          args: [appID],
+        })
+        .catch(() => null),
+    ),
+  );
+
+  const blockNumbers = new Map<Address, number>();
+  for (let i = 0; i < appIDs.length; i++) {
+    const result = results[i];
+    if (result !== null && result !== undefined) {
+      blockNumbers.set(appIDs[i], Number(result));
+    }
+  }
+
+  return blockNumbers;
+}
+
+/**
+ * Get block timestamps for multiple block numbers
+ */
+export async function getBlockTimestamps(
+  rpcUrl: string,
+  environmentConfig: EnvironmentConfig,
+  blockNumbers: number[],
+): Promise<Map<number, number>> {
+  const chain = getChainFromID(environmentConfig.chainID);
+
+  const publicClient = createPublicClient({
+    chain,
+    transport: http(rpcUrl),
+  });
+
+  // Deduplicate block numbers
+  const uniqueBlockNumbers = [...new Set(blockNumbers)].filter((n) => n > 0);
+
+  const timestamps = new Map<number, number>();
+
+  // Fetch blocks in parallel
+  const blocks = await Promise.all(
+    uniqueBlockNumbers.map((blockNumber) =>
+      publicClient.getBlock({ blockNumber: BigInt(blockNumber) }).catch(() => null),
+    ),
+  );
+
+  for (let i = 0; i < uniqueBlockNumbers.length; i++) {
+    const block = blocks[i];
+    if (block) {
+      timestamps.set(uniqueBlockNumbers[i], Number(block.timestamp));
+    }
+  }
+
+  return timestamps;
+}
+
+/**
  * Suspend apps for an account
  */
 export async function suspend(

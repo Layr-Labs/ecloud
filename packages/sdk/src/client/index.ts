@@ -76,6 +76,8 @@ export {
 // Export contract utilities
 export {
   getAllAppsByDeveloper,
+  getAppLatestReleaseBlockNumbers,
+  getBlockTimestamps,
   estimateTransactionGas,
   formatETH,
   type GasEstimate,
