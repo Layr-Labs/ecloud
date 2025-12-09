@@ -21,6 +21,7 @@ export interface PrepareReleaseOptions {
   imageRef: string;
   envFilePath?: string;
   logRedirect: string;
+  resourceUsageAllow: string;
   instanceType: string;
   environmentConfig: EnvironmentConfig;
   appId: string;
@@ -38,8 +39,15 @@ export async function prepareRelease(
   options: PrepareReleaseOptions,
   logger: Logger,
 ): Promise<PrepareReleaseResult> {
-  const { dockerfilePath, imageRef, envFilePath, logRedirect, instanceType, environmentConfig } =
-    options;
+  const {
+    dockerfilePath,
+    imageRef,
+    envFilePath,
+    logRedirect,
+    resourceUsageAllow,
+    instanceType,
+    environmentConfig,
+  } = options;
 
   let finalImageRef = imageRef;
 
@@ -52,6 +60,7 @@ export async function prepareRelease(
         dockerfilePath,
         targetImageRef: imageRef,
         logRedirect,
+        resourceUsageAllow,
         envFilePath,
         environmentConfig,
       },
@@ -68,6 +77,7 @@ export async function prepareRelease(
       {
         imageRef,
         logRedirect,
+        resourceUsageAllow,
         envFilePath,
         environmentConfig,
       },

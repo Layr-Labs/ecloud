@@ -92,6 +92,7 @@ export interface BuildAndPushLayeredImageOptions {
   dockerfilePath: string;
   targetImageRef: string;
   logRedirect: string;
+  resourceUsageAllow: string;
   envFilePath?: string;
   environmentConfig: EnvironmentConfig;
 }
@@ -99,6 +100,7 @@ export interface BuildAndPushLayeredImageOptions {
 export interface LayerRemoteImageIfNeededOptions {
   imageRef: string;
   logRedirect: string;
+  resourceUsageAllow: string;
   envFilePath?: string;
   environmentConfig: EnvironmentConfig;
 }
@@ -110,7 +112,14 @@ export async function buildAndPushLayeredImage(
   options: BuildAndPushLayeredImageOptions,
   logger: Logger,
 ): Promise<string> {
-  const { dockerfilePath, targetImageRef, logRedirect, envFilePath, environmentConfig } = options;
+  const {
+    dockerfilePath,
+    targetImageRef,
+    logRedirect,
+    resourceUsageAllow,
+    envFilePath,
+    environmentConfig,
+  } = options;
 
   // 1. Build base image from user's Dockerfile
   const baseImageTag = `ecloud-temp-${path.basename(dockerfilePath).toLowerCase()}`;
@@ -128,6 +137,7 @@ export async function buildAndPushLayeredImage(
       sourceImageRef: baseImageTag,
       targetImageRef,
       logRedirect,
+      resourceUsageAllow,
       envFilePath,
       environmentConfig,
     },
@@ -142,7 +152,7 @@ export async function layerRemoteImageIfNeeded(
   options: LayerRemoteImageIfNeededOptions,
   logger: Logger,
 ): Promise<string> {
-  const { imageRef, logRedirect, envFilePath, environmentConfig } = options;
+  const { imageRef, logRedirect, resourceUsageAllow, envFilePath, environmentConfig } = options;
 
   const docker = new Docker();
 
@@ -168,6 +178,7 @@ export async function layerRemoteImageIfNeeded(
       sourceImageRef: imageRef,
       targetImageRef,
       logRedirect,
+      resourceUsageAllow,
       envFilePath,
       environmentConfig,
     },
@@ -186,13 +197,21 @@ async function layerLocalImage(
     sourceImageRef: string;
     targetImageRef: string;
     logRedirect: string;
+    resourceUsageAllow: string;
     envFilePath?: string;
     environmentConfig: EnvironmentConfig;
   },
   logger: Logger,
 ): Promise<string> {
-  const { docker, sourceImageRef, targetImageRef, logRedirect, envFilePath, environmentConfig } =
-    options;
+  const {
+    docker,
+    sourceImageRef,
+    targetImageRef,
+    logRedirect,
+    resourceUsageAllow,
+    envFilePath,
+    environmentConfig,
+  } = options;
 
   // 1. Extract original command and user from source image
   const imageConfig = await extractImageConfig(docker, sourceImageRef);
@@ -216,6 +235,7 @@ async function layerLocalImage(
     originalCmd: JSON.stringify(originalCmd),
     originalUser: originalUser,
     logRedirect: logRedirect,
+    resourceUsageAllow: resourceUsageAllow,
     includeTLS: includeTLS,
     ecloudCLIVersion: "0.1.0", // TODO: Get from package.json
   });

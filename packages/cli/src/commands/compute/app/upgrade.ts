@@ -14,8 +14,10 @@ import {
   getEnvFileInteractive,
   getInstanceTypeInteractive,
   getLogSettingsInteractive,
+  getResourceUsageMonitoringInteractive,
   getOrPromptAppID,
   LogVisibility,
+  ResourceUsageMonitoring,
   confirm,
   getPrivateKeyInteractive,
 } from "../../../utils/prompts";
@@ -59,6 +61,12 @@ export default class AppUpgrade extends Command {
       required: false,
       description: "Machine instance type to use e.g. g1-standard-4t, g1-standard-8t",
       env: "ECLOUD_INSTANCE_TYPE",
+    }),
+    "resource-usage-monitoring": Flags.string({
+      required: false,
+      description: "Resource usage monitoring: enable or disable",
+      options: ["enable", "disable"],
+      env: "ECLOUD_RESOURCE_USAGE_MONITORING",
     }),
   };
 
@@ -125,7 +133,12 @@ export default class AppUpgrade extends Command {
       flags["log-visibility"] as LogVisibility | undefined,
     );
 
-    // 8. Prepare upgrade (builds image, pushes to registry, prepares batch, estimates gas)
+    // 8. Get resource usage monitoring interactively
+    const resourceUsageMonitoring = await getResourceUsageMonitoringInteractive(
+      flags["resource-usage-monitoring"] as ResourceUsageMonitoring | undefined,
+    );
+
+    // 9. Prepare upgrade (builds image, pushes to registry, prepares batch, estimates gas)
     const logVisibility = logSettings.publicLogs
       ? "public"
       : logSettings.logRedirect
@@ -143,11 +156,12 @@ export default class AppUpgrade extends Command {
         envFilePath,
         instanceType,
         logVisibility,
+        resourceUsageMonitoring,
       },
       logger,
     );
 
-    // 9. Show gas estimate and prompt for confirmation on mainnet
+    // 10. Show gas estimate and prompt for confirmation on mainnet
     this.log(`\nEstimated transaction cost: ${chalk.cyan(gasEstimate.maxCostEth)} ETH`);
 
     if (isMainnet(environmentConfig)) {
@@ -158,7 +172,7 @@ export default class AppUpgrade extends Command {
       }
     }
 
-    // 10. Execute the upgrade
+    // 11. Execute the upgrade
     const res = await executeUpgrade(
       prepared,
       {
@@ -168,7 +182,7 @@ export default class AppUpgrade extends Command {
       logger,
     );
 
-    // 11. Watch until upgrade completes
+    // 12. Watch until upgrade completes
     await watchUpgrade(res.appId, privateKey, rpcUrl, environment, logger);
 
     this.log(
