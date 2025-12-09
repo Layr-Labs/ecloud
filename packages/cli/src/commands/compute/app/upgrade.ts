@@ -5,6 +5,7 @@ import {
   isMainnet,
   prepareUpgrade,
   executeUpgrade,
+  watchUpgrade,
 } from "@layr-labs/ecloud-sdk";
 import { commonFlags } from "../../../flags";
 import {
@@ -78,7 +79,7 @@ export default class AppUpgrade extends Command {
     const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
 
     // Get private key interactively if not provided
-    const privateKey = flags["private-key"] || (await getPrivateKeyInteractive());
+    const privateKey = await getPrivateKeyInteractive(flags["private-key"]);
 
     // 1. Get app ID interactively if not provided
     const appID = await getOrPromptAppID({
@@ -166,6 +167,9 @@ export default class AppUpgrade extends Command {
       },
       logger,
     );
+
+    // 11. Watch until upgrade completes
+    await watchUpgrade(res.appId, privateKey, rpcUrl, environment, logger);
 
     this.log(
       `\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${res.appId}, image: ${res.imageRef})`)}`)}`,

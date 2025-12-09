@@ -26,7 +26,7 @@ import {
   validatePrivateKeyFormat,
   extractAppNameFromImage,
 } from "@layr-labs/ecloud-sdk";
-import { getDefaultEnvironment } from "./globalConfig";
+import { getDefaultEnvironment, getProfileCache } from "./globalConfig";
 import { listApps, isAppNameAvailable, findAvailableName } from "./appNames";
 
 // Helper to add hex prefix
@@ -706,6 +706,18 @@ export async function getOrPromptAppID(
       return normalized as Address;
     }
 
+    // Check profile cache first (remote profile names)
+    const profileCache = getProfileCache(options.environment);
+    if (profileCache) {
+      const searchName = (options.appID as string).toLowerCase();
+      for (const [appId, name] of Object.entries(profileCache)) {
+        if (name.toLowerCase() === searchName) {
+          return appId as Address;
+        }
+      }
+    }
+
+    // Fall back to local registry
     const apps = listApps(options.environment);
     const foundAppID = apps[options.appID as string];
     if (foundAppID) {
@@ -745,7 +757,18 @@ async function getAppIDInteractive(options: GetAppIDOptions): Promise<Address> {
     throw new Error("no apps found for your address");
   }
 
+  // Build profile names from cache and local registry
   const profileNames: Record<string, string> = {};
+
+  // Load from profile cache first (remote profiles take priority)
+  const cachedProfiles = getProfileCache(environment);
+  if (cachedProfiles) {
+    for (const [appId, name] of Object.entries(cachedProfiles)) {
+      profileNames[appId.toLowerCase()] = name;
+    }
+  }
+
+  // Also include local registry names (for apps without remote profiles)
   const localApps = listApps(environment);
   for (const [name, appID] of Object.entries(localApps)) {
     const normalizedID = String(appID).toLowerCase();
@@ -836,9 +859,26 @@ async function getAppIDInteractiveFromRegistry(
   environment: string,
   action: string,
 ): Promise<Address> {
-  const apps = listApps(environment);
+  // Build combined app list from profile cache and local registry
+  const allApps: Record<string, string> = {}; // name -> appId
 
-  if (Object.keys(apps).length === 0) {
+  // Add from profile cache (remote profiles)
+  const cachedProfiles = getProfileCache(environment);
+  if (cachedProfiles) {
+    for (const [appId, name] of Object.entries(cachedProfiles)) {
+      allApps[name] = appId;
+    }
+  }
+
+  // Add from local registry (may override or add new entries)
+  const localApps = listApps(environment);
+  for (const [name, appId] of Object.entries(localApps)) {
+    if (!allApps[name]) {
+      allApps[name] = appId;
+    }
+  }
+
+  if (Object.keys(allApps).length === 0) {
     console.log("\nNo apps found in registry.");
     console.log("You can enter an app ID (address) or app name.");
     console.log();
@@ -865,7 +905,7 @@ async function getAppIDInteractiveFromRegistry(
     throw new Error(`Invalid app ID address: ${appIDInput}`);
   }
 
-  const choices = Object.entries(apps).map(([name, appID]) => {
+  const choices = Object.entries(allApps).map(([name, appID]) => {
     const displayName = `${name} (${appID})`;
     return { name: displayName, value: appID };
   });
@@ -891,7 +931,7 @@ async function getAppIDInteractiveFromRegistry(
         if (isAddress(normalized)) {
           return true;
         }
-        if (apps[value]) {
+        if (allApps[value]) {
           return true;
         }
         return "Invalid app ID or name not found";
@@ -902,7 +942,7 @@ async function getAppIDInteractiveFromRegistry(
     if (isAddress(normalized)) {
       return normalized as Address;
     }
-    const foundAppID = apps[appIDInput];
+    const foundAppID = allApps[appIDInput];
     if (foundAppID) {
       return addHexPrefix(foundAppID) as Address;
     }
@@ -1087,7 +1127,7 @@ const MAX_IMAGE_SIZE = 4 * 1024 * 1024; // 4MB
 const VALID_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png"];
 const VALID_X_HOSTS = ["twitter.com", "www.twitter.com", "x.com", "www.x.com"];
 
-function validateURL(rawURL: string): string | undefined {
+export function validateURL(rawURL: string): string | undefined {
   if (!rawURL.trim()) {
     return "URL cannot be empty";
   }
@@ -1104,7 +1144,7 @@ function validateURL(rawURL: string): string | undefined {
   return undefined;
 }
 
-function validateXURL(rawURL: string): string | undefined {
+export function validateXURL(rawURL: string): string | undefined {
   const urlErr = validateURL(rawURL);
   if (urlErr) {
     return urlErr;
@@ -1128,7 +1168,7 @@ function validateXURL(rawURL: string): string | undefined {
   return undefined;
 }
 
-function validateDescription(description: string): string | undefined {
+export function validateDescription(description: string): string | undefined {
   if (!description.trim()) {
     return "Description cannot be empty";
   }
@@ -1140,7 +1180,7 @@ function validateDescription(description: string): string | undefined {
   return undefined;
 }
 
-function validateImagePath(filePath: string): string | undefined {
+export function validateImagePath(filePath: string): string | undefined {
   const cleanedPath = filePath.trim().replace(/^["']|["']$/g, "");
 
   if (!cleanedPath) {
@@ -1164,6 +1204,60 @@ function validateImagePath(filePath: string): string | undefined {
   const ext = path.extname(cleanedPath).toLowerCase();
   if (!VALID_IMAGE_EXTENSIONS.includes(ext)) {
     return "Image must be JPG or PNG format";
+  }
+
+  return undefined;
+}
+
+/**
+ * Validate an app profile object
+ * Returns an error message if validation fails, undefined if valid
+ */
+export function validateAppProfile(profile: {
+  name: string;
+  website?: string;
+  description?: string;
+  xURL?: string;
+  imagePath?: string;
+}): string | undefined {
+  // Name is required
+  if (!profile.name || !profile.name.trim()) {
+    return "Profile name is required";
+  }
+
+  try {
+    validateAppName(profile.name);
+  } catch (err: any) {
+    return `Invalid profile name: ${err.message}`;
+  }
+
+  // Validate optional fields if provided
+  if (profile.website) {
+    const websiteErr = validateURL(profile.website);
+    if (websiteErr) {
+      return `Invalid website: ${websiteErr}`;
+    }
+  }
+
+  if (profile.description) {
+    const descErr = validateDescription(profile.description);
+    if (descErr) {
+      return `Invalid description: ${descErr}`;
+    }
+  }
+
+  if (profile.xURL) {
+    const xURLErr = validateXURL(profile.xURL);
+    if (xURLErr) {
+      return `Invalid X URL: ${xURLErr}`;
+    }
+  }
+
+  if (profile.imagePath) {
+    const imageErr = validateImagePath(profile.imagePath);
+    if (imageErr) {
+      return `Invalid image: ${imageErr}`;
+    }
   }
 
   return undefined;

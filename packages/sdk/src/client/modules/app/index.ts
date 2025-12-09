@@ -108,7 +108,6 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           envFilePath: opts.envFile,
           imageRef: opts.imageRef,
           logVisibility: opts.logVisibility,
-          profile: opts.profile,
           gas: opts.gas,
         },
         logger,

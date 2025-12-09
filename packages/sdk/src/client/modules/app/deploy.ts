@@ -8,7 +8,8 @@
  * provided explicitly. Use the CLI for interactive parameter collection.
  */
 
-import { DeployResult, Logger, AppProfile, EnvironmentConfig } from "../../common/types";
+import { DeployResult, Logger, EnvironmentConfig } from "../../common/types";
+import { getEnvironmentConfig } from "../../common/config/environment";
 import { ensureDockerIsRunning } from "../../common/docker/build";
 import { prepareRelease } from "../../common/release/prepare";
 import {
@@ -31,7 +32,6 @@ import {
   LogVisibility,
 } from "../../common/utils/validation";
 import { doPreflightChecks, PreflightContext } from "../../common/utils/preflight";
-import { UserApiClient } from "../../common/utils/userapi";
 import { defaultLogger } from "../../common/utils";
 
 /**
@@ -56,8 +56,6 @@ export interface SDKDeployOptions {
   instanceType: string;
   /** Log visibility setting - required */
   logVisibility: LogVisibility;
-  /** Optional app profile to upload after deployment */
-  profile?: AppProfile;
   /** Optional gas params from estimation */
   gas?: {
     maxFeePerGas?: bigint;
@@ -75,8 +73,6 @@ export interface PreparedDeploy {
   appName: string;
   /** Final image reference */
   imageRef: string;
-  /** Optional profile to upload */
-  profile?: AppProfile;
   /** Preflight context for post-deploy operations */
   preflightCtx: {
     privateKey: string;
@@ -151,9 +147,7 @@ function validateDeployOptions(options: SDKDeployOptions): void {
  * 5. Generate random salt and calculate app ID
  * 6. Prepare the release (includes build/push if needed)
  * 7. Deploy the app on-chain
- * 8. Upload profile if provided
- * 9. Save the app name mapping
- * 10. Watch until app is running
+ * 8. Watch until app is running
  *
  * @param options - Required deployment options
  * @param logger - Optional logger instance
@@ -243,31 +237,7 @@ export async function deploy(
     logger,
   );
 
-  // 9. Upload profile if provided (non-blocking - warn on failure but don't fail deployment)
-  if (options.profile) {
-    logger.info("Uploading app profile...");
-    try {
-      const userApiClient = new UserApiClient(
-        preflightCtx.environmentConfig,
-        preflightCtx.privateKey,
-        preflightCtx.rpcUrl,
-      );
-
-      await userApiClient.uploadAppProfile(
-        deployResult.appId,
-        options.profile.name,
-        options.profile.website,
-        options.profile.description,
-        options.profile.xURL,
-        options.profile.imagePath,
-      );
-      logger.info("✓ Profile uploaded successfully");
-    } catch (err: any) {
-      logger.warn(`Failed to upload profile: ${err.message}`);
-    }
-  }
-
-  // 10. Watch until app is running
+  // 9. Watch until app is running
   logger.info("Waiting for app to start...");
   const ipAddress = await watchUntilRunning(
     {
@@ -439,7 +409,6 @@ export async function prepareDeploy(
       batch,
       appName,
       imageRef: finalImageRef,
-      profile: options.profile,
       preflightCtx: {
         privateKey: preflightCtx.privateKey,
         rpcUrl: preflightCtx.rpcUrl,
@@ -454,59 +423,51 @@ export async function prepareDeploy(
  * Execute a prepared deployment
  *
  * Call this after prepareDeploy and user confirmation.
+ * Note: This only submits the on-chain transaction. Call watchDeployment separately
+ * to wait for the app to be running.
  */
 export async function executeDeploy(
   prepared: PreparedDeploy,
   gas: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } | undefined,
   logger: Logger = defaultLogger,
 ): Promise<DeployResult> {
-  // 1. Execute the batch transaction
+  // Execute the batch transaction
   logger.info("Deploying on-chain...");
   const { appId, txHash } = await executeDeployBatch(prepared.batch, gas, logger);
-
-  // 2. Upload profile if provided (non-blocking)
-  if (prepared.profile) {
-    logger.info("Uploading app profile...");
-    try {
-      const userApiClient = new UserApiClient(
-        prepared.preflightCtx.environmentConfig,
-        prepared.preflightCtx.privateKey,
-        prepared.preflightCtx.rpcUrl,
-      );
-
-      await userApiClient.uploadAppProfile(
-        appId,
-        prepared.profile.name,
-        prepared.profile.website,
-        prepared.profile.description,
-        prepared.profile.xURL,
-        prepared.profile.imagePath,
-      );
-      logger.info("✓ Profile uploaded successfully");
-    } catch (err: any) {
-      logger.warn(`Failed to upload profile: ${err.message}`);
-    }
-  }
-
-  // 3. Watch until app is running
-  logger.info("Waiting for app to start...");
-  const ipAddress = await watchUntilRunning(
-    {
-      privateKey: prepared.preflightCtx.privateKey,
-      rpcUrl: prepared.preflightCtx.rpcUrl,
-      environmentConfig: prepared.preflightCtx.environmentConfig,
-      appId,
-    },
-    logger,
-  );
 
   return {
     appId,
     txHash,
     appName: prepared.appName,
     imageRef: prepared.imageRef,
-    ipAddress,
   };
+}
+
+/**
+ * Watch a deployment until the app is running
+ *
+ * Call this after executeDeploy to wait for the app to be provisioned.
+ * Can be called separately to allow for intermediate operations (e.g., profile upload).
+ */
+export async function watchDeployment(
+  appId: string,
+  privateKey: string,
+  rpcUrl: string,
+  environment: string,
+  logger: Logger = defaultLogger,
+): Promise<string | undefined> {
+  const environmentConfig = getEnvironmentConfig(environment);
+
+  logger.info("Waiting for app to start...");
+  return watchUntilRunning(
+    {
+      privateKey,
+      rpcUrl,
+      environmentConfig,
+      appId: appId as `0x${string}`,
+    },
+    logger,
+  );
 }
 
 // Re-export for convenience
