@@ -57,7 +57,7 @@ function loadAppRegistry(environment: string): AppRegistry {
     }
 
     return registry;
-  } catch (error) {
+  } catch {
     // If parsing fails, return empty registry
     return {
       version: APP_REGISTRY_VERSION,
@@ -86,9 +86,9 @@ function saveAppRegistry(environment: string, registry: AppRegistry): void {
 }
 
 /**
- * Resolve app ID or name to app ID
+ * Resolve app ID or name to app ID (for CLI use)
  */
-function resolveAppID(environment: string, appIDOrName: string): string | null {
+export function resolveAppIDFromRegistry(environment: string, appIDOrName: string): string | null {
   // First check if it's already a valid hex address
   if (/^0x[a-fA-F0-9]{40}$/.test(appIDOrName)) {
     return appIDOrName;
@@ -117,7 +117,7 @@ export async function setAppName(
   const registry = loadAppRegistry(environment);
 
   // Resolve the target app ID
-  let targetAppID: string | null = resolveAppID(environment, appIDOrName);
+  let targetAppID: string | null = resolveAppIDFromRegistry(environment, appIDOrName);
   if (!targetAppID) {
     // If can't resolve, check if it's a valid app ID
     if (/^0x[a-fA-F0-9]{40}$/.test(appIDOrName)) {
@@ -132,7 +132,7 @@ export async function setAppName(
 
   // Find and remove any existing names for this app ID
   for (const [name, app] of Object.entries(registry.apps)) {
-    if (app?.app_id?.toLowerCase() === targetAppIDLower) {
+    if (app?.app_id && String(app.app_id).toLowerCase() === targetAppIDLower) {
       delete registry.apps[name];
     }
   }
@@ -163,7 +163,7 @@ export function getAppName(environment: string, appID: string): string {
 
   // Search for the app ID in the registry
   for (const [name, app] of Object.entries(registry.apps)) {
-    if (app?.app_id?.toLowerCase() === normalizedAppID) {
+    if (app?.app_id && String(app.app_id).toLowerCase() === normalizedAppID) {
       return name;
     }
   }
@@ -180,8 +180,41 @@ export function listApps(environment: string): Record<string, string> {
 
   // Convert registry format (name -> app_id) to result format (name -> appID)
   for (const [name, app] of Object.entries(registry.apps)) {
-    result[name] = app.app_id;
+    if (app?.app_id) {
+      result[name] = String(app.app_id);
+    }
   }
 
   return result;
+}
+
+/**
+ * Check if an app name is available in the given environment
+ */
+export function isAppNameAvailable(environment: string, name: string): boolean {
+  const apps = listApps(environment);
+  return !apps[name];
+}
+
+/**
+ * Find an available app name by appending numbers if needed
+ */
+export function findAvailableName(environment: string, baseName: string): string {
+  const apps = listApps(environment);
+
+  // Check if base name is available
+  if (!apps[baseName]) {
+    return baseName;
+  }
+
+  // Try with incrementing numbers
+  for (let i = 2; i <= 100; i++) {
+    const candidate = `${baseName}-${i}`;
+    if (!apps[candidate]) {
+      return candidate;
+    }
+  }
+
+  // Fallback to timestamp if somehow we have 100+ duplicates
+  return `${baseName}-${Date.now()}`;
 }

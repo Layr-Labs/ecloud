@@ -1,10 +1,10 @@
 /**
  * Global configuration management
- * 
+ *
  * Stores user-level configuration that persists across all CLI usage.
  * - $XDG_CONFIG_HOME/ecloud[BuildSuffix]/config.yaml (if XDG_CONFIG_HOME is set)
  * - Or ~/.config/ecloud[BuildSuffix]/config.yaml (fallback)
- * 
+ *
  * Where BuildSuffix is:
  * - "" (empty) for production builds
  * - "-dev" for development builds
@@ -14,7 +14,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { load as loadYaml, dump as dumpYaml } from "js-yaml";
-import { getBuildType } from "./environment";
+import { getBuildType } from "@layr-labs/ecloud-sdk";
 
 const GLOBAL_CONFIG_FILE = "config.yaml";
 
@@ -74,7 +74,7 @@ export function loadGlobalConfig(): GlobalConfig {
     const content = fs.readFileSync(configPath, "utf-8");
     const config = loadYaml(content) as GlobalConfig;
     return config || { first_run: true };
-  } catch (err: any) {
+  } catch {
     // If parsing fails, return defaults
     return {
       first_run: true,
@@ -149,4 +149,3 @@ export function setGlobalTelemetryPreference(enabled: boolean): void {
   config.first_run = false; // No longer first run after setting preference
   saveGlobalConfig(config);
 }
-

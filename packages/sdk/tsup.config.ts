@@ -10,6 +10,6 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   define: {
-    "BUILD_TYPE_BUILD_TIME": JSON.stringify(buildType),
+    BUILD_TYPE_BUILD_TIME: JSON.stringify(buildType),
   },
 });

@@ -1,9 +1,6 @@
-import {
-  getEnvironmentInteractive,
-  getPrivateKeyInteractive,
-  getDefaultEnvironment,
-} from "@layr-labs/ecloud-sdk";
 import { Flags } from "@oclif/core";
+import { getEnvironmentInteractive, getPrivateKeyInteractive } from "./utils/prompts";
+import { getDefaultEnvironment } from "./utils/globalConfig";
 
 export type CommonFlags = {
   verbose: boolean;
@@ -38,7 +35,7 @@ export const commonFlags = {
 // Validate or prompt for required common flags
 export async function validateCommonFlags(flags: CommonFlags) {
   // If no environment is selected, default to the global config env
-  if (!flags['environment']) {
+  if (!flags["environment"]) {
     flags["environment"] = getDefaultEnvironment();
   }
   // If the provided env is invalid, proceed to prompt

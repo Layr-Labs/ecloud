@@ -35,20 +35,15 @@ export async function fetchTemplate(
 
   try {
     // Clone with no checkout
-    await execAsync(
-      `git clone --no-checkout --progress ${repoURL} ${targetDir}`,
-      {
-        maxBuffer: 10 * 1024 * 1024,
-      },
-    );
+    await execAsync(`git clone --no-checkout --progress ${repoURL} ${targetDir}`, {
+      maxBuffer: 10 * 1024 * 1024,
+    });
 
     // Checkout the desired ref
     await execAsync(`git -C ${targetDir} checkout --quiet ${ref}`);
 
     // Update submodules
-    await execAsync(
-      `git -C ${targetDir} submodule update --init --recursive --progress`,
-    );
+    await execAsync(`git -C ${targetDir} submodule update --init --recursive --progress`);
 
     logger.info(`Clone repo complete: ${repoURL}\n`);
   } catch (error: any) {
@@ -94,9 +89,7 @@ export async function fetchTemplateSubdirectory(
     // Verify subdirectory exists
     const srcPath = path.join(tempDir, subPath);
     if (!fs.existsSync(srcPath)) {
-      throw new Error(
-        `Template subdirectory ${subPath} not found in ${repoURL}`,
-      );
+      throw new Error(`Template subdirectory ${subPath} not found in ${repoURL}`);
     }
 
     // Copy subdirectory contents to target

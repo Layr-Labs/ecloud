@@ -34,6 +34,7 @@
     "lint": "eslint .",
     "format": "prettier --check .",
     "format:fix": "prettier --write .",
+    "typecheck": "tsc --noEmit",
     "ecloud": "node bin/run.js"
   },
   "oclif": {
@@ -65,6 +66,7 @@
   },
   "devDependencies": {
     "@types/form-data": "^2.5.2",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^18",
     "ts-node": "^10.9.2"
   }

@@ -35,9 +35,7 @@ export async function doPreflightChecks(
 
   // 2. Get environment configuration
   logger.debug("Determining environment...");
-  const environmentConfig = getEnvironmentConfig(
-    options.environment || "sepolia",
-  );
+  const environmentConfig = getEnvironmentConfig(options.environment || "sepolia");
 
   // 3. Get RPC URL (from option, env var, or environment default)
   let rpcUrl = options.rpcUrl;
@@ -60,14 +58,10 @@ export async function doPreflightChecks(
     // 5. Get chain ID
     const chainID = await publicClient.getChainId();
     if (BigInt(chainID) !== environmentConfig.chainID) {
-      throw new Error(
-        `Chain ID mismatch: expected ${environmentConfig.chainID}, got ${chainID}`,
-      );
+      throw new Error(`Chain ID mismatch: expected ${environmentConfig.chainID}, got ${chainID}`);
     }
   } catch (err: any) {
-    throw new Error(
-      `Cannot connect to ${environmentConfig.name} RPC at ${rpcUrl}: ${err.message}`,
-    );
+    throw new Error(`Cannot connect to ${environmentConfig.name} RPC at ${rpcUrl}: ${err.message}`);
   }
 
   // 6. Create account from private key

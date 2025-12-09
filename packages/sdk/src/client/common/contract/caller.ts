@@ -4,7 +4,6 @@
  * This module handles on-chain contract interactions using viem
  */
 
-import { sepolia, mainnet } from "viem/chains";
 import { privateKeyToAccount } from "viem/accounts";
 import { executeBatch } from "./eip7702";
 import {
@@ -16,20 +15,103 @@ import {
   encodeFunctionData,
   decodeErrorResult,
 } from "viem";
+import type { WalletClient, PublicClient } from "viem";
 import { hashAuthorization } from "viem/utils";
 import { sign } from "viem/accounts";
 
-import { confirm } from "../utils/prompts";
-import { addHexPrefix } from "../utils";
+import { addHexPrefix, getChainFromID } from "../utils";
 
 import { EnvironmentConfig, Logger } from "../types";
 import { Release } from "../types";
-import { getAppName } from "../registry/appNames";
 
 import AppControllerABI from "../abis/AppController.json";
 import PermissionControllerABI from "../abis/PermissionController.json";
-import chalk from "chalk";
 
+/**
+ * Gas estimation result
+ */
+export interface GasEstimate {
+  /** Estimated gas limit for the transaction */
+  gasLimit: bigint;
+  /** Max fee per gas (EIP-1559) */
+  maxFeePerGas: bigint;
+  /** Max priority fee per gas (EIP-1559) */
+  maxPriorityFeePerGas: bigint;
+  /** Maximum cost in wei (gasLimit * maxFeePerGas) */
+  maxCostWei: bigint;
+  /** Maximum cost formatted as ETH string */
+  maxCostEth: string;
+}
+
+/**
+ * Options for estimating transaction gas
+ */
+export interface EstimateGasOptions {
+  privateKey: string;
+  rpcUrl: string;
+  environmentConfig: EnvironmentConfig;
+  to: Address;
+  data: Hex;
+  value?: bigint;
+}
+
+/**
+ * Format Wei to ETH string
+ */
+export function formatETH(wei: bigint): string {
+  const eth = Number(wei) / 1e18;
+  const costStr = eth.toFixed(6);
+  // Remove trailing zeros and decimal point if needed
+  const trimmed = costStr.replace(/\.?0+$/, "");
+  // If result is "0", show "<0.000001" for small amounts
+  if (trimmed === "0" && wei > 0n) {
+    return "<0.000001";
+  }
+  return trimmed;
+}
+
+/**
+ * Estimate gas cost for a transaction
+ *
+ * Use this to get cost estimate before prompting user for confirmation.
+ */
+export async function estimateTransactionGas(options: EstimateGasOptions): Promise<GasEstimate> {
+  const { privateKey, rpcUrl, environmentConfig, to, data, value = 0n } = options;
+
+  const privateKeyHex = addHexPrefix(privateKey) as Hex;
+  const account = privateKeyToAccount(privateKeyHex);
+
+  const chain = getChainFromID(environmentConfig.chainID);
+
+  const publicClient = createPublicClient({
+    chain,
+    transport: http(rpcUrl),
+  });
+
+  // Get current gas prices
+  const fees = await publicClient.estimateFeesPerGas();
+
+  // Estimate gas for the transaction
+  const gasLimit = await publicClient.estimateGas({
+    account: account.address,
+    to,
+    data,
+    value,
+  });
+
+  const maxFeePerGas = fees.maxFeePerGas;
+  const maxPriorityFeePerGas = fees.maxPriorityFeePerGas;
+  const maxCostWei = gasLimit * maxFeePerGas;
+  const maxCostEth = formatETH(maxCostWei);
+
+  return {
+    gasLimit,
+    maxFeePerGas,
+    maxPriorityFeePerGas,
+    maxCostWei,
+    maxCostEth,
+  };
+}
 
 export interface DeployAppOptions {
   privateKey: string; // Will be converted to Hex
@@ -39,6 +121,45 @@ export interface DeployAppOptions {
   release: Release;
   publicLogs: boolean;
   imageRef: string;
+  /** Optional gas params from estimation */
+  gas?: {
+    maxFeePerGas?: bigint;
+    maxPriorityFeePerGas?: bigint;
+  };
+}
+
+/**
+ * Prepared deploy batch ready for gas estimation and execution
+ */
+export interface PreparedDeployBatch {
+  /** The app ID that will be deployed */
+  appId: Address;
+  /** The salt used for deployment */
+  salt: Uint8Array;
+  /** Batch executions to be sent */
+  executions: Array<{ target: Address; value: bigint; callData: Hex }>;
+  /** Wallet client for sending transaction */
+  walletClient: WalletClient;
+  /** Public client for reading chain state */
+  publicClient: PublicClient;
+  /** Environment configuration */
+  environmentConfig: EnvironmentConfig;
+}
+
+/**
+ * Prepared upgrade batch ready for gas estimation and execution
+ */
+export interface PreparedUpgradeBatch {
+  /** The app ID being upgraded */
+  appId: Address;
+  /** Batch executions to be sent */
+  executions: Array<{ target: Address; value: bigint; callData: Hex }>;
+  /** Wallet client for sending transaction */
+  walletClient: WalletClient;
+  /** Public client for reading chain state */
+  publicClient: PublicClient;
+  /** Environment configuration */
+  environmentConfig: EnvironmentConfig;
 }
 
 /**
@@ -53,13 +174,7 @@ export async function calculateAppID(
   const privateKeyHex = addHexPrefix(privateKey);
   const account = privateKeyToAccount(privateKeyHex);
 
-  // Map chainID to viem Chain
-  const chain =
-    environmentConfig.chainID === 11155111n
-      ? sepolia
-      : environmentConfig.chainID === 1n
-        ? mainnet
-        : sepolia; // Default to sepolia if unknown
+  const chain = getChainFromID(environmentConfig.chainID);
 
   const publicClient = createPublicClient({
     chain,
@@ -74,9 +189,7 @@ export async function calculateAppID(
 
   // Ensure address is a string (viem might return Hex type)
   const accountAddress =
-    typeof account.address === "string"
-      ? account.address
-      : (account.address as Buffer).toString();
+    typeof account.address === "string" ? account.address : (account.address as Buffer).toString();
 
   const appID = await publicClient.readContract({
     address: environmentConfig.appControllerAddress as Address,
@@ -89,32 +202,32 @@ export async function calculateAppID(
 }
 
 /**
- * Deploy app on-chain
+ * Options for preparing a deploy batch
  */
-export async function deployApp(
-  options: DeployAppOptions,
+export interface PrepareDeployBatchOptions {
+  privateKey: string;
+  rpcUrl: string;
+  environmentConfig: EnvironmentConfig;
+  salt: Uint8Array;
+  release: Release;
+  publicLogs: boolean;
+}
+
+/**
+ * Prepare deploy batch - creates executions without sending transaction
+ *
+ * Use this to get the prepared batch for gas estimation before executing.
+ */
+export async function prepareDeployBatch(
+  options: PrepareDeployBatchOptions,
   logger: Logger,
-): Promise<{ appAddress: Address; txHash: Hex }> {
-  const {
-    privateKey,
-    rpcUrl,
-    environmentConfig,
-    salt,
-    release,
-    publicLogs,
-    imageRef,
-  } = options;
+): Promise<PreparedDeployBatch> {
+  const { privateKey, rpcUrl, environmentConfig, salt, release, publicLogs } = options;
 
   const privateKeyHex = addHexPrefix(privateKey) as Hex;
   const account = privateKeyToAccount(privateKeyHex);
 
-  // Map chainID to viem Chain
-  const chain =
-    environmentConfig.chainID === 11155111n
-      ? sepolia
-      : environmentConfig.chainID === 1n
-        ? mainnet
-        : sepolia; // Default to sepolia if unknown
+  const chain = getChainFromID(environmentConfig.chainID);
 
   const publicClient = createPublicClient({
     chain,
@@ -128,40 +241,29 @@ export async function deployApp(
 
   // 1. Calculate app ID
   logger.info("Calculating app ID...");
-  const appAddress = await calculateAppID(
-    privateKeyHex,
-    rpcUrl,
-    environmentConfig,
-    salt,
-  );
-  logger.info(`App ID: ${appAddress}`);
+  const appId = await calculateAppID(privateKeyHex, rpcUrl, environmentConfig, salt);
+  logger.info(`App ID: ${appId}`);
 
-  // Verify the app address calculation matches what createApp will deploy
-  // This ensures we're calling acceptAdmin on the correct app address
-  logger.debug(`App address calculated: ${appAddress}`);
+  // Verify the app ID calculation matches what createApp will deploy
+  logger.debug(`App ID calculated: ${appId}`);
   logger.debug(`This address will be used for acceptAdmin call`);
 
   // 2. Pack create app call
-  // Ensure salt is properly formatted as hex string (32 bytes = 64 hex chars)
   const saltHexString = Buffer.from(salt).toString("hex");
-  // Pad to 64 characters if needed (shouldn't be needed for 32 bytes, but just in case)
   const paddedSaltHex = saltHexString.padStart(64, "0");
   const saltHex = `0x${paddedSaltHex}` as Hex;
 
   // Convert Release Uint8Array values to hex strings for viem
-  // Viem expects hex strings for bytes and bytes32 types
   const releaseForViem = {
     rmsRelease: {
       artifacts: release.rmsRelease.artifacts.map((artifact) => ({
-        digest:
-          `0x${Buffer.from(artifact.digest).toString("hex").padStart(64, "0")}` as Hex,
+        digest: `0x${Buffer.from(artifact.digest).toString("hex").padStart(64, "0")}` as Hex,
         registry: artifact.registry,
       })),
       upgradeByTime: release.rmsRelease.upgradeByTime,
     },
     publicEnv: `0x${Buffer.from(release.publicEnv).toString("hex")}` as Hex,
-    encryptedEnv:
-      `0x${Buffer.from(release.encryptedEnv).toString("hex")}` as Hex,
+    encryptedEnv: `0x${Buffer.from(release.encryptedEnv).toString("hex")}` as Hex,
   };
 
   const createData = encodeFunctionData({
@@ -171,18 +273,14 @@ export async function deployApp(
   });
 
   // 3. Pack accept admin call
-  // NOTE: createApp calls initialize(admin) which adds the EOA (msg.sender) as a pending admin
-  // for the app account. So acceptAdmin should work when called from the EOA.
-  // The execution order in the batch ensures createApp completes before acceptAdmin runs.
   const acceptAdminData = encodeFunctionData({
     abi: PermissionControllerABI,
     functionName: "acceptAdmin",
-    args: [appAddress],
+    args: [appId],
   });
 
   // 4. Assemble executions
-  // CRITICAL: Order matters! createApp must complete first to call initialize(admin)
-  // which adds the EOA as a pending admin. Then acceptAdmin can be called.
+  // CRITICAL: Order matters! createApp must complete first
   const executions: Array<{
     target: Address;
     value: bigint;
@@ -206,7 +304,7 @@ export async function deployApp(
       abi: PermissionControllerABI,
       functionName: "setAppointee",
       args: [
-        appAddress,
+        appId,
         "0x493219d9949348178af1f58740655951a8cd110c" as Address, // AnyoneCanCallAddress
         "0x57ee1fb74c1087e26446abc4fb87fd8f07c43d8d" as Address, // ApiPermissionsTarget
         "0x2fd3f2fe" as Hex, // CanViewAppLogsPermission
@@ -219,66 +317,114 @@ export async function deployApp(
     });
   }
 
-  // 6. Execute batch via EIP-7702 delegator
-  const confirmationPrompt = `Deploy new app with image: ${imageRef}`;
+  return {
+    appId,
+    salt,
+    executions,
+    walletClient,
+    publicClient,
+    environmentConfig,
+  };
+}
+
+/**
+ * Execute a prepared deploy batch
+ */
+export async function executeDeployBatch(
+  prepared: PreparedDeployBatch,
+  gas: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } | undefined,
+  logger: Logger,
+): Promise<{ appId: Address; txHash: Hex }> {
   const pendingMessage = "Deploying new app...";
 
   const txHash = await executeBatch(
     {
-      walletClient,
-      publicClient,
-      environmentConfig,
-      executions,
-      needsConfirmation: environmentConfig.chainID === 1n, // Mainnet needs confirmation
-      confirmationPrompt,
+      walletClient: prepared.walletClient,
+      publicClient: prepared.publicClient,
+      environmentConfig: prepared.environmentConfig,
+      executions: prepared.executions,
       pendingMessage,
-      privateKey: privateKeyHex, // Pass private key for manual transaction signing
+      gas,
     },
     logger,
   );
 
-  return { appAddress, txHash };
+  return { appId: prepared.appId, txHash };
+}
+
+/**
+ * Deploy app on-chain (convenience wrapper that prepares and executes)
+ */
+export async function deployApp(
+  options: DeployAppOptions,
+  logger: Logger,
+): Promise<{ appId: Address; txHash: Hex }> {
+  const prepared = await prepareDeployBatch(
+    {
+      privateKey: options.privateKey,
+      rpcUrl: options.rpcUrl,
+      environmentConfig: options.environmentConfig,
+      salt: options.salt,
+      release: options.release,
+      publicLogs: options.publicLogs,
+    },
+    logger,
+  );
+
+  return executeDeployBatch(prepared, options.gas, logger);
 }
 
 export interface UpgradeAppOptions {
   privateKey: string; // Will be converted to Hex
   rpcUrl: string;
   environmentConfig: EnvironmentConfig;
-  appID: Address;
+  appId: Address;
   release: Release;
   publicLogs: boolean;
   needsPermissionChange: boolean;
   imageRef: string;
+  /** Optional gas params from estimation */
+  gas?: {
+    maxFeePerGas?: bigint;
+    maxPriorityFeePerGas?: bigint;
+  };
 }
 
 /**
- * Upgrade app on-chain
+ * Options for preparing an upgrade batch
  */
-export async function upgradeApp(
-  options: UpgradeAppOptions,
-  logger: Logger,
-): Promise<Hex> {
+export interface PrepareUpgradeBatchOptions {
+  privateKey: string;
+  rpcUrl: string;
+  environmentConfig: EnvironmentConfig;
+  appId: Address;
+  release: Release;
+  publicLogs: boolean;
+  needsPermissionChange: boolean;
+}
+
+/**
+ * Prepare upgrade batch - creates executions without sending transaction
+ *
+ * Use this to get the prepared batch for gas estimation before executing.
+ */
+export async function prepareUpgradeBatch(
+  options: PrepareUpgradeBatchOptions,
+): Promise<PreparedUpgradeBatch> {
   const {
     privateKey,
     rpcUrl,
     environmentConfig,
-    appID,
+    appId,
     release,
     publicLogs,
     needsPermissionChange,
-    imageRef,
   } = options;
 
   const privateKeyHex = addHexPrefix(privateKey) as Hex;
   const account = privateKeyToAccount(privateKeyHex);
 
-  // Map chainID to viem Chain
-  const chain =
-    environmentConfig.chainID === 11155111n
-      ? sepolia
-      : environmentConfig.chainID === 1n
-        ? mainnet
-        : sepolia; // Default to sepolia if unknown
+  const chain = getChainFromID(environmentConfig.chainID);
 
   const publicClient = createPublicClient({
     chain,
@@ -295,21 +441,19 @@ export async function upgradeApp(
   const releaseForViem = {
     rmsRelease: {
       artifacts: release.rmsRelease.artifacts.map((artifact) => ({
-        digest:
-          `0x${Buffer.from(artifact.digest).toString("hex").padStart(64, "0")}` as Hex,
+        digest: `0x${Buffer.from(artifact.digest).toString("hex").padStart(64, "0")}` as Hex,
         registry: artifact.registry,
       })),
       upgradeByTime: release.rmsRelease.upgradeByTime,
     },
     publicEnv: `0x${Buffer.from(release.publicEnv).toString("hex")}` as Hex,
-    encryptedEnv:
-      `0x${Buffer.from(release.encryptedEnv).toString("hex")}` as Hex,
+    encryptedEnv: `0x${Buffer.from(release.encryptedEnv).toString("hex")}` as Hex,
   };
 
   const upgradeData = encodeFunctionData({
     abi: AppControllerABI,
     functionName: "upgradeApp",
-    args: [appID, releaseForViem],
+    args: [appId, releaseForViem],
   });
 
   // 2. Start with upgrade execution
@@ -333,7 +477,7 @@ export async function upgradeApp(
         abi: PermissionControllerABI,
         functionName: "setAppointee",
         args: [
-          appID,
+          appId,
           "0x493219d9949348178af1f58740655951a8cd110c" as Address, // AnyoneCanCallAddress
           "0x57ee1fb74c1087e26446abc4fb87fd8f07c43d8d" as Address, // ApiPermissionsTarget
           "0x2fd3f2fe" as Hex, // CanViewAppLogsPermission
@@ -350,7 +494,7 @@ export async function upgradeApp(
         abi: PermissionControllerABI,
         functionName: "removeAppointee",
         args: [
-          appID,
+          appId,
           "0x493219d9949348178af1f58740655951a8cd110c" as Address, // AnyoneCanCallAddress
           "0x57ee1fb74c1087e26446abc4fb87fd8f07c43d8d" as Address, // ApiPermissionsTarget
           "0x2fd3f2fe" as Hex, // CanViewAppLogsPermission
@@ -364,32 +508,55 @@ export async function upgradeApp(
     }
   }
 
-  // 4. Execute batch via EIP-7702 delegator
-  // Get app name for confirmation prompt
-  const appName = getAppName(environmentConfig.name, appID);
-  let confirmationPrompt = "Upgrade app";
-  let pendingMessage = "Upgrading app...";
-  if (appName !== "") {
-    confirmationPrompt = `${confirmationPrompt} '${appName}'`;
-    pendingMessage = `Upgrading app '${appName}'...`;
-  }
-  confirmationPrompt = `${confirmationPrompt} with image: ${imageRef}`;
+  return {
+    appId,
+    executions,
+    walletClient,
+    publicClient,
+    environmentConfig,
+  };
+}
+
+/**
+ * Execute a prepared upgrade batch
+ */
+export async function executeUpgradeBatch(
+  prepared: PreparedUpgradeBatch,
+  gas: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } | undefined,
+  logger: Logger,
+): Promise<Hex> {
+  const pendingMessage = `Upgrading app ${prepared.appId}...`;
 
   const txHash = await executeBatch(
     {
-      walletClient,
-      publicClient,
-      environmentConfig,
-      executions,
-      needsConfirmation: environmentConfig.chainID === 1n, // Mainnet needs confirmation
-      confirmationPrompt,
+      walletClient: prepared.walletClient,
+      publicClient: prepared.publicClient,
+      environmentConfig: prepared.environmentConfig,
+      executions: prepared.executions,
       pendingMessage,
-      privateKey: privateKeyHex, // Pass private key for manual transaction signing
+      gas,
     },
     logger,
   );
 
   return txHash;
+}
+
+/**
+ * Upgrade app on-chain (convenience wrapper that prepares and executes)
+ */
+export async function upgradeApp(options: UpgradeAppOptions, logger: Logger): Promise<Hex> {
+  const prepared = await prepareUpgradeBatch({
+    privateKey: options.privateKey,
+    rpcUrl: options.rpcUrl,
+    environmentConfig: options.environmentConfig,
+    appId: options.appId,
+    release: options.release,
+    publicLogs: options.publicLogs,
+    needsPermissionChange: options.needsPermissionChange,
+  });
+
+  return executeUpgradeBatch(prepared, options.gas, logger);
 }
 
 /**
@@ -402,16 +569,19 @@ export interface SendTransactionOptions {
   to: Address;
   data: Hex;
   value?: bigint;
-  needsConfirmation: boolean;
-  confirmationPrompt: string;
   pendingMessage: string;
   txDescription: string;
+  /** Optional gas params from estimation */
+  gas?: {
+    maxFeePerGas?: bigint;
+    maxPriorityFeePerGas?: bigint;
+  };
 }
 
 export async function sendAndWaitForTransaction(
   options: SendTransactionOptions,
   logger: Logger,
-): Promise<Hex | false> {
+): Promise<Hex> {
   const {
     privateKey,
     rpcUrl,
@@ -419,21 +589,15 @@ export async function sendAndWaitForTransaction(
     to,
     data,
     value = 0n,
-    needsConfirmation,
-    confirmationPrompt,
     pendingMessage,
     txDescription,
+    gas,
   } = options;
 
   const privateKeyHex = addHexPrefix(privateKey) as Hex;
   const account = privateKeyToAccount(privateKeyHex);
 
-  const chain =
-    environmentConfig.chainID === 11155111n
-      ? sepolia
-      : environmentConfig.chainID === 1n
-        ? mainnet
-        : sepolia;
+  const chain = getChainFromID(environmentConfig.chainID);
 
   const publicClient = createPublicClient({
     chain,
@@ -445,47 +609,19 @@ export async function sendAndWaitForTransaction(
     transport: http(rpcUrl),
   });
 
-  // Handle confirmation if needed
-  if (needsConfirmation) {
-    try {
-      const fees = await publicClient.estimateFeesPerGas();
-      const gasEstimate = await publicClient.estimateGas({
-        account: account.address,
-        to,
-        data,
-        value,
-      });
-      const maxCostWei = gasEstimate * fees.maxFeePerGas;
-      const costEth = formatETH(maxCostWei);
-
-      // place an empty line for tidier output
-      logger.info("");
-      
-      // Interactive confirmation prompt
-      if (!(await confirm(`${confirmationPrompt} ${chalk.reset(`on ${environmentConfig.name} (max cost: ${costEth} ETH)`)}`))) {
-        return false;
-      }
-    } catch (error: any) {
-      // Try to parse custom contract errors
-      const parsedErr = parseEstimateGasError(error, environmentConfig);
-      if (parsedErr) {
-        throw parsedErr;
-      }
-      logger.warn(`Could not estimate cost for confirmation: ${error}`);
-    }
-  }
-
   // Show pending message if provided
   if (pendingMessage) {
     logger.info(`\n${pendingMessage}`);
   }
 
-  // Send transaction
+  // Send transaction with optional gas params
   const hash = await walletClient.sendTransaction({
     account,
     to,
     data,
     value,
+    ...(gas?.maxFeePerGas && { maxFeePerGas: gas.maxFeePerGas }),
+    ...(gas?.maxPriorityFeePerGas && { maxPriorityFeePerGas: gas.maxPriorityFeePerGas }),
   });
 
   logger.info(`Transaction sent: ${hash}`);
@@ -508,7 +644,8 @@ export async function sendAndWaitForTransaction(
             abi: AppControllerABI,
             data: callError.data,
           });
-          revertReason = `${decoded.errorName}: ${JSON.stringify(decoded.args)}`;
+          const formattedError = formatAppControllerError(decoded);
+          revertReason = formattedError.message;
         } catch {
           revertReason = callError.message || "Unknown reason";
         }
@@ -516,65 +653,20 @@ export async function sendAndWaitForTransaction(
         revertReason = callError.message || "Unknown reason";
       }
     }
-    logger.error(
-      `${txDescription} transaction (hash: ${hash}) reverted: ${revertReason}`,
-    );
-    throw new Error(
-      `${txDescription} transaction (hash: ${hash}) reverted: ${revertReason}`,
-    );
+    logger.error(`${txDescription} transaction (hash: ${hash}) reverted: ${revertReason}`);
+    throw new Error(`${txDescription} transaction (hash: ${hash}) reverted: ${revertReason}`);
   }
 
   return hash;
 }
 
 /**
- * Parse estimate gas errors to extract contract-specific error messages
- */
-function parseEstimateGasError(
-  err: any,
-  environmentConfig: EnvironmentConfig,
-): Error | null {
-  if (!err) {
-    return null;
-  }
-
-  // Check if error has data property (viem/ethers RPC errors)
-  const errorData = err.data || err.error?.data;
-  if (!errorData) {
-    return null;
-  }
-
-  // Convert data to hex string if needed
-  let hexData: string;
-  if (typeof errorData === "string") {
-    hexData = errorData;
-  } else if (Buffer.isBuffer(errorData)) {
-    hexData = `0x${errorData.toString("hex")}`;
-  } else {
-    return null;
-  }
-
-  if (hexData.length < 10) {
-    // Need at least 4 bytes (0x + 8 hex chars) for function selector
-    return null;
-  }
-
-  // Try to decode the error
-  try {
-    const decoded = decodeErrorResult({
-      abi: AppControllerABI,
-      data: hexData as Hex,
-    });
-    return formatAppControllerError(decoded);
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Format AppController errors to user-friendly messages
  */
-function formatAppControllerError(decoded: any): Error {
+function formatAppControllerError(decoded: {
+  errorName: string;
+  args?: readonly unknown[];
+}): Error {
   const errorName = decoded.errorName;
 
   switch (errorName) {
@@ -610,21 +702,6 @@ function formatAppControllerError(decoded: any): Error {
 }
 
 /**
- * Format Wei to ETH string
- */
-function formatETH(wei: bigint): string {
-  const eth = Number(wei) / 1e18;
-  const costStr = eth.toFixed(6);
-  // Remove trailing zeros and decimal point if needed
-  const trimmed = costStr.replace(/\.?0+$/, "");
-  // If result is "0", show "<0.000001" for small amounts
-  if (trimmed === "0" && wei > 0n) {
-    return "<0.000001";
-  }
-  return trimmed;
-}
-
-/**
  * Get active app count for a user
  */
 export async function getActiveAppCount(
@@ -632,12 +709,7 @@ export async function getActiveAppCount(
   environmentConfig: EnvironmentConfig,
   user: Address,
 ): Promise<number> {
-  const chain =
-    environmentConfig.chainID === 11155111n
-      ? sepolia
-      : environmentConfig.chainID === 1n
-        ? mainnet
-        : sepolia;
+  const chain = getChainFromID(environmentConfig.chainID);
 
   const publicClient = createPublicClient({
     chain,
@@ -662,12 +734,7 @@ export async function getMaxActiveAppsPerUser(
   environmentConfig: EnvironmentConfig,
   user: Address,
 ): Promise<number> {
-  const chain =
-    environmentConfig.chainID === 11155111n
-      ? sepolia
-      : environmentConfig.chainID === 1n
-        ? mainnet
-        : sepolia;
+  const chain = getChainFromID(environmentConfig.chainID);
 
   const publicClient = createPublicClient({
     chain,
@@ -699,12 +766,7 @@ export async function getAppsByCreator(
   offset: bigint,
   limit: bigint,
 ): Promise<{ apps: Address[]; appConfigs: AppConfig[] }> {
-  const chain =
-    environmentConfig.chainID === 11155111n
-      ? sepolia
-      : environmentConfig.chainID === 1n
-        ? mainnet
-        : sepolia;
+  const chain = getChainFromID(environmentConfig.chainID);
 
   const publicClient = createPublicClient({
     chain,
@@ -735,12 +797,7 @@ export async function getAppsByDeveloper(
   offset: bigint,
   limit: bigint,
 ): Promise<{ apps: Address[]; appConfigs: AppConfig[] }> {
-  const chain =
-    environmentConfig.chainID === 11155111n
-      ? sepolia
-      : environmentConfig.chainID === 1n
-        ? mainnet
-        : sepolia;
+  const chain = getChainFromID(environmentConfig.chainID);
 
   const publicClient = createPublicClient({
     chain,
@@ -768,21 +825,14 @@ export async function getAllAppsByDeveloper(
   rpcUrl: string,
   env: EnvironmentConfig,
   developer: Address,
-  pageSize: bigint = 100n
+  pageSize: bigint = 100n,
 ): Promise<{ apps: Address[]; appConfigs: AppConfig[] }> {
-
   let offset = 0n;
   const allApps: Address[] = [];
   const allConfigs: AppConfig[] = [];
 
   while (true) {
-    const { apps, appConfigs } = await getAppsByDeveloper(
-      rpcUrl,
-      env,
-      developer,
-      offset,
-      pageSize
-    );
+    const { apps, appConfigs } = await getAppsByDeveloper(rpcUrl, env, developer, offset, pageSize);
 
     if (apps.length === 0) break;
 
@@ -822,7 +872,6 @@ export async function suspend(
   });
 
   const pendingMessage = `Suspending ${apps.length} app(s)...`;
-  const confirmationPrompt = `Suspend ${apps.length} app(s) for account ${account}`;
 
   return sendAndWaitForTransaction(
     {
@@ -831,8 +880,6 @@ export async function suspend(
       environmentConfig,
       to: environmentConfig.appControllerAddress as Address,
       data: suspendData,
-      needsConfirmation: environmentConfig.chainID === 1n,
-      confirmationPrompt,
       pendingMessage,
       txDescription: "Suspend",
     },
@@ -856,12 +903,7 @@ export async function undelegate(
   const privateKeyHex = addHexPrefix(privateKey);
   const account = privateKeyToAccount(privateKeyHex);
 
-  const chain =
-    environmentConfig.chainID === 11155111n
-      ? sepolia
-      : environmentConfig.chainID === 1n
-        ? mainnet
-        : sepolia;
+  const chain = getChainFromID(environmentConfig.chainID);
 
   const publicClient = createPublicClient({
     chain,

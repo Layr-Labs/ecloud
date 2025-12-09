@@ -10,6 +10,7 @@
     "lint": "pnpm -r run lint",
     "format": "pnpm -r run format",
     "format:fix": "pnpm -r run format:fix",
+    "typecheck": "pnpm -r run typecheck",
     "ecloud": "pnpm -C packages/cli exec -- node ./bin/run.js"
   },
   "devDependencies": {
@@ -23,5 +24,8 @@
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.4",
     "vitest": "^4.0.7"
+  },
+  "prettier": {
+    "printWidth": 100
   }
 }

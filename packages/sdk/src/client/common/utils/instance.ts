@@ -24,7 +24,7 @@ export async function getCurrentInstanceType(
       preflightCtx.rpcUrl,
     );
 
-    const infos = await userApiClient.getInfos([appID], 1, logger);
+    const infos = await userApiClient.getInfos([appID], 1);
     if (infos.length === 0) {
       return ""; // No app info available yet
     }
@@ -35,4 +35,3 @@ export async function getCurrentInstanceType(
     return ""; // API call failed, skip default
   }
 }
-

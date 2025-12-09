@@ -23,7 +23,7 @@ export interface PrepareReleaseOptions {
   logRedirect: string;
   instanceType: string;
   environmentConfig: EnvironmentConfig;
-  appID: string;
+  appId: string;
 }
 
 export interface PrepareReleaseResult {
@@ -38,14 +38,8 @@ export async function prepareRelease(
   options: PrepareReleaseOptions,
   logger: Logger,
 ): Promise<PrepareReleaseResult> {
-  const {
-    dockerfilePath,
-    imageRef,
-    envFilePath,
-    logRedirect,
-    instanceType,
-    environmentConfig,
-  } = options;
+  const { dockerfilePath, imageRef, envFilePath, logRedirect, instanceType, environmentConfig } =
+    options;
 
   let finalImageRef = imageRef;
 
@@ -65,12 +59,8 @@ export async function prepareRelease(
     );
 
     // Wait for registry propagation
-    logger.info(
-      `Waiting ${REGISTRY_PROPAGATION_WAIT_SECONDS} seconds for registry propagation...`,
-    );
-    await new Promise((resolve) =>
-      setTimeout(resolve, REGISTRY_PROPAGATION_WAIT_SECONDS * 1000),
-    );
+    logger.info(`Waiting ${REGISTRY_PROPAGATION_WAIT_SECONDS} seconds for registry propagation...`);
+    await new Promise((resolve) => setTimeout(resolve, REGISTRY_PROPAGATION_WAIT_SECONDS * 1000));
   } else {
     // Layer remote image if needed
     logger.info("Checking if image needs layering...");
@@ -89,9 +79,7 @@ export async function prepareRelease(
       logger.info(
         `Waiting ${REGISTRY_PROPAGATION_WAIT_SECONDS} seconds for registry propagation...`,
       );
-      await new Promise((resolve) =>
-        setTimeout(resolve, REGISTRY_PROPAGATION_WAIT_SECONDS * 1000),
-      );
+      await new Promise((resolve) => setTimeout(resolve, REGISTRY_PROPAGATION_WAIT_SECONDS * 1000));
     }
   }
 
@@ -118,9 +106,7 @@ export async function prepareRelease(
       lastError = error;
       retries--;
       if (retries > 0) {
-        logger.info(
-          `Digest extraction failed, retrying in 2 seconds... (${retries} retries left)`,
-        );
+        logger.info(`Digest extraction failed, retrying in 2 seconds... (${retries} retries left)`);
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
     }
@@ -156,13 +142,16 @@ export async function prepareRelease(
 
   // 5. Encrypt private environment variables
   logger.info("Encrypting environment variables...");
-  const { encryptionKey } = getKMSKeysForEnvironment(environmentConfig.name, environmentConfig.build);
-  const protectedHeaders = getAppProtectedHeaders(options.appID);
+  const { encryptionKey } = getKMSKeysForEnvironment(
+    environmentConfig.name,
+    environmentConfig.build,
+  );
+  const protectedHeaders = getAppProtectedHeaders(options.appId);
   const privateEnvBytes = Buffer.from(JSON.stringify(privateEnv));
   const encryptedEnvStr = await encryptRSAOAEPAndAES256GCM(
     encryptionKey,
     privateEnvBytes,
-    protectedHeaders
+    protectedHeaders,
   );
 
   // 6. Create release struct

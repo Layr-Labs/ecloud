@@ -10,12 +10,12 @@ import {
   storePrivateKey,
   keyExists,
   getAddressFromPrivateKey,
-  displayWarning,
   getLegacyKeys,
   getLegacyPrivateKey,
   deleteLegacyPrivateKey,
   type LegacyKey,
 } from "@layr-labs/ecloud-sdk";
+import { displayWarning } from "../../utils/security";
 
 export default class AuthMigrate extends Command {
   static description = "Migrate a private key from eigenx-cli to ecloud";
@@ -56,15 +56,10 @@ export default class AuthMigrate extends Command {
     });
 
     // Retrieve the actual private key
-    const privateKey = await getLegacyPrivateKey(
-      selectedKey.environment,
-      selectedKey.source
-    );
+    const privateKey = await getLegacyPrivateKey(selectedKey.environment, selectedKey.source);
 
     if (!privateKey) {
-      this.error(
-        `Failed to retrieve legacy key for ${selectedKey.environment}`
-      );
+      this.error(`Failed to retrieve legacy key for ${selectedKey.environment}`);
     }
 
     // Derive address for display
@@ -99,9 +94,7 @@ export default class AuthMigrate extends Command {
       await storePrivateKey(privateKey);
       this.log("\n✓ Private key migrated to ecloud keyring");
       this.log(`✓ Address: ${address}`);
-      this.log(
-        "\nNote: This key will be used for all environments (mainnet, sepolia, etc.)"
-      );
+      this.log("\nNote: This key will be used for all environments (mainnet, sepolia, etc.)");
 
       // Ask if user wants to delete the legacy key (only if save was successful)
       this.log("");
@@ -111,40 +104,25 @@ export default class AuthMigrate extends Command {
       });
 
       if (confirmDelete) {
-        const deleted = await deleteLegacyPrivateKey(
-          selectedKey.environment,
-          selectedKey.source
-        );
+        const deleted = await deleteLegacyPrivateKey(selectedKey.environment, selectedKey.source);
 
         if (deleted) {
-          this.log(
-            `\n✓ Legacy key deleted from ${selectedKey.source}:${selectedKey.environment}`
-          );
-          this.log(
-            "\nNote: The key is now only stored in ecloud. You can still use it with"
-          );
-          this.log(
-            "eigenx-cli by providing --private-key flag or EIGENX_PRIVATE_KEY env var."
-          );
+          this.log(`\n✓ Legacy key deleted from ${selectedKey.source}:${selectedKey.environment}`);
+          this.log("\nNote: The key is now only stored in ecloud. You can still use it with");
+          this.log("eigenx-cli by providing --private-key flag or EIGENX_PRIVATE_KEY env var.");
         } else {
           this.log(
-            `\n⚠️  Failed to delete legacy key from ${selectedKey.source}:${selectedKey.environment}`
+            `\n⚠️  Failed to delete legacy key from ${selectedKey.source}:${selectedKey.environment}`,
           );
           this.log("The key may have already been removed.");
         }
       } else {
-        this.log(
-          `\nLegacy key kept in ${selectedKey.source}:${selectedKey.environment}`
-        );
-        this.log(
-          "You can delete it later using 'eigenx auth logout' if needed."
-        );
+        this.log(`\nLegacy key kept in ${selectedKey.source}:${selectedKey.environment}`);
+        this.log("You can delete it later using 'eigenx auth logout' if needed.");
       }
 
       this.log("");
-      this.log(
-        "Migration complete! You can now use ecloud commands without --private-key flag."
-      );
+      this.log("Migration complete! You can now use ecloud commands without --private-key flag.");
     } catch (err: any) {
       this.error(`Failed to migrate key: ${err.message}`);
     }

@@ -1,12 +1,11 @@
 import { Args, Command, Flags } from "@oclif/core";
 import {
-  getEnvironmentInteractive,
   getEnvironmentConfig,
   getAvailableEnvironments,
   isEnvironmentAvailable,
-  setDefaultEnvironment,
-  getDefaultEnvironment,
 } from "@layr-labs/ecloud-sdk";
+import { setDefaultEnvironment } from "../../../utils/globalConfig";
+import { getEnvironmentInteractive } from "../../../utils/prompts";
 import { confirm } from "@inquirer/prompts";
 
 /**
@@ -42,7 +41,7 @@ async function confirmMainnetEnvironment(env: string): Promise<void> {
 export default class EnvironmentSet extends Command {
   static description = "Set deployment environment";
 
-  static aliases = ['compute:environment:set', 'compute:env:set'];
+  static aliases = ["compute:environment:set", "compute:env:set"];
 
   static args = {
     environment: Args.string(),
@@ -65,7 +64,7 @@ export default class EnvironmentSet extends Command {
     if (!isEnvironmentAvailable(newEnv)) {
       const available = getAvailableEnvironments().join(", ");
       throw new Error(
-        `Unknown environment: ${newEnv}\nRun 'ecloud environment list' to see available environments (${available})`
+        `Unknown environment: ${newEnv}\nRun 'ecloud environment list' to see available environments (${available})`,
       );
     }
 
@@ -87,4 +86,3 @@ export default class EnvironmentSet extends Command {
     console.log(`\n✅ Deployment environment set to ${newEnv}`);
   }
 }
-

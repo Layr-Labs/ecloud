@@ -5,11 +5,7 @@
  */
 
 import { Command } from "@oclif/core";
-import {
-  getPrivateKeyWithSource,
-  getAddressFromPrivateKey,
-  getPrivateKey,
-} from "@layr-labs/ecloud-sdk";
+import { getPrivateKeyWithSource, getAddressFromPrivateKey } from "@layr-labs/ecloud-sdk";
 import { commonFlags } from "../../flags";
 
 export default class AuthWhoami extends Command {
@@ -37,9 +33,7 @@ export default class AuthWhoami extends Command {
       this.log("");
       this.log("To authenticate, use one of:");
       this.log("  ecloud auth login                    # Store key in keyring");
-      this.log(
-        "  export ECLOUD_PRIVATE_KEY=0x...      # Use environment variable"
-      );
+      this.log("  export ECLOUD_PRIVATE_KEY=0x...      # Use environment variable");
       this.log("  ecloud <command> --private-key 0x... # Use flag");
       return;
     }
@@ -51,8 +45,6 @@ export default class AuthWhoami extends Command {
     this.log(`Address: ${address}`);
     this.log(`Source:  ${result.source}`);
     this.log("");
-    this.log(
-      "Note: This key is used for all environments (mainnet, sepolia, etc.)"
-    );
+    this.log("Note: This key is used for all environments (mainnet, sepolia, etc.)");
   }
 }

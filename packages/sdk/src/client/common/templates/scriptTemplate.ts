@@ -31,9 +31,7 @@ export function processScriptTemplate(data: ScriptTemplateData): string {
   }
 
   if (!templatePath) {
-    throw new Error(
-      `Script template not found. Tried: ${possiblePaths.join(", ")}`,
-    );
+    throw new Error(`Script template not found. Tried: ${possiblePaths.join(", ")}`);
   }
 
   const templateContent = fs.readFileSync(templatePath, "utf-8");

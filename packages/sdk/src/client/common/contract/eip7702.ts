@@ -14,13 +14,62 @@ import {
   toBytes,
   concat,
 } from "viem";
-import { hashAuthorization } from "viem/utils";
-import { sign } from "viem/accounts";
 
-import type { WalletClient, PublicClient } from "viem";
+import type { WalletClient, PublicClient, SendTransactionParameters } from "viem";
 import { EnvironmentConfig, Logger } from "../types";
 
 import ERC7702DelegatorABI from "../abis/ERC7702Delegator.json";
+
+import { GasEstimate, formatETH } from "./caller";
+
+/**
+ * Options for estimating batch gas
+ */
+export interface EstimateBatchGasOptions {
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+  executions: Array<{
+    target: Address;
+    value: bigint;
+    callData: Hex;
+  }>;
+}
+
+/**
+ * Estimate gas cost for a batch transaction
+ *
+ * Use this to get cost estimate before prompting user for confirmation.
+ * Note: This provides a conservative estimate since batch transactions
+ * through EIP-7702 can have variable costs.
+ */
+export async function estimateBatchGas(options: EstimateBatchGasOptions): Promise<GasEstimate> {
+  const { publicClient, executions } = options;
+
+  // Get current gas prices
+  const fees = await publicClient.estimateFeesPerGas();
+
+  // For batch operations, we use a conservative estimate
+  // Each execution adds ~50k gas, plus base cost of ~100k for the delegator call
+  const baseGas = 100000n;
+  const perExecutionGas = 50000n;
+  const estimatedGas = baseGas + BigInt(executions.length) * perExecutionGas;
+
+  // Add 20% buffer for safety
+  const gasLimit = (estimatedGas * 120n) / 100n;
+
+  const maxFeePerGas = fees.maxFeePerGas;
+  const maxPriorityFeePerGas = fees.maxPriorityFeePerGas;
+  const maxCostWei = gasLimit * maxFeePerGas;
+  const maxCostEth = formatETH(maxCostWei);
+
+  return {
+    gasLimit,
+    maxFeePerGas,
+    maxPriorityFeePerGas,
+    maxCostWei,
+    maxCostEth,
+  };
+}
 
 export interface ExecuteBatchOptions {
   walletClient: WalletClient;
@@ -31,10 +80,12 @@ export interface ExecuteBatchOptions {
     value: bigint;
     callData: Hex;
   }>;
-  needsConfirmation: boolean;
-  confirmationPrompt: string;
   pendingMessage: string;
-  privateKey?: Hex; // Private key for signing raw hash (required for authorization signing)
+  /** Optional gas params from estimation */
+  gas?: {
+    maxFeePerGas?: bigint;
+    maxPriorityFeePerGas?: bigint;
+  };
 }
 
 /**
@@ -64,20 +115,9 @@ export async function checkERC7702Delegation(
  * 2. Creating authorization if needed
  * 3. Passing the right parameters to viem
  */
-export async function executeBatch(
-  options: ExecuteBatchOptions,
-  logger: Logger,
-): Promise<Hex> {
-  const {
-    walletClient,
-    publicClient,
-    environmentConfig,
-    executions,
-    needsConfirmation,
-    confirmationPrompt,
-    pendingMessage,
-    privateKey,
-  } = options;
+export async function executeBatch(options: ExecuteBatchOptions, logger: Logger): Promise<Hex> {
+  const { walletClient, publicClient, environmentConfig, executions, pendingMessage, gas } =
+    options;
 
   const account = walletClient.account;
   if (!account) {
@@ -140,81 +180,33 @@ export async function executeBatch(
   );
 
   // 4. Create authorization if needed
-  let authorizationList: Array<{
-    chainId: number;
-    address: Address;
-    nonce: number;
-    r: Hex;
-    s: Hex;
-    yParity: number;
-  }> = [];
+  let authorizationList: Awaited<ReturnType<typeof walletClient.signAuthorization>>[] = [];
 
   if (!isDelegated) {
-    if (!privateKey) {
-      throw new Error("Private key required for signing authorization");
-    }
-
     const transactionNonce = await publicClient.getTransactionCount({
       address: account.address,
       blockTag: "pending",
     });
 
     const chainId = await publicClient.getChainId();
-    const authorizationNonce = BigInt(transactionNonce) + 1n;
+    const authorizationNonce = transactionNonce + 1;
 
-    const authorization = {
+    const signedAuthorization = await walletClient.signAuthorization({
+      account,
+      contractAddress: environmentConfig.erc7702DelegatorAddress as Address,
       chainId: Number(chainId),
-      address: environmentConfig.erc7702DelegatorAddress as Address,
       nonce: authorizationNonce,
-    };
-
-    const sighash = hashAuthorization({
-      chainId: authorization.chainId,
-      contractAddress: authorization.address,
-      nonce: Number(authorization.nonce),
     });
 
-    const sig = await sign({
-      hash: sighash,
-      privateKey,
-    });
-
-    const v = Number(sig.v);
-    const yParity = v === 27 ? 0 : 1;
-
-    authorizationList = [
-      {
-        chainId: authorization.chainId,
-        address: authorization.address,
-        nonce: Number(authorization.nonce),
-        r: sig.r as Hex,
-        s: sig.s as Hex,
-        yParity,
-      },
-    ];
+    authorizationList = [signedAuthorization];
   }
 
-  // 5. Send transaction using viem
-  if (needsConfirmation) {
-    try {
-      const fees = await publicClient.estimateFeesPerGas();
-      const estimatedGas = 2000000n;
-      const maxCostWei = estimatedGas * fees.maxFeePerGas;
-      const costEth = formatETH(maxCostWei);
-      logger.info(
-        `${confirmationPrompt} on ${environmentConfig.name} (estimated max cost: ${costEth} ETH)`,
-      );
-      // TODO: Add confirmation prompt
-    } catch (error) {
-      logger.warn(`Could not estimate cost for confirmation: ${error}`);
-    }
-  }
-
+  // 5. Show pending message
   if (pendingMessage) {
     logger.info(pendingMessage);
   }
 
-  const txRequest: any = {
+  const txRequest: SendTransactionParameters = {
     account: walletClient.account!,
     chain,
     to: account.address,
@@ -224,6 +216,14 @@ export async function executeBatch(
 
   if (authorizationList.length > 0) {
     txRequest.authorizationList = authorizationList;
+  }
+
+  // Add gas params if provided
+  if (gas?.maxFeePerGas) {
+    txRequest.maxFeePerGas = gas.maxFeePerGas;
+  }
+  if (gas?.maxPriorityFeePerGas) {
+    txRequest.maxPriorityFeePerGas = gas.maxPriorityFeePerGas;
   }
 
   const hash = await walletClient.sendTransaction(txRequest);
@@ -258,12 +258,4 @@ export async function executeBatch(
   }
 
   return hash;
-}
-
-/**
- * Format Wei to ETH string
- */
-function formatETH(wei: bigint): string {
-  const eth = Number(wei) / 1e18;
-  return eth.toFixed(6);
 }

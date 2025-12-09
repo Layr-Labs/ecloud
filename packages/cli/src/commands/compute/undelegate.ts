@@ -15,11 +15,11 @@ export default class Undelegate extends Command {
   static flags = {
     ...commonFlags,
   };
-    
+
   async run(): Promise<void> {
     const { flags } = await this.parse(Undelegate);
     const app = await createAppClient(flags);
-    
+
     const res = await app.undelegate();
 
     if (!res.tx) {

@@ -41,12 +41,7 @@ export function getKMSKeysForEnvironment(
     build,
     "kms-encryption-public-key.pem",
   );
-  const signingPath = path.join(
-    KEYS_BASE_PATH,
-    environment,
-    build,
-    "kms-signing-public-key.pem",
-  );
+  const signingPath = path.join(KEYS_BASE_PATH, environment, build, "kms-signing-public-key.pem");
 
   if (!fs.existsSync(encryptionPath)) {
     throw new Error(
@@ -55,9 +50,7 @@ export function getKMSKeysForEnvironment(
   }
 
   if (!fs.existsSync(signingPath)) {
-    throw new Error(
-      `Signing key not found at ${signingPath}. Keys must be embedded or provided.`,
-    );
+    throw new Error(`Signing key not found at ${signingPath}. Keys must be embedded or provided.`);
   }
 
   const encryptionKey = fs.readFileSync(encryptionPath);
@@ -79,12 +72,7 @@ export function keysExistForEnvironment(
     build,
     "kms-encryption-public-key.pem",
   );
-  const signingPath = path.join(
-    KEYS_BASE_PATH,
-    environment,
-    build,
-    "kms-signing-public-key.pem",
-  );
+  const signingPath = path.join(KEYS_BASE_PATH, environment, build, "kms-signing-public-key.pem");
 
   return fs.existsSync(encryptionPath) && fs.existsSync(signingPath);
 }

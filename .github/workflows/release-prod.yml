@@ -4,7 +4,7 @@ on:
   push:
     tags:
       - "v*"
-      - "!v*-dev*"  # Exclude all dev tags
+      - "!v*-dev*" # Exclude all dev tags
 
 permissions:
   contents: write
@@ -40,7 +40,7 @@ jobs:
       - name: Verify dev testing occurred
         run: |
           echo "Looking for dev tag with prefix: ${{ env.DEV_VERSION_PREFIX }}"
-          
+
           # Check if dev tag exists (with or without suffix)
           DEV_TAGS=$(git tag -l "${DEV_VERSION_PREFIX}*" | head -10)
           if [ -z "$DEV_TAGS" ]; then
@@ -52,14 +52,14 @@ jobs:
             echo "Must test in dev first: git tag ${DEV_VERSION_PREFIX} or ${DEV_VERSION_PREFIX}.1"
             exit 1
           fi
-          
+
           echo "✅ Found dev tags:"
           echo "$DEV_TAGS"
-          
+
           # Verify dev and prod tags point to same commit
           PROD_COMMIT=$(git rev-list -n 1 "${{ github.ref_name }}")
           echo "Production tag ${{ github.ref_name }} points to commit: $PROD_COMMIT"
-          
+
           for DEV_TAG in $DEV_TAGS; do
             DEV_COMMIT=$(git rev-list -n 1 "$DEV_TAG")
             echo "Dev tag $DEV_TAG points to commit: $DEV_COMMIT"
@@ -70,7 +70,7 @@ jobs:
               exit 0
             fi
           done
-          
+
           echo "ERROR: No dev tag points to the same commit as production tag ${{ github.ref_name }}"
           echo "Production commit: $PROD_COMMIT"
           echo "Dev tags and their commits:"
@@ -91,8 +91,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          registry-url: 'https://registry.npmjs.org'
-          cache: 'pnpm'
+          registry-url: "https://registry.npmjs.org"
+          cache: "pnpm"
 
       - name: Install dependencies
         working-directory: .
@@ -172,4 +172,3 @@ jobs:
           echo "🏷️  Tag: latest"
           echo "🔒 Verified dev testing completed with matching commit from ${{ env.VERIFIED_DEV_TAG }}"
           echo "🔗 Install with: npm install -g @layr-labs/ecloud-cli@latest"
-

@@ -2,6 +2,9 @@
  * Logs command
  *
  * View app logs with optional watch mode
+ *
+ * NOTE: This SDK function is non-interactive. All required parameters must be
+ * provided explicitly. Use the CLI for interactive parameter collection.
  */
 
 import { Address } from "viem";
@@ -9,10 +12,29 @@ import { Logger } from "../../common/types";
 import { defaultLogger } from "../../common/utils";
 import { UserApiClient } from "../../common/utils/userapi";
 import { getEnvironmentConfig } from "../../common/config/environment";
-import { getAppName } from "../../common/registry/appNames";
-import { getOrPromptAppID } from "../../common/utils/prompts";
+import { validateAppID } from "../../common/utils/validation";
 import chalk from "chalk";
 
+/**
+ * Required logs options for SDK (non-interactive)
+ */
+export interface SDKLogsOptions {
+  /** App ID (address) or app name - required */
+  appID: string | Address;
+  /** Watch logs continuously - optional */
+  watch?: boolean;
+  /** Environment name - optional, defaults to 'sepolia' */
+  environment?: string;
+  /** Private key for authenticated requests - optional */
+  privateKey?: string;
+  /** RPC URL - optional, uses environment default */
+  rpcUrl?: string;
+}
+
+/**
+ * Legacy interface for backward compatibility
+ * @deprecated Use SDKLogsOptions instead
+ */
 export interface LogsOptions {
   appID?: string | Address;
   watch?: boolean;
@@ -39,11 +61,7 @@ const WATCH_POLL_INTERVAL_SECONDS = 5;
 /**
  * Format app display
  */
-function formatAppDisplay(
-  environmentName: string,
-  appID: Address,
-  profileName: string,
-): string {
+function formatAppDisplay(environmentName: string, appID: Address, profileName: string): string {
   if (profileName) {
     return `${profileName} (${environmentName}:${appID})`;
   }
@@ -73,7 +91,6 @@ async function watchLogs(
   appID: Address,
   userApiClient: UserApiClient,
   initialLogs: string,
-  logger: Logger,
 ): Promise<void> {
   const tailSize = 65536; // 64KB
 
@@ -101,7 +118,7 @@ async function watchLogs(
       let newLogs: string;
       try {
         newLogs = await userApiClient.getLogs(appID);
-      } catch (err) {
+      } catch {
         // Silently continue on error in watch mode
         continue;
       }
@@ -150,12 +167,23 @@ async function watchLogs(
 
 /**
  * View app logs
+ *
+ * This function is non-interactive and requires appID to be provided explicitly.
+ *
+ * @param options - Required options including appID
+ * @param logger - Optional logger instance
+ * @throws Error if appID is missing or invalid
  */
 export async function logs(
-  options: LogsOptions,
+  options: SDKLogsOptions | LogsOptions,
   logger: Logger = defaultLogger,
 ): Promise<void> {
   console.log();
+
+  // Validate required parameters
+  if (!options.appID) {
+    throw new Error("appID is required for viewing logs");
+  }
 
   // Get environment config
   const environment = options.environment || "sepolia";
@@ -167,29 +195,14 @@ export async function logs(
     throw new Error("RPC URL is required for authenticated requests");
   }
 
-  // Get app ID
-  const appID = await getOrPromptAppID({
-    appID: options.appID,
-    environment,
-    privateKey: options.privateKey,
-    rpcUrl,
-    action: "view logs for",
-  });
+  // Validate app ID (must be a valid address - name resolution is done by CLI)
+  const appID = validateAppID(options.appID);
 
-  // Get app profile name
-  const profileName = getAppName(environment, appID);
-  const formattedApp = formatAppDisplay(
-    environmentConfig.name,
-    appID,
-    profileName,
-  );
+  // Format app display (no profile name in SDK - CLI handles that)
+  const formattedApp = formatAppDisplay(environmentConfig.name, appID, "");
 
   // Create user API client
-  const userApiClient = new UserApiClient(
-    environmentConfig,
-    options.privateKey,
-    rpcUrl,
-  );
+  const userApiClient = new UserApiClient(environmentConfig, options.privateKey, rpcUrl);
 
   // Fetch logs
   let logsText: string;
@@ -209,7 +222,7 @@ export async function logs(
     if (watchMode) {
       logger.info("\nWaiting for logs to become available...");
       console.log();
-      await watchLogs(appID, userApiClient, "", logger);
+      await watchLogs(appID, userApiClient, "");
       return;
     }
 
@@ -231,31 +244,23 @@ export async function logs(
             );
             return;
           case AppStatusResuming:
-            logger.info(
-              `${formattedApp} is currently resuming. Logs will be available shortly.`,
-            );
+            logger.info(`${formattedApp} is currently resuming. Logs will be available shortly.`);
             return;
           case AppStatusStopping:
-            logger.info(
-              `${formattedApp} is currently stopping. Logs may be limited.`,
-            );
+            logger.info(`${formattedApp} is currently stopping. Logs may be limited.`);
             return;
           case AppStatusStopped:
           case AppStatusTerminating:
           case AppStatusTerminated:
           case AppStatusSuspended:
-            logger.info(
-              `${formattedApp} is ${status.toLowerCase()}. Logs are not available.`,
-            );
+            logger.info(`${formattedApp} is ${status.toLowerCase()}. Logs are not available.`);
             return;
           case AppStatusFailed:
-            logger.info(
-              `${formattedApp} has failed. Check the app status for more information.`,
-            );
+            logger.info(`${formattedApp} has failed. Check the app status for more information.`);
             return;
         }
       }
-    } catch (statusErr) {
+    } catch {
       // If we can't get status either, continue to error handling
     }
 
@@ -279,5 +284,5 @@ export async function logs(
   }
 
   // Watch mode: continuously fetch and display new logs
-  await watchLogs(appID, userApiClient, logsText, logger);
+  await watchLogs(appID, userApiClient, logsText);
 }

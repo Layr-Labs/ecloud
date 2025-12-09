@@ -1,9 +1,6 @@
 import { Command } from "@oclif/core";
-import {
-  getAvailableEnvironments,
-  getEnvironmentConfig,
-  getDefaultEnvironment,
-} from "@layr-labs/ecloud-sdk";
+import { getAvailableEnvironments, getEnvironmentConfig } from "@layr-labs/ecloud-sdk";
+import { getDefaultEnvironment } from "../../../utils/globalConfig";
 import chalk from "chalk";
 
 /**
@@ -25,7 +22,7 @@ function getEnvironmentDescription(name: string): string {
 export default class EnvironmentList extends Command {
   static description = "List available deployment environments";
 
-  static aliases = ['compute:environment:list', 'compute:env:list'];
+  static aliases = ["compute:environment:list", "compute:env:list"];
 
   async run() {
     const availableEnvs = getAvailableEnvironments();
@@ -39,11 +36,10 @@ export default class EnvironmentList extends Command {
         const description = getEnvironmentDescription(name) || `- ${config.name}`;
         const marker = currentEnv === name ? ` ${chalk.green("(active)")}` : "";
         console.log(`  • ${name} ${description}${marker}`);
-      } catch (err) {
+      } catch {
         // Skip environments that can't be loaded
         console.log(`  • ${name} (unavailable)`);
       }
     }
   }
 }
-

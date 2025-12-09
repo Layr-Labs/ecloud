@@ -5,6 +5,7 @@ A TypeScript SDK and CLI for deploying and managing applications on eigenx TEE (
 ## Overview
 
 ECloud SDK enables developers to:
+
 - Deploy containerized applications to ecloud TEE
 - Manage application lifecycle (start, stop, terminate)
 - Build and push Docker images with encryption
@@ -20,6 +21,7 @@ This monorepo contains two main packages:
 The core TypeScript SDK for programmatic access to ecloud services.
 
 **Features:**
+
 - Type-safe client for ecloud operations
 - Docker image building and pushing
 - KMS encryption for secure deployments
@@ -31,6 +33,7 @@ The core TypeScript SDK for programmatic access to ecloud services.
 Command-line interface built with oclif for deploying and managing applications.
 
 **Features:**
+
 - Deploy applications from Docker images
 - Manage application lifecycle
 - Environment-aware configuration
@@ -40,7 +43,7 @@ Command-line interface built with oclif for deploying and managing applications.
 
 ### Prerequisites
 
-- Node.js 18+ 
+- Node.js 18+
 - pnpm (recommended) or npm
 - Docker (for building and pushing images)
 
@@ -71,11 +74,13 @@ npx ecloud app deploy \
 ```
 
 **Common Flags:**
+
 - `--private-key`: Your Ethereum private key (or set `ECLOUD_PRIVATE_KEY` env var)
 - `--environment`: Target environment (`sepolia` or `mainnet-alpha`)
 - `--rpc-url`: Custom RPC URL (optional, or set `ECLOUD_RPC_URL` env var)
 
 **Example:**
+
 ```bash
 npx ecloud app deploy \
   --private-key 0x... \
@@ -192,4 +197,3 @@ The deployment process involves several steps:
 ## Support
 
 For issues and questions, please open an issue on GitHub.
-

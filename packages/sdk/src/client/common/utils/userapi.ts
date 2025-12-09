@@ -7,11 +7,8 @@ import FormData from "form-data";
 import { Address, Hex, createPublicClient, http } from "viem";
 import { calculatePermissionSignature } from "./auth";
 import { privateKeyToAccount } from "viem/accounts";
-import { sepolia, mainnet } from "viem/chains";
 import { EnvironmentConfig } from "../types";
-
-import { defaultLogger } from "./logger";
-import { addHexPrefix, stripHexPrefix } from "./helpers";
+import { addHexPrefix, stripHexPrefix, getChainFromID } from "./helpers";
 
 export interface AppInfo {
   address: Address;
@@ -58,24 +55,14 @@ export class UserApiClient {
     this.rpcUrl = rpcUrl;
   }
 
-  async getInfos(
-    appIDs: Address[],
-    addressCount = 1,
-    logger = defaultLogger,
-  ): Promise<AppInfo[]> {
+  async getInfos(appIDs: Address[], addressCount = 1): Promise<AppInfo[]> {
     const count = Math.min(addressCount, MAX_ADDRESS_COUNT);
 
     const endpoint = `${this.config.userApiServerURL}/info`;
     const url = `${endpoint}?${new URLSearchParams({ apps: appIDs.join(",") })}`;
 
-    const res = await this.makeAuthenticatedRequest(
-      url,
-      CanViewSensitiveAppInfoPermission,
-    );
+    const res = await this.makeAuthenticatedRequest(url, CanViewSensitiveAppInfoPermission);
     const result: AppInfoResponse = await res.json();
-
-    // Print to debug logs
-    logger.debug(JSON.stringify(result, undefined, 2));
 
     // optional: verify signatures with KMS key
     // const { signingKey } = getKMSKeysForEnvironment(this.config.name);
@@ -123,10 +110,7 @@ export class UserApiClient {
    */
   async getLogs(appID: Address): Promise<string> {
     const endpoint = `${this.config.userApiServerURL}/logs/${appID}`;
-    const response = await this.makeAuthenticatedRequest(
-      endpoint,
-      CanViewAppLogsPermission,
-    );
+    const response = await this.makeAuthenticatedRequest(endpoint, CanViewAppLogsPermission);
     return await response.text();
   }
 
@@ -189,7 +173,7 @@ export class UserApiClient {
       const fs = await import("fs");
       const path = await import("path");
       const fileName = path.basename(imagePath);
-      
+
       // Read file into buffer
       const fileBuffer = fs.readFileSync(imagePath);
       formData.append("image", fileBuffer, fileName);
@@ -204,10 +188,7 @@ export class UserApiClient {
     // Add auth headers (Authorization and X-eigenx-expiry)
     if (this.account) {
       const expiry = BigInt(Math.floor(Date.now() / 1000) + 5 * 60); // 5 minutes
-      const authHeaders = await this.generateAuthHeaders(
-        CanUpdateAppProfilePermission,
-        expiry,
-      );
+      const authHeaders = await this.generateAuthHeaders(CanUpdateAppProfilePermission, expiry);
       Object.assign(headers, authHeaders);
     }
 
@@ -224,18 +205,17 @@ export class UserApiClient {
       const status = response.status;
 
       if (status !== 200 && status !== 201) {
-        const body = typeof response.data === "string" 
-          ? response.data 
-          : JSON.stringify(response.data);
-        
+        const body =
+          typeof response.data === "string" ? response.data : JSON.stringify(response.data);
+
         // Detect Cloudflare challenge page
         if (status === 403 && body.includes("Cloudflare") && body.includes("challenge-platform")) {
           throw new Error(
             `Cloudflare protection is blocking the request. This is likely due to bot detection.\n` +
-            `Status: ${status}`
+              `Status: ${status}`,
           );
         }
-        
+
         throw new Error(
           `UserAPI request failed: ${status} ${status >= 200 && status < 300 ? "OK" : "Error"} - ${body.substring(0, 500)}${body.length > 500 ? "..." : ""}`,
         );
@@ -288,18 +268,16 @@ export class UserApiClient {
       const statusText = status >= 200 && status < 300 ? "OK" : "Error";
 
       if (status < 200 || status >= 300) {
-        const body = typeof response.data === "string" 
-          ? response.data 
-          : JSON.stringify(response.data);
-        throw new Error(
-          `UserAPI request failed: ${status} ${statusText} - ${body}`,
-        );
+        const body =
+          typeof response.data === "string" ? response.data : JSON.stringify(response.data);
+        throw new Error(`UserAPI request failed: ${status} ${statusText} - ${body}`);
       }
 
       // Return Response-like object for compatibility
       return {
         json: async () => response.data,
-        text: async () => typeof response.data === "string" ? response.data : JSON.stringify(response.data),
+        text: async () =>
+          typeof response.data === "string" ? response.data : JSON.stringify(response.data),
       };
     } catch (error: any) {
       // Handle network errors (fetch failed, connection refused, etc.)
@@ -338,15 +316,8 @@ export class UserApiClient {
       throw new Error("RPC URL required for authenticated requests");
     }
 
-    // Get chain from environment config
-    const chain =
-      this.config.chainID === 11155111n
-        ? sepolia
-        : this.config.chainID === 1n
-          ? mainnet
-          : sepolia;
+    const chain = getChainFromID(this.config.chainID);
 
-    // Create public client to call contract
     const publicClient = createPublicClient({
       chain,
       transport: http(this.rpcUrl),
