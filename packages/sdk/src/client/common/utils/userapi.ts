@@ -1,11 +1,6 @@
-/**
- * UserAPI Client to manage interactions with the coordinator
- */
-
 import axios, { AxiosResponse } from "axios";
-import FormData from "form-data";
 import { Address, Hex, createPublicClient, http } from "viem";
-import { calculatePermissionSignature } from "./auth";
+import { calculatePermissionSignature, calculatePermissionSignatureWithSigner } from "./auth";
 import { privateKeyToAccount } from "viem/accounts";
 import { EnvironmentConfig } from "../types";
 import { addHexPrefix, stripHexPrefix, getChainFromID } from "./helpers";
@@ -275,14 +270,23 @@ export class UserApiClient {
 
   /**
    * Upload app profile information with optional image
+   *
+   * @param appAddress - The app's contract address
+   * @param name - Display name for the app
+   * @param options - Optional fields including website, description, xURL, and image
+   * @param options.image - Image file as Blob or File (browser: from input element, Node.js: new Blob([buffer]))
+   * @param options.imageName - Filename for the image (required if image is provided)
    */
   async uploadAppProfile(
     appAddress: Address,
     name: string,
-    website?: string,
-    description?: string,
-    xURL?: string,
-    imagePath?: string,
+    options?: {
+      website?: string;
+      description?: string;
+      xURL?: string;
+      image?: Blob | File;
+      imageName?: string;
+    },
   ): Promise<{
     name: string;
     website?: string;
@@ -292,38 +296,35 @@ export class UserApiClient {
   }> {
     const endpoint = `${this.config.userApiServerURL}/apps/${appAddress}/profile`;
 
-    // Build multipart form data using form-data package
+    // Build multipart form data using Web FormData API (works in browser and Node.js 18+)
     const formData = new FormData();
 
     // Add required name field
     formData.append("name", name);
 
     // Add optional text fields
-    if (website) {
-      formData.append("website", website);
+    if (options?.website) {
+      formData.append("website", options.website);
     }
-    if (description) {
-      formData.append("description", description);
+    if (options?.description) {
+      formData.append("description", options.description);
     }
-    if (xURL) {
-      formData.append("xURL", xURL);
+    if (options?.xURL) {
+      formData.append("xURL", options.xURL);
     }
 
-    // Add optional image file
-    if (imagePath) {
-      const fs = await import("fs");
-      const path = await import("path");
-      const fileName = path.basename(imagePath);
-
-      // Read file into buffer
-      const fileBuffer = fs.readFileSync(imagePath);
-      formData.append("image", fileBuffer, fileName);
+    // Add optional image file (Blob or File)
+    if (options?.image) {
+      // If it's a File, use its name; otherwise require imageName
+      const fileName =
+        options.image instanceof File ? options.image.name : options.imageName || "image";
+      formData.append("image", options.image, fileName);
     }
 
     // Make authenticated POST request
+    // Note: Don't set Content-Type header manually - axios will set it with the correct boundary
     const headers: Record<string, string> = {
       "x-client-id": this.clientId,
-      ...formData.getHeaders(),
     };
 
     // Add auth headers (Authorization and X-eigenx-expiry)
@@ -529,4 +530,165 @@ function transformAppRelease(raw: unknown): AppRelease | undefined {
     createdAtBlock: readString(raw, "createdAtBlock") ?? readString(raw, "created_at_block"),
     build: raw.build ? transformAppReleaseBuild(raw.build) : undefined,
   };
+}
+/**
+ * UserAPI Client with external signer
+ * Uses a signMessage callback instead of a private key for signing
+ */
+export class UserApiClientWithSigner {
+  constructor(
+    private readonly config: EnvironmentConfig,
+    private readonly signMessage: (message: { raw: Hex }) => Promise<Hex>,
+    private readonly address: Address,
+    private readonly rpcUrl: string,
+  ) {}
+
+  async getInfos(appIDs: Address[], addressCount = 1): Promise<AppInfo[]> {
+    const count = Math.min(addressCount, MAX_ADDRESS_COUNT);
+
+    const endpoint = `${this.config.userApiServerURL}/info`;
+    const url = `${endpoint}?${new URLSearchParams({ apps: appIDs.join(",") })}`;
+
+    const res = await this.makeAuthenticatedRequest(url, CanViewSensitiveAppInfoPermission);
+    const result = (await res.json()) as AppInfoResponse;
+
+    return result.apps.map((app, i) => {
+      // TODO: Implement signature verification
+      // const valid = await verifyKMSSignature(appInfo.addresses, signingKey);
+      // if (!valid) {
+      //   throw new Error(`Invalid signature for app ${appIDs[i]}`);
+      // }
+
+      // Slice derived addresses to requested count
+      const evmAddresses = app.addresses?.data?.evmAddresses?.slice(0, count) || [];
+      const solanaAddresses = app.addresses?.data?.solanaAddresses?.slice(0, count) || [];
+
+      return {
+        address: appIDs[i] as Address,
+        status: app.app_status,
+        ip: app.ip,
+        machineType: app.machine_type,
+        profile: app.profile,
+        metrics: app.metrics,
+        evmAddresses,
+        solanaAddresses,
+      };
+    });
+  }
+
+  async getSKUs(): Promise<{
+    skus: Array<{ sku: string; description: string }>;
+  }> {
+    const endpoint = `${this.config.userApiServerURL}/skus`;
+    const response = await this.makeAuthenticatedRequest(endpoint);
+    const result = (await response.json()) as {
+      skus?: Array<{ sku: string; description: string }>;
+      SKUs?: Array<{ sku: string; description: string }>;
+    };
+    return {
+      skus: result.skus || result.SKUs || [],
+    };
+  }
+
+  async getLogs(appID: Address): Promise<string> {
+    const endpoint = `${this.config.userApiServerURL}/logs/${appID}`;
+    const response = await this.makeAuthenticatedRequest(endpoint, CanViewAppLogsPermission);
+    return await response.text();
+  }
+
+  async getStatuses(appIDs: Address[]): Promise<Array<{ address: Address; status: string }>> {
+    const endpoint = `${this.config.userApiServerURL}/status`;
+    const url = `${endpoint}?${new URLSearchParams({ apps: appIDs.join(",") })}`;
+    const response = await this.makeAuthenticatedRequest(url);
+    const result = (await response.json()) as {
+      apps?: Array<{ address?: string; status?: string; Status?: string }>;
+      Apps?: Array<{ address?: string; status?: string; Status?: string }>;
+    };
+    const apps = result.apps || result.Apps || [];
+    return apps.map((app, i: number) => ({
+      address: (app.address || appIDs[i]) as Address,
+      status: app.status || app.Status || "",
+    }));
+  }
+
+  private async makeAuthenticatedRequest(
+    url: string,
+    permission?: Hex,
+  ): Promise<{ json: () => Promise<unknown>; text: () => Promise<string> }> {
+    const headers: Record<string, string> = {
+      "x-client-id": "ecloud-dashboard/v0.0.1",
+    };
+
+    if (permission) {
+      const expiry = BigInt(Math.floor(Date.now() / 1000) + 5 * 60);
+      const authHeaders = await this.generateAuthHeaders(permission, expiry);
+      Object.assign(headers, authHeaders);
+    }
+
+    try {
+      const response: AxiosResponse = await axios.get(url, {
+        headers,
+        maxRedirects: 0,
+        validateStatus: () => true,
+      });
+
+      const status = response.status;
+      const statusText = status >= 200 && status < 300 ? "OK" : "Error";
+
+      if (status < 200 || status >= 300) {
+        const body =
+          typeof response.data === "string" ? response.data : JSON.stringify(response.data);
+        throw new Error(`UserAPI request failed: ${status} ${statusText} - ${body}`);
+      }
+
+      return {
+        json: async (): Promise<unknown> => response.data,
+        text: async () =>
+          typeof response.data === "string" ? response.data : JSON.stringify(response.data),
+      };
+    } catch (error: unknown) {
+      const err = error as Error & { cause?: { message?: string } };
+      if (
+        err.message?.includes("fetch failed") ||
+        err.message?.includes("ECONNREFUSED") ||
+        err.message?.includes("ENOTFOUND") ||
+        err.cause
+      ) {
+        const cause = err.cause?.message || err.cause || err.message;
+        throw new Error(
+          `Failed to connect to UserAPI at ${url}: ${cause}\n` +
+            `Please check:\n` +
+            `1. Your internet connection\n` +
+            `2. The API server is accessible: ${this.config.userApiServerURL}\n` +
+            `3. Firewall/proxy settings`,
+        );
+      }
+      throw error;
+    }
+  }
+
+  private async generateAuthHeaders(
+    permission: Hex,
+    expiry: bigint,
+  ): Promise<Record<string, string>> {
+    const chain = getChainFromID(this.config.chainID);
+
+    const publicClient = createPublicClient({
+      chain,
+      transport: http(this.rpcUrl),
+    });
+
+    const { signature } = await calculatePermissionSignatureWithSigner({
+      permission,
+      expiry,
+      appControllerAddress: this.config.appControllerAddress as Address,
+      publicClient,
+      signMessage: this.signMessage,
+    });
+
+    return {
+      Authorization: `Bearer ${stripHexPrefix(signature)}`,
+      "X-eigenx-expiry": expiry.toString(),
+    };
+  }
 }

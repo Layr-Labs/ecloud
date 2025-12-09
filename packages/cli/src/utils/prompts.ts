@@ -1804,3 +1804,20 @@ function formatProfileForDisplay(profile: AppProfile): string {
   }
   return output;
 }
+
+export function imagePathToBlob(imagePath?: string): {
+  image: Blob | undefined;
+  imageName: string | undefined;
+} {
+  if (!imagePath) {
+    return { image: undefined, imageName: undefined };
+  }
+  try {
+    const fileBuffer = fs.readFileSync(imagePath);
+    const imageName = path.basename(imagePath);
+    return { image: new Blob([fileBuffer]), imageName };
+  } catch (err) {
+    console.error(`Failed to read image file: ${err}`);
+    return { image: undefined, imageName: undefined };
+  }
+}

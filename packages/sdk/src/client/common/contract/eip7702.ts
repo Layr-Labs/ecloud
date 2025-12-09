@@ -1,12 +1,16 @@
 /**
  * EIP-7702 transaction handling
  *
- * This module handles EIP-7702 delegation and batch execution
+ * This module handles EIP-7702 delegation and batch execution.
+ *
+ * Supports two modes:
+ * 1. Private key mode (CLI): Pass privateKey for direct signing
+ * 2. Wallet client mode: Use walletClient.signAuthorization() for external wallets
  */
 
 import { Address, Hex, encodeFunctionData, encodeAbiParameters, decodeErrorResult } from "viem";
 
-import type { WalletClient, PublicClient, SendTransactionParameters } from "viem";
+import type { WalletClient, PublicClient } from "viem";
 import { EnvironmentConfig, Logger } from "../types";
 
 import ERC7702DelegatorABI from "../abis/ERC7702Delegator.json";
@@ -107,10 +111,7 @@ export interface ExecuteBatchOptions {
   executions: Execution[];
   pendingMessage: string;
   /** Optional gas params from estimation */
-  gas?: {
-    maxFeePerGas?: bigint;
-    maxPriorityFeePerGas?: bigint;
-  };
+  gas?: GasEstimate;
 }
 
 /**
@@ -158,7 +159,10 @@ export async function executeBatch(options: ExecuteBatchOptions, logger: Logger)
   );
 
   // 4. Create authorization if needed
-  let authorizationList: Awaited<ReturnType<typeof walletClient.signAuthorization>>[] = [];
+  // Using a more permissive type because viem's SignAuthorizationReturnType has slightly
+  // different shape than what sendTransaction expects, but they are compatible at runtime
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let authorizationList: Array<any> = [];
 
   if (!isDelegated) {
     const transactionNonce = await publicClient.getTransactionCount({
@@ -169,11 +173,13 @@ export async function executeBatch(options: ExecuteBatchOptions, logger: Logger)
     const chainId = await publicClient.getChainId();
     const authorizationNonce = transactionNonce + 1;
 
+    logger.debug("Using wallet client signing for EIP-7702 authorization");
+
     const signedAuthorization = await walletClient.signAuthorization({
-      account,
+      account: account.address,
       contractAddress: environmentConfig.erc7702DelegatorAddress as Address,
-      chainId: Number(chainId),
-      nonce: authorizationNonce,
+      chainId: chainId,
+      nonce: Number(authorizationNonce),
     });
 
     authorizationList = [signedAuthorization];
@@ -184,7 +190,8 @@ export async function executeBatch(options: ExecuteBatchOptions, logger: Logger)
     logger.info(pendingMessage);
   }
 
-  const txRequest: SendTransactionParameters = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const txRequest: any = {
     account: walletClient.account!,
     chain,
     to: account.address,
@@ -217,6 +224,7 @@ export async function executeBatch(options: ExecuteBatchOptions, logger: Logger)
         data: executeBatchData,
         account: account.address,
       });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (callError: any) {
       if (callError.data) {
         try {
