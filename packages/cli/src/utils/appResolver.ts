@@ -202,9 +202,18 @@ export class AppResolver {
       }
 
       // Fetch info for all apps to get profile names
+      // getInfos has a limit of 10 apps per request, so we chunk and fetch concurrently
       const userApiClient = new UserApiClient(this.environmentConfig, this.privateKey, this.rpcUrl);
+      const CHUNK_SIZE = 10;
 
-      const appInfos = await userApiClient.getInfos(apps);
+      const chunks: Address[][] = [];
+      for (let i = 0; i < apps.length; i += CHUNK_SIZE) {
+        chunks.push(apps.slice(i, i + CHUNK_SIZE));
+      }
+
+      const chunkResults = await Promise.all(chunks.map((chunk) => userApiClient.getInfos(chunk)));
+
+      const appInfos = chunkResults.flat();
 
       // Build profile names map
       const profiles: Record<string, string> = {};
