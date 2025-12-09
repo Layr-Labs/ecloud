@@ -37,6 +37,17 @@ function getContractStatusString(status: number): string {
 }
 
 /**
+ * Format bytes to human readable string
+ */
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
+}
+
+/**
  * Format app status with color
  */
 function formatStatus(status: string): string {
@@ -210,6 +221,23 @@ export default class AppList extends Command {
           ? chalk.gray(apiInfo.machineType)
           : chalk.gray("-");
 
+      // Format metrics if available
+      const metrics = apiInfo?.metrics;
+      const cpuDisplay =
+        metrics?.cpu_utilization_percent !== undefined
+          ? chalk.white(`${metrics.cpu_utilization_percent.toFixed(1)}%`)
+          : chalk.gray("-");
+      const memDisplay =
+        metrics?.memory_utilization_percent !== undefined
+          ? chalk.white(`${metrics.memory_utilization_percent.toFixed(1)}%`)
+          : chalk.gray("-");
+      const memUsageDisplay =
+        metrics?.memory_used_bytes !== undefined && metrics?.memory_total_bytes !== undefined
+          ? chalk.gray(
+              `(${formatBytes(metrics.memory_used_bytes)} / ${formatBytes(metrics.memory_total_bytes)})`,
+            )
+          : "";
+
       // Print app info
       this.log(`  ${nameDisplay}`);
       this.log(`    ID:             ${appIdDisplay}`);
@@ -217,6 +245,8 @@ export default class AppList extends Command {
       this.log(`    Status:         ${statusDisplay}`);
       this.log(`    Instance:       ${machineDisplay}`);
       this.log(`    IP:             ${ipDisplay}`);
+      this.log(`    CPU:            ${cpuDisplay}`);
+      this.log(`    Memory:         ${memDisplay} ${memUsageDisplay}`);
       this.log(`    EVM Address:    ${evmDisplay}`);
       this.log(`    Solana Address: ${solanaDisplay}`);
 
