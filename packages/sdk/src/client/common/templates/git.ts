@@ -31,6 +31,15 @@ export async function fetchTemplate(
   if (!repoURL) {
     throw new Error("repoURL is required");
   }
+  // Prevent command injection: Only allow standard git remote URLs
+  if (
+    !(
+      (repoURL.startsWith("git@") || repoURL.startsWith("https://")) &&
+      !repoURL.startsWith("-")
+    )
+  ) {
+    throw new Error(`Invalid or potentially unsafe repoURL: ${repoURL}`);
+  }
 
   logger.info(`\nCloning repo: ${repoURL} → ${targetDir}\n`);
 
