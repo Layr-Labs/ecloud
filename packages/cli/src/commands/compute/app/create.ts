@@ -17,10 +17,10 @@ export default class AppCreate extends Command {
       description: "Programming language (typescript, golang, rust, python)",
       options: ["typescript", "golang", "rust", "python"],
     }),
-    template: Flags.string({
+    "template-repo": Flags.string({
       description: "Template name or custom template URL",
     }),
-    templateVersion: Flags.string({
+    "template-version": Flags.string({
       description: "Template version/ref",
     }),
     verbose: Flags.boolean({
@@ -46,7 +46,7 @@ export default class AppCreate extends Command {
     const language = flags.language || (await promptLanguage());
 
     // 3. Get template interactively if not provided
-    const template = flags.template || (await selectTemplateInteractive(language));
+    const template = flags["template-repo"] || (await selectTemplateInteractive(language));
 
     // 4. Call SDK with all gathered parameters
     return createApp(
@@ -54,7 +54,7 @@ export default class AppCreate extends Command {
         name,
         language,
         template: template || undefined,
-        templateVersion: flags.templateVersion,
+        templateVersion: flags["template-version"],
         verbose: flags.verbose,
       },
       logger,
