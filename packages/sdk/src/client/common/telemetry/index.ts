@@ -1,6 +1,6 @@
 /**
  * Telemetry module for ECloud SDK and CLI
- * 
+ *
  * Provides telemetry functionality matching the Go implementation.
  * Supports both "ecloud-cli" and "ecloud-sdk" namespaces.
  */
@@ -36,7 +36,7 @@ export interface TelemetryClientOptions {
 
 /**
  * Create a telemetry client
- * 
+ *
  * @param environment - Application environment information (must include userUUID)
  * @param namespace - Namespace for telemetry events ("ecloud-cli" or "ecloud-sdk")
  * @param options - Optional telemetry client options
@@ -69,7 +69,7 @@ export function createTelemetryClient(
 
   try {
     return new PostHogClient(environment, namespace, resolvedApiKey, endpoint);
-  } catch (err) {
+  } catch {
     // If initialization fails, return noop client
     return new NoopClient();
   }
@@ -77,7 +77,7 @@ export function createTelemetryClient(
 
 /**
  * Create an AppEnvironment from current system information
- * 
+ *
  * @param userUUID - User UUID for identification (required - no I/O in SDK)
  * @param cliVersion - Optional CLI version (for CLI usage)
  * @param osOverride - Optional OS override (defaults to current platform)
@@ -100,7 +100,7 @@ export function createAppEnvironment(
 
 /**
  * Emit metrics from a metrics context
- * 
+ *
  * @param client - Telemetry client to use
  * @param context - Metrics context containing metrics to emit
  * @returns Promise that resolves when all metrics are emitted
@@ -130,9 +130,8 @@ export async function emitMetrics(
 
     try {
       await client.addMetric(metricWithProperties);
-    } catch (err) {
+    } catch {
       // Silently ignore telemetry errors
     }
   }
 }
-

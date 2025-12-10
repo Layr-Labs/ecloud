@@ -20,22 +20,22 @@ export default class Undelegate extends Command {
   async run(): Promise<void> {
     return withTelemetry(this, async () => {
       const { flags } = await this.parse(Undelegate);
-    const compute = await createComputeClient(flags);
+      const compute = await createComputeClient(flags);
 
-    // Check if account is currently delegated
-    const isDelegated = await compute.app.isDelegated();
-    if (!isDelegated) {
-      this.log(`\n${chalk.gray(`Account is not currently delegated`)}`);
-      return;
-    }
+      // Check if account is currently delegated
+      const isDelegated = await compute.app.isDelegated();
+      if (!isDelegated) {
+        this.log(`\n${chalk.gray(`Account is not currently delegated`)}`);
+        return;
+      }
 
-    const res = await compute.app.undelegate();
+      const res = await compute.app.undelegate();
 
-    if (!res.tx) {
-      this.log(`\n${chalk.gray(`Undelegate aborted`)}`);
-    } else {
-      this.log(`\n✅ ${chalk.green(`Undelegated successfully`)}`);
-    }
+      if (!res.tx) {
+        this.log(`\n${chalk.gray(`Undelegate aborted`)}`);
+      } else {
+        this.log(`\n✅ ${chalk.green(`Undelegated successfully`)}`);
+      }
     });
   }
 }

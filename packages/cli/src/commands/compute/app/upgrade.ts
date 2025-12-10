@@ -76,123 +76,132 @@ export default class AppUpgrade extends Command {
     return withTelemetry(this, async () => {
       const { args, flags } = await this.parse(AppUpgrade);
 
-    // Create CLI logger
-    const logger = {
-      info: (msg: string) => this.log(msg),
-      warn: (msg: string) => this.warn(msg),
-      error: (msg: string) => this.error(msg),
-      debug: (msg: string) => flags.verbose && this.log(msg),
-    };
+      // Create CLI logger
+      const logger = {
+        info: (msg: string) => this.log(msg),
+        warn: (msg: string) => this.warn(msg),
+        error: (msg: string) => this.error(msg),
+        debug: (msg: string) => flags.verbose && this.log(msg),
+      };
 
-    // Get environment config
-    const environment = flags.environment || "sepolia";
-    const environmentConfig = getEnvironmentConfig(environment);
-    const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
+      // Get environment config
+      const environment = flags.environment || "sepolia";
+      const environmentConfig = getEnvironmentConfig(environment);
+      const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
 
-    // Get private key interactively if not provided
-    const privateKey = await getPrivateKeyInteractive(flags["private-key"]);
+      // Get private key interactively if not provided
+      const privateKey = await getPrivateKeyInteractive(flags["private-key"]);
 
-    // 1. Get app ID interactively if not provided
-    const appID = await getOrPromptAppID({
-      appID: args["app-id"],
-      environment,
-      privateKey,
-      rpcUrl,
-      action: "upgrade",
-    });
-
-    // 2. Get dockerfile path interactively
-    const dockerfilePath = await getDockerfileInteractive(flags.dockerfile);
-    const buildFromDockerfile = dockerfilePath !== "";
-
-    // 3. Get image reference interactively (context-aware)
-    const imageRef = await getImageReferenceInteractive(flags["image-ref"], buildFromDockerfile);
-
-    // 4. Get env file path interactively
-    const envFilePath = await getEnvFileInteractive(flags["env-file"]);
-
-    // 5. Get current instance type (best-effort, used as default)
-    let currentInstanceType = "";
-    try {
-      const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl, getClientId());
-      const infos = await userApiClient.getInfos([appID], 1);
-      if (infos.length > 0) {
-        currentInstanceType = infos[0].machineType || "";
-      }
-    } catch {
-      // Ignore errors - will use first available as default
-    }
-
-    // 6. Get instance type interactively
-    const availableTypes = await fetchAvailableInstanceTypes(environmentConfig, privateKey, rpcUrl);
-    const instanceType = await getInstanceTypeInteractive(
-      flags["instance-type"],
-      currentInstanceType,
-      availableTypes,
-    );
-
-    // 7. Get log visibility interactively
-    const logSettings = await getLogSettingsInteractive(
-      flags["log-visibility"] as LogVisibility | undefined,
-    );
-
-    // 8. Get resource usage monitoring interactively
-    const resourceUsageMonitoring = await getResourceUsageMonitoringInteractive(
-      flags["resource-usage-monitoring"] as ResourceUsageMonitoring | undefined,
-    );
-
-    // 9. Prepare upgrade (builds image, pushes to registry, prepares batch, estimates gas)
-    const logVisibility = logSettings.publicLogs
-      ? "public"
-      : logSettings.logRedirect
-        ? "private"
-        : "off";
-
-    const { prepared, gasEstimate } = await prepareUpgrade(
-      {
-        appId: appID,
+      // 1. Get app ID interactively if not provided
+      const appID = await getOrPromptAppID({
+        appID: args["app-id"],
+        environment,
         privateKey,
         rpcUrl,
-        environment,
-        dockerfilePath,
-        imageRef,
-        envFilePath,
-        instanceType,
-        logVisibility,
-        resourceUsageMonitoring,
-        skipTelemetry: true,
-      },
-      logger,
-    );
+        action: "upgrade",
+      });
 
-    // 10. Show gas estimate and prompt for confirmation on mainnet
-    this.log(`\nEstimated transaction cost: ${chalk.cyan(gasEstimate.maxCostEth)} ETH`);
+      // 2. Get dockerfile path interactively
+      const dockerfilePath = await getDockerfileInteractive(flags.dockerfile);
+      const buildFromDockerfile = dockerfilePath !== "";
 
-    if (isMainnet(environmentConfig)) {
-      const confirmed = await confirm(`Continue with upgrade?`);
-      if (!confirmed) {
-        this.log(`\n${chalk.gray(`Upgrade cancelled`)}`);
-        return;
+      // 3. Get image reference interactively (context-aware)
+      const imageRef = await getImageReferenceInteractive(flags["image-ref"], buildFromDockerfile);
+
+      // 4. Get env file path interactively
+      const envFilePath = await getEnvFileInteractive(flags["env-file"]);
+
+      // 5. Get current instance type (best-effort, used as default)
+      let currentInstanceType = "";
+      try {
+        const userApiClient = new UserApiClient(
+          environmentConfig,
+          privateKey,
+          rpcUrl,
+          getClientId(),
+        );
+        const infos = await userApiClient.getInfos([appID], 1);
+        if (infos.length > 0) {
+          currentInstanceType = infos[0].machineType || "";
+        }
+      } catch {
+        // Ignore errors - will use first available as default
       }
-    }
 
-    // 11. Execute the upgrade
-    const res = await executeUpgrade(
-      prepared,
-      {
-        maxFeePerGas: gasEstimate.maxFeePerGas,
-        maxPriorityFeePerGas: gasEstimate.maxPriorityFeePerGas,
-      },
-      logger,
-      true, // skipTelemetry
-    );
+      // 6. Get instance type interactively
+      const availableTypes = await fetchAvailableInstanceTypes(
+        environmentConfig,
+        privateKey,
+        rpcUrl,
+      );
+      const instanceType = await getInstanceTypeInteractive(
+        flags["instance-type"],
+        currentInstanceType,
+        availableTypes,
+      );
 
-    // 12. Watch until upgrade completes
-    await watchUpgrade(res.appId, privateKey, rpcUrl, environment, logger, getClientId(), true); // skipTelemetry
+      // 7. Get log visibility interactively
+      const logSettings = await getLogSettingsInteractive(
+        flags["log-visibility"] as LogVisibility | undefined,
+      );
 
-    this.log(
-      `\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${res.appId}, image: ${res.imageRef})`)}`)}`,
-    );
+      // 8. Get resource usage monitoring interactively
+      const resourceUsageMonitoring = await getResourceUsageMonitoringInteractive(
+        flags["resource-usage-monitoring"] as ResourceUsageMonitoring | undefined,
+      );
+
+      // 9. Prepare upgrade (builds image, pushes to registry, prepares batch, estimates gas)
+      const logVisibility = logSettings.publicLogs
+        ? "public"
+        : logSettings.logRedirect
+          ? "private"
+          : "off";
+
+      const { prepared, gasEstimate } = await prepareUpgrade(
+        {
+          appId: appID,
+          privateKey,
+          rpcUrl,
+          environment,
+          dockerfilePath,
+          imageRef,
+          envFilePath,
+          instanceType,
+          logVisibility,
+          resourceUsageMonitoring,
+          skipTelemetry: true,
+        },
+        logger,
+      );
+
+      // 10. Show gas estimate and prompt for confirmation on mainnet
+      this.log(`\nEstimated transaction cost: ${chalk.cyan(gasEstimate.maxCostEth)} ETH`);
+
+      if (isMainnet(environmentConfig)) {
+        const confirmed = await confirm(`Continue with upgrade?`);
+        if (!confirmed) {
+          this.log(`\n${chalk.gray(`Upgrade cancelled`)}`);
+          return;
+        }
+      }
+
+      // 11. Execute the upgrade
+      const res = await executeUpgrade(
+        prepared,
+        {
+          maxFeePerGas: gasEstimate.maxFeePerGas,
+          maxPriorityFeePerGas: gasEstimate.maxPriorityFeePerGas,
+        },
+        logger,
+        true, // skipTelemetry
+      );
+
+      // 12. Watch until upgrade completes
+      await watchUpgrade(res.appId, privateKey, rpcUrl, environment, logger, getClientId(), true); // skipTelemetry
+
+      this.log(
+        `\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${res.appId}, image: ${res.imageRef})`)}`)}`,
+      );
     });
   }
 }

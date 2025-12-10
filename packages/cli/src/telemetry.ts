@@ -1,6 +1,6 @@
 /**
  * Telemetry utilities for CLI commands
- * 
+ *
  * Provides helpers to wrap command execution with telemetry tracking
  */
 
@@ -28,10 +28,10 @@ export function createCLITelemetryClient(): TelemetryClient {
   // Get user UUID from CLI's globalConfig (handles I/O)
   const userUUID = getOrCreateUserUUID();
   const environment = createAppEnvironment(userUUID);
-  
+
   // Get telemetry preference from CLI's globalConfig
   const telemetryEnabled = getGlobalTelemetryPreference();
-  
+
   return createTelemetryClient(environment, "ecloud-cli", {
     telemetryEnabled: telemetryEnabled === true, // Only enabled if explicitly set to true
   });
@@ -39,21 +39,18 @@ export function createCLITelemetryClient(): TelemetryClient {
 
 /**
  * Wrap a command execution with telemetry
- * 
+ *
  * @param command - The CLI command instance
  * @param action - The command action to execute
  * @returns The result of the action
  */
-export async function withTelemetry<T>(
-  command: Command,
-  action: () => Promise<T>,
-): Promise<T> {
+export async function withTelemetry<T>(command: Command, action: () => Promise<T>): Promise<T> {
   const client = createCLITelemetryClient();
   const metrics = createMetricsContext();
 
   // Set source to identify CLI usage
   metrics.properties["source"] = "ecloud-cli";
-  
+
   // Set command name in properties
   metrics.properties["command"] = command.id || command.constructor.name;
 
@@ -100,9 +97,8 @@ export async function withTelemetry<T>(
     try {
       await emitMetrics(client, metrics);
       await client.close();
-    } catch (err) {
+    } catch {
       // Silently ignore telemetry errors
     }
   }
 }
-

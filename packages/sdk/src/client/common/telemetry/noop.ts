@@ -29,5 +29,3 @@ export class NoopClient implements TelemetryClient {
 export function isNoopClient(client: TelemetryClient): boolean {
   return client instanceof NoopClient;
 }
-
-

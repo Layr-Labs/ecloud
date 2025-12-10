@@ -1,6 +1,6 @@
 /**
  * PostHog telemetry client implementation
- * 
+ *
  * Uses the official posthog-node library
  */
 
@@ -15,12 +15,7 @@ export class PostHogClient implements TelemetryClient {
   private readonly namespace: string;
   private readonly appEnvironment: AppEnvironment;
 
-  constructor(
-    environment: AppEnvironment,
-    namespace: string,
-    apiKey: string,
-    endpoint?: string,
-  ) {
+  constructor(environment: AppEnvironment, namespace: string, apiKey: string, endpoint?: string) {
     this.namespace = namespace;
     this.appEnvironment = environment;
 
@@ -69,7 +64,7 @@ export class PostHogClient implements TelemetryClient {
         event: this.namespace,
         properties: props,
       });
-    } catch (err) {
+    } catch {
       // Silently ignore telemetry errors
     }
   }
@@ -82,7 +77,7 @@ export class PostHogClient implements TelemetryClient {
       // Shutdown PostHog client and flush any pending events
       // shutdown() is synchronous but internally handles async cleanup
       this.client.shutdown();
-    } catch (err) {
+    } catch {
       // Silently ignore errors during shutdown
     }
   }
@@ -109,18 +104,12 @@ export function getPostHogAPIKey(): string | undefined {
 
   // Return build-time constant if available
   // @ts-ignore - POSTHOG_API_KEY_BUILD_TIME is injected at build time
-  return typeof POSTHOG_API_KEY_BUILD_TIME !== "undefined"
-    ? POSTHOG_API_KEY_BUILD_TIME
-    : undefined;
+  return typeof POSTHOG_API_KEY_BUILD_TIME !== "undefined" ? POSTHOG_API_KEY_BUILD_TIME : undefined;
 }
 
 /**
  * Get PostHog endpoint from environment variable or default
  */
 export function getPostHogEndpoint(): string {
-  return (
-    process.env.ECLOUD_POSTHOG_ENDPOINT ||
-    "https://us.i.posthog.com"
-  );
+  return process.env.ECLOUD_POSTHOG_ENDPOINT || "https://us.i.posthog.com";
 }
-

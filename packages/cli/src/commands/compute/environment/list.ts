@@ -28,21 +28,21 @@ export default class EnvironmentList extends Command {
   async run() {
     return withTelemetry(this, async () => {
       const availableEnvs = getAvailableEnvironments();
-    const currentEnv = getDefaultEnvironment();
+      const currentEnv = getDefaultEnvironment();
 
-    console.log("Available deployment environments:");
+      console.log("Available deployment environments:");
 
-    for (const name of availableEnvs) {
-      try {
-        const config = getEnvironmentConfig(name);
-        const description = getEnvironmentDescription(name) || `- ${config.name}`;
-        const marker = currentEnv === name ? ` ${chalk.green("(active)")}` : "";
-        console.log(`  • ${name} ${description}${marker}`);
-      } catch {
-        // Skip environments that can't be loaded
-        console.log(`  • ${name} (unavailable)`);
+      for (const name of availableEnvs) {
+        try {
+          const config = getEnvironmentConfig(name);
+          const description = getEnvironmentDescription(name) || `- ${config.name}`;
+          const marker = currentEnv === name ? ` ${chalk.green("(active)")}` : "";
+          console.log(`  • ${name} ${description}${marker}`);
+        } catch {
+          // Skip environments that can't be loaded
+          console.log(`  • ${name} (unavailable)`);
+        }
       }
-    }
     });
   }
 }

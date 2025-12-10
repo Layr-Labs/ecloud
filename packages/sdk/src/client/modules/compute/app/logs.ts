@@ -265,7 +265,9 @@ export async function logs(
                 );
                 return;
               case AppStatusResuming:
-                logger.info(`${formattedApp} is currently resuming. Logs will be available shortly.`);
+                logger.info(
+                  `${formattedApp} is currently resuming. Logs will be available shortly.`,
+                );
                 return;
               case AppStatusStopping:
                 logger.info(`${formattedApp} is currently stopping. Logs may be limited.`);
@@ -277,7 +279,9 @@ export async function logs(
                 logger.info(`${formattedApp} is ${status.toLowerCase()}. Logs are not available.`);
                 return;
               case AppStatusFailed:
-                logger.info(`${formattedApp} has failed. Check the app status for more information.`);
+                logger.info(
+                  `${formattedApp} has failed. Check the app status for more information.`,
+                );
                 return;
             }
           }

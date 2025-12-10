@@ -29,58 +29,60 @@ export default class AppLifecycleStart extends Command {
   async run() {
     return withTelemetry(this, async () => {
       const { args, flags } = await this.parse(AppLifecycleStart);
-    const compute = await createComputeClient(flags);
+      const compute = await createComputeClient(flags);
 
-    // Get environment config
-    const environment = flags.environment || "sepolia";
-    const environmentConfig = getEnvironmentConfig(environment);
+      // Get environment config
+      const environment = flags.environment || "sepolia";
+      const environmentConfig = getEnvironmentConfig(environment);
 
-    // Get RPC URL (needed for contract queries and authentication)
-    const rpcUrl = flags.rpcUrl || environmentConfig.defaultRPCURL;
+      // Get RPC URL (needed for contract queries and authentication)
+      const rpcUrl = flags.rpcUrl || environmentConfig.defaultRPCURL;
 
-    // Get private key for gas estimation
-    const privateKey = flags["private-key"] || (await getPrivateKeyInteractive(environment));
+      // Get private key for gas estimation
+      const privateKey = flags["private-key"] || (await getPrivateKeyInteractive(environment));
 
-    // Resolve app ID (prompt if not provided)
-    const appId = await getOrPromptAppID({
-      appID: args["app-id"],
-      environment: flags["environment"]!,
-      privateKey,
-      rpcUrl,
-      action: "start",
-    });
+      // Resolve app ID (prompt if not provided)
+      const appId = await getOrPromptAppID({
+        appID: args["app-id"],
+        environment: flags["environment"]!,
+        privateKey,
+        rpcUrl,
+        action: "start",
+      });
 
-    // Estimate gas cost
-    const callData = encodeStartAppData(appId as `0x${string}`);
-    const estimate = await estimateTransactionGas({
-      privateKey,
-      rpcUrl,
-      environmentConfig,
-      to: environmentConfig.appControllerAddress as `0x${string}`,
-      data: callData,
-    });
+      // Estimate gas cost
+      const callData = encodeStartAppData(appId as `0x${string}`);
+      const estimate = await estimateTransactionGas({
+        privateKey,
+        rpcUrl,
+        environmentConfig,
+        to: environmentConfig.appControllerAddress as `0x${string}`,
+        data: callData,
+      });
 
-    // On mainnet, prompt for confirmation with cost
-    if (isMainnet(environmentConfig)) {
-      const confirmed = await confirm(`This will cost up to ${estimate.maxCostEth} ETH. Continue?`);
-      if (!confirmed) {
-        this.log(`\n${chalk.gray(`Start cancelled`)}`);
-        return;
+      // On mainnet, prompt for confirmation with cost
+      if (isMainnet(environmentConfig)) {
+        const confirmed = await confirm(
+          `This will cost up to ${estimate.maxCostEth} ETH. Continue?`,
+        );
+        if (!confirmed) {
+          this.log(`\n${chalk.gray(`Start cancelled`)}`);
+          return;
+        }
       }
-    }
 
-    const res = await compute.app.start(appId, {
-      gas: {
-        maxFeePerGas: estimate.maxFeePerGas,
-        maxPriorityFeePerGas: estimate.maxPriorityFeePerGas,
-      },
-    });
+      const res = await compute.app.start(appId, {
+        gas: {
+          maxFeePerGas: estimate.maxFeePerGas,
+          maxPriorityFeePerGas: estimate.maxPriorityFeePerGas,
+        },
+      });
 
-    if (!res.tx) {
-      this.log(`\n${chalk.gray(`Start failed`)}`);
-    } else {
-      this.log(`\n✅ ${chalk.green(`App started successfully`)}`);
-    }
+      if (!res.tx) {
+        this.log(`\n${chalk.gray(`Start failed`)}`);
+      } else {
+        this.log(`\n✅ ${chalk.green(`App started successfully`)}`);
+      }
     });
   }
 }

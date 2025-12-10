@@ -1,8 +1,5 @@
 import { Command, Flags } from "@oclif/core";
-import {
-  setGlobalTelemetryPreference,
-  getGlobalTelemetryPreference,
-} from "../utils/globalConfig";
+import { setGlobalTelemetryPreference, getGlobalTelemetryPreference } from "../utils/globalConfig";
 import { withTelemetry } from "../telemetry";
 
 export default class Telemetry extends Command {
@@ -85,4 +82,3 @@ export default class Telemetry extends Command {
     this.log("\n❌ Telemetry disabled");
   }
 }
-

@@ -88,22 +88,22 @@ export default class Upgrade extends Command {
     return withTelemetry(this, async () => {
       const { flags } = await this.parse(Upgrade);
 
-    const buildType = getBuildType();
-    const buildTag = buildType === "dev" ? "dev" : "latest";
+      const buildType = getBuildType();
+      const buildTag = buildType === "dev" ? "dev" : "latest";
 
-    try {
-      upgradePackage(flags["package-manager"], buildTag);
-      this.log(`\n${chalk.green(`Upgrade successful!`)}`);
-    } catch (e) {
-      this.log(`\n${chalk.red(`Upgrade failed!`)}`);
-      this.log(
-        `\n${chalk.red(`Cannot determine package manager to upgrade ${ecloudCLIPackage}.`)}`,
-      );
-      this.log(
-        `\n${chalk.red(`Use ${chalk.yellow("`package-manager`")} flag to instruct upgrade (<supported managers: npm|pnpm|yarn|yarnBerry|bun>).`)}\n`,
-      );
-      throw e;
-    }
+      try {
+        upgradePackage(flags["package-manager"], buildTag);
+        this.log(`\n${chalk.green(`Upgrade successful!`)}`);
+      } catch (e) {
+        this.log(`\n${chalk.red(`Upgrade failed!`)}`);
+        this.log(
+          `\n${chalk.red(`Cannot determine package manager to upgrade ${ecloudCLIPackage}.`)}`,
+        );
+        this.log(
+          `\n${chalk.red(`Use ${chalk.yellow("`package-manager`")} flag to instruct upgrade (<supported managers: npm|pnpm|yarn|yarnBerry|bun>).`)}\n`,
+        );
+        throw e;
+      }
     });
   }
 }

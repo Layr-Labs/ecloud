@@ -2,7 +2,7 @@
  * MetricsContext management
  */
 
-import { Metric, MetricsContext } from "./types";
+import { MetricsContext } from "./types";
 
 /**
  * Create a new metrics context
@@ -18,11 +18,7 @@ export function createMetricsContext(): MetricsContext {
 /**
  * Add a metric to the context without dimensions
  */
-export function addMetric(
-  context: MetricsContext,
-  name: string,
-  value: number,
-): void {
+export function addMetric(context: MetricsContext, name: string, value: number): void {
   addMetricWithDimensions(context, name, value, {});
 }
 
@@ -41,5 +37,3 @@ export function addMetricWithDimensions(
     dimensions,
   });
 }
-
-

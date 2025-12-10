@@ -43,5 +43,3 @@ export interface TelemetryClient {
    */
   close(): Promise<void>;
 }
-
-

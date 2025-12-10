@@ -264,12 +264,12 @@ export function getOrCreateUserUUID(): string {
 
   // Generate a new UUID (v4)
   const uuid = generateUUID();
-  
+
   // Save it to config
   config.user_uuid = uuid;
   config.first_run = false;
   saveGlobalConfig(config);
-  
+
   return uuid;
 }
 
@@ -283,13 +283,18 @@ function generateUUID(): string {
   // Per RFC 4122 section 4.4, set bits for version and `clock_seq_hi_and_reserved`
   bytes[6] = (bytes[6] & 0x0f) | 0x40; // Version 4
   bytes[8] = (bytes[8] & 0x3f) | 0x80; // Variant 10
-  const hex = Array.from(bytes, b => b.toString(16).padStart(2, '0'));
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0"));
   return (
-    hex.slice(0, 4).join('') + hex.slice(4, 6).join('') + '-' +
-    hex.slice(6, 8).join('') + '-' +
-    hex.slice(8, 10).join('') + '-' +
-    hex.slice(10, 12).join('') + '-' +
-    hex.slice(12, 16).join('')
+    hex.slice(0, 4).join("") +
+    hex.slice(4, 6).join("") +
+    "-" +
+    hex.slice(6, 8).join("") +
+    "-" +
+    hex.slice(8, 10).join("") +
+    "-" +
+    hex.slice(10, 12).join("") +
+    "-" +
+    hex.slice(12, 16).join("")
   );
 }
 
@@ -304,4 +309,3 @@ export function saveUserUUID(userUUID: string): void {
     saveGlobalConfig(config);
   }
 }
-

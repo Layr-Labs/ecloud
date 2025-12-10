@@ -1,6 +1,6 @@
 /**
  * Telemetry wrapper utilities for SDK functions
- * 
+ *
  * Provides helpers to wrap SDK function execution with telemetry tracking
  */
 
@@ -11,7 +11,6 @@ import {
   addMetric,
   addMetricWithDimensions,
   emitMetrics,
-  type TelemetryClient,
 } from "./index";
 import { randomUUID } from "crypto";
 
@@ -60,7 +59,7 @@ export interface TelemetryWrapperOptions {
 
 /**
  * Wrap a function execution with telemetry
- * 
+ *
  * @param options - Telemetry wrapper options
  * @param action - The function to execute
  * @returns The result of the action
@@ -77,7 +76,7 @@ export async function withSDKTelemetry<T>(
   // Generate a random UUID if not provided (for SDK usage outside CLI)
   // This ensures each SDK session has a unique identifier
   const userUUID = options.userUUID || generateRandomUUID();
-  
+
   const environment = createAppEnvironment(userUUID);
   const client = createTelemetryClient(environment, "ecloud-sdk", {
     telemetryEnabled: options.telemetryEnabled,
@@ -88,7 +87,7 @@ export async function withSDKTelemetry<T>(
 
   // Set source to identify SDK usage
   metrics.properties["source"] = "ecloud-sdk";
-  
+
   // Set function name in properties
   metrics.properties["function"] = options.functionName;
 
@@ -126,9 +125,8 @@ export async function withSDKTelemetry<T>(
     try {
       await emitMetrics(client, metrics);
       await client.close();
-    } catch (err) {
+    } catch {
       // Silently ignore telemetry errors
     }
   }
 }
-
