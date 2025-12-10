@@ -140,15 +140,13 @@ export default class AppInfo extends Command {
     environmentConfig: ReturnType<typeof getEnvironmentConfig>,
     addressCount: number,
   ) {
-    const REFRESH_INTERVAL = 5000; // 5 seconds
+    const REFRESH_INTERVAL_SECONDS = 5;
 
     // Initial display
     await this.displayAppInfo(appID, userApiClient, rpcUrl, environmentConfig, addressCount, true);
-    this.log(chalk.gray("Watching for changes... (press Ctrl+C to exit)"));
 
     while (true) {
-      // Wait for the refresh interval with countdown display
-      await this.waitWithCountdown(REFRESH_INTERVAL);
+      await showCountdown(REFRESH_INTERVAL_SECONDS);
 
       // Refresh the display
       await this.displayAppInfo(
@@ -159,16 +157,15 @@ export default class AppInfo extends Command {
         addressCount,
         true,
       );
-      this.log(chalk.gray("Watching for changes... (press Ctrl+C to exit)"));
     }
   }
+}
 
-  private async waitWithCountdown(ms: number): Promise<void> {
-    const seconds = Math.ceil(ms / 1000);
-    for (let i = seconds; i > 0; i--) {
-      process.stdout.write(chalk.gray(`\rRefreshing in ${i}s... `));
+async function showCountdown(seconds: number): Promise<void> {
+  for (let i = seconds; i >= 0; i--) {
+    process.stdout.write(chalk.gray(`\rRefreshing in ${i}...`));
+    if (i > 0) {
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
-    process.stdout.write("\r" + " ".repeat(30) + "\r"); // Clear the countdown line
   }
 }
