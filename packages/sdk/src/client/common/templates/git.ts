@@ -7,11 +7,12 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import { exec } from "child_process";
+import { exec, execFile } from "child_process";
 import { promisify } from "util";
 import { Logger } from "../types";
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export interface GitFetcherConfig {
   verbose: boolean;
@@ -40,7 +41,11 @@ export async function fetchTemplate(
     });
 
     // Checkout the desired ref
-    await execAsync(`git -C ${targetDir} checkout --quiet ${ref}`);
+    await execFileAsync(
+      "git",
+      ["-C", targetDir, "checkout", "--quiet", ref],
+      { maxBuffer: 10 * 1024 * 1024 },
+    );
 
     // Update submodules
     await execAsync(`git -C ${targetDir} submodule update --init --recursive --progress`);
@@ -114,22 +119,22 @@ async function cloneSparse(
 ): Promise<void> {
   try {
     // Initialize git repository
-    await execAsync(`git init ${tempDir}`);
+    await execFileAsync("git", ["init", tempDir]);
 
     // Add remote
-    await execAsync(`git -C ${tempDir} remote add origin ${repoURL}`);
+    await execFileAsync("git", ["-C", tempDir, "remote", "add", "origin", repoURL]);
 
     // Enable sparse checkout
-    await execAsync(`git -C ${tempDir} config core.sparseCheckout true`);
+    await execFileAsync("git", ["-C", tempDir, "config", "core.sparseCheckout", "true"]);
 
     // Set sparse checkout path
     const sparseCheckoutPath = path.join(tempDir, ".git/info/sparse-checkout");
     fs.writeFileSync(sparseCheckoutPath, `${subPath}\n`);
 
     // Fetch and checkout
-    await execAsync(`git -C ${tempDir} fetch origin ${ref}`);
+    await execFileAsync("git", ["-C", tempDir, "fetch", "origin", ref]);
 
-    await execAsync(`git -C ${tempDir} checkout ${ref}`);
+    await execFileAsync("git", ["-C", tempDir, "checkout", ref]);
   } catch (error: any) {
     throw new Error(`Failed to clone sparse repository: ${error.message}`);
   }
