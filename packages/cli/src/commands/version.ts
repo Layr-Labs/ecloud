@@ -73,9 +73,9 @@ export default class Version extends Command {
         const packageRoot = path.resolve(__dirname, "..");
 
         // Print the short sha from the projects root .git dir
-        this.log(
-          `Commit: ${execSync(`cd ${packageRoot} && git rev-parse --short HEAD`, { encoding: "utf8" }).trim()}`,
-        );
+        // Run git directly, setting cwd so no shell expansion/risk
+        const commitSha = execSync("git rev-parse --short HEAD", { cwd: packageRoot, encoding: "utf8" }).trim();
+        this.log(`Commit: ${commitSha}`);
       } catch {
         // If we can't get the commit then print unknown
         this.log(`Commit: unknown`);
