@@ -37,6 +37,32 @@ for (const template of templates) {
 
 console.log("Template files copied successfully");
 
+// Copy CLI-specific TLS templates
+const tlsTemplatesDir = path.join(cliRoot, "src", "templates", "tls");
+const distTlsDir = path.join(distTemplatesDir, "tls");
+
+if (fs.existsSync(tlsTemplatesDir)) {
+  if (!fs.existsSync(distTlsDir)) {
+    fs.mkdirSync(distTlsDir, { recursive: true });
+  }
+
+  const tlsFiles = fs.readdirSync(tlsTemplatesDir);
+  for (const file of tlsFiles) {
+    // Skip TypeScript files (they get compiled)
+    if (file.endsWith(".ts")) continue;
+
+    const srcPath = path.join(tlsTemplatesDir, file);
+    const destPath = path.join(distTlsDir, file);
+
+    if (fs.statSync(srcPath).isFile()) {
+      fs.copyFileSync(srcPath, destPath);
+      console.log(`Copied ${file} to dist/templates/tls/`);
+    }
+  }
+
+  console.log("TLS template files copied successfully");
+}
+
 // Copy keys directory structure from SDK to CLI dist
 const keysSrcDir = path.join(sdkRoot, "keys");
 const keysDistDir = path.join(cliRoot, "dist", "keys");

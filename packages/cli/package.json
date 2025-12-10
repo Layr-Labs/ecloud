@@ -58,6 +58,9 @@
       "compute:app:profile": {
         "description": "Manage app profiles"
       },
+      "compute:app:configure": {
+        "description": "Configure app settings"
+      },
       "compute:environment": {
         "description": "Manage deployment environment [alias: env]"
       },
