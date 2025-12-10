@@ -29,6 +29,10 @@ export default class AppList extends Command {
       char: "a",
       default: false,
     }),
+    "address-count": Flags.integer({
+      description: "Number of addresses to fetch",
+      default: 1,
+    }),
   };
 
   async run() {
@@ -87,8 +91,9 @@ export default class AppList extends Command {
     const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl);
 
     // Fetch all data in parallel
+    const addressCount = flags["address-count"];
     const [appInfos, releaseBlockNumbers] = await Promise.all([
-      getAppInfosChunked(userApiClient, filteredApps, 1).catch((err) => {
+      getAppInfosChunked(userApiClient, filteredApps, addressCount).catch((err) => {
         if (flags.verbose) {
           this.warn(`Could not fetch app info from UserAPI: ${err}`);
         }
@@ -188,7 +193,7 @@ export default class AppList extends Command {
 
       // Print app details using shared utility
       printAppDisplay(display, this.log.bind(this), "    ", {
-        singleAddress: true,
+        singleAddress: addressCount === 1,
         showProfile: false,
       });
 
