@@ -16,6 +16,9 @@ export default defineConfig({
   define: {
     BUILD_TYPE_BUILD_TIME: JSON.stringify(buildType),
   },
+  loader: {
+    ".tmpl": "text",
+  },
   esbuildOptions(options) {
     options.outbase = "src";
     options.entryNames = "[dir]/[name]";
