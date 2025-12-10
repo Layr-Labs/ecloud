@@ -16,44 +16,8 @@ import {
   getStatusSortPriority,
 } from "../../../utils/prompts";
 import { getAppInfosChunked } from "../../../utils/appResolver";
+import { formatAppDisplay, printAppDisplay } from "../../../utils/format";
 import chalk from "chalk";
-
-/**
- * Format bytes to human readable string
- */
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
-}
-
-/**
- * Format app status with color
- */
-function formatStatus(status: string): string {
-  switch (status.toLowerCase()) {
-    case "running":
-    case "started":
-      return chalk.green(status);
-    case "stopped":
-      return chalk.yellow(status);
-    case "terminated":
-      return chalk.red(status);
-    case "suspended":
-      return chalk.red(status);
-    case "deploying":
-    case "upgrading":
-    case "resuming":
-    case "stopping":
-      return chalk.cyan(status);
-    case "failed":
-      return chalk.red(status);
-    default:
-      return chalk.gray(status);
-  }
-}
 
 export default class AppList extends Command {
   static description = "List all deployed apps";
@@ -204,64 +168,29 @@ export default class AppList extends Command {
 
     // Print each app
     for (let i = 0; i < appItems.length; i++) {
-      const { appAddr, apiInfo, appName, status, releaseTimestamp } = appItems[i];
+      const { apiInfo, appName, status, releaseTimestamp } = appItems[i];
 
-      // Format release time
-      const releaseTimeDisplay = releaseTimestamp
-        ? chalk.gray(new Date(releaseTimestamp * 1000).toISOString().replace("T", " ").slice(0, 19))
-        : chalk.gray("-");
+      // Skip if no API info (shouldn't happen, but be safe)
+      if (!apiInfo) {
+        continue;
+      }
 
-      // Get derived addresses
-      const evmAddr = apiInfo?.evmAddresses?.[0];
-      const solanaAddr = apiInfo?.solanaAddresses?.[0];
-      const evmDisplay = evmAddr
-        ? chalk.gray(`${evmAddr.address} (path: ${evmAddr.derivationPath})`)
-        : chalk.gray("-");
-      const solanaDisplay = solanaAddr
-        ? chalk.gray(`${solanaAddr.address} (path: ${solanaAddr.derivationPath})`)
-        : chalk.gray("-");
+      // Format app display using shared utility
+      const display = formatAppDisplay({
+        appInfo: apiInfo,
+        appName,
+        status,
+        releaseTimestamp,
+      });
 
-      // Build display
-      const nameDisplay = appName ? chalk.cyan(appName) : chalk.gray("(unnamed)");
-      const appIdDisplay = chalk.gray(appAddr);
-      const statusDisplay = formatStatus(status);
-      const ipDisplay =
-        apiInfo?.ip && apiInfo.ip !== "No IP assigned"
-          ? chalk.white(apiInfo.ip)
-          : chalk.gray("No IP assigned");
-      const machineDisplay =
-        apiInfo?.machineType && apiInfo.machineType !== "No instance assigned"
-          ? chalk.gray(apiInfo.machineType)
-          : chalk.gray("-");
+      // Print app name header
+      this.log(`  ${display.name}`);
 
-      // Format metrics if available
-      const metrics = apiInfo?.metrics;
-      const cpuDisplay =
-        metrics?.cpu_utilization_percent !== undefined
-          ? chalk.white(`${metrics.cpu_utilization_percent.toFixed(1)}%`)
-          : chalk.gray("-");
-      const memDisplay =
-        metrics?.memory_utilization_percent !== undefined
-          ? chalk.white(`${metrics.memory_utilization_percent.toFixed(1)}%`)
-          : chalk.gray("-");
-      const memUsageDisplay =
-        metrics?.memory_used_bytes !== undefined && metrics?.memory_total_bytes !== undefined
-          ? chalk.gray(
-              `(${formatBytes(metrics.memory_used_bytes)} / ${formatBytes(metrics.memory_total_bytes)})`,
-            )
-          : "";
-
-      // Print app info
-      this.log(`  ${nameDisplay}`);
-      this.log(`    ID:             ${appIdDisplay}`);
-      this.log(`    Release Time:   ${releaseTimeDisplay}`);
-      this.log(`    Status:         ${statusDisplay}`);
-      this.log(`    Instance:       ${machineDisplay}`);
-      this.log(`    IP:             ${ipDisplay}`);
-      this.log(`    CPU:            ${cpuDisplay}`);
-      this.log(`    Memory:         ${memDisplay} ${memUsageDisplay}`);
-      this.log(`    EVM Address:    ${evmDisplay}`);
-      this.log(`    Solana Address: ${solanaDisplay}`);
+      // Print app details using shared utility
+      printAppDisplay(display, this.log.bind(this), "    ", {
+        singleAddress: true,
+        showProfile: false,
+      });
 
       // Add separator between apps
       if (i < appItems.length - 1) {

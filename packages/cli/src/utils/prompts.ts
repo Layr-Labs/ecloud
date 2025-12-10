@@ -837,6 +837,7 @@ async function getAppIDInteractive(options: GetAppIDOptions): Promise<Address> {
   const isEligible = (status: number): boolean => {
     switch (action) {
       case "view":
+      case "view info for":
       case "set profile for":
         return true;
       case "start":
