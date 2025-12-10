@@ -2,31 +2,41 @@
  * KMS key loading utilities
  */
 
-import * as fs from "fs";
-import * as path from "path";
-import { getDirname } from "./dirname";
+// Import all keys at build time
+import mainnetAlphaProdEncryption from "../../../../keys/mainnet-alpha/prod/kms-encryption-public-key.pem";
+import mainnetAlphaProdSigning from "../../../../keys/mainnet-alpha/prod/kms-signing-public-key.pem";
+import sepoliaDevEncryption from "../../../../keys/sepolia/dev/kms-encryption-public-key.pem";
+import sepoliaDevSigning from "../../../../keys/sepolia/dev/kms-signing-public-key.pem";
+import sepoliaProdEncryption from "../../../../keys/sepolia/prod/kms-encryption-public-key.pem";
+import sepoliaProdSigning from "../../../../keys/sepolia/prod/kms-signing-public-key.pem";
 
-const __dirname = getDirname();
+type KeyMap = {
+  [environment: string]: {
+    [build: string]: {
+      encryption: string;
+      signing: string;
+    };
+  };
+};
 
-// Try multiple paths to support both CLI (bundled) and standalone SDK usage
-function findKeysBasePath(): string {
-  const possiblePaths = [
-    path.join(__dirname, "./keys"), // Standalone SDK
-    path.join(__dirname, "../../keys"), // CLI bundled
-    path.join(__dirname, "../../../keys"), // Alternative CLI path
-  ];
-
-  for (const possiblePath of possiblePaths) {
-    if (fs.existsSync(possiblePath)) {
-      return possiblePath;
-    }
-  }
-
-  // Return the most likely path for error messages
-  return path.join(__dirname, "../../keys");
-}
-
-const KEYS_BASE_PATH = findKeysBasePath();
+const KEYS: KeyMap = {
+  "mainnet-alpha": {
+    prod: {
+      encryption: mainnetAlphaProdEncryption,
+      signing: mainnetAlphaProdSigning,
+    },
+  },
+  sepolia: {
+    dev: {
+      encryption: sepoliaDevEncryption,
+      signing: sepoliaDevSigning,
+    },
+    prod: {
+      encryption: sepoliaProdEncryption,
+      signing: sepoliaProdSigning,
+    },
+  },
+};
 
 /**
  * Get KMS keys for environment
@@ -35,28 +45,20 @@ export function getKMSKeysForEnvironment(
   environment: string,
   build: "dev" | "prod" = "prod",
 ): { encryptionKey: Buffer; signingKey: Buffer } {
-  const encryptionPath = path.join(
-    KEYS_BASE_PATH,
-    environment,
-    build,
-    "kms-encryption-public-key.pem",
-  );
-  const signingPath = path.join(KEYS_BASE_PATH, environment, build, "kms-signing-public-key.pem");
-
-  if (!fs.existsSync(encryptionPath)) {
-    throw new Error(
-      `Encryption key not found at ${encryptionPath}. Keys must be embedded or provided.`,
-    );
+  const envKeys = KEYS[environment];
+  if (!envKeys) {
+    throw new Error(`No keys found for environment: ${environment}`);
   }
 
-  if (!fs.existsSync(signingPath)) {
-    throw new Error(`Signing key not found at ${signingPath}. Keys must be embedded or provided.`);
+  const buildKeys = envKeys[build];
+  if (!buildKeys) {
+    throw new Error(`No keys found for environment: ${environment}, build: ${build}`);
   }
 
-  const encryptionKey = fs.readFileSync(encryptionPath);
-  const signingKey = fs.readFileSync(signingPath);
-
-  return { encryptionKey, signingKey };
+  return {
+    encryptionKey: Buffer.from(buildKeys.encryption),
+    signingKey: Buffer.from(buildKeys.signing),
+  };
 }
 
 /**
@@ -66,13 +68,5 @@ export function keysExistForEnvironment(
   environment: string,
   build: "dev" | "prod" = "prod",
 ): boolean {
-  const encryptionPath = path.join(
-    KEYS_BASE_PATH,
-    environment,
-    build,
-    "kms-encryption-public-key.pem",
-  );
-  const signingPath = path.join(KEYS_BASE_PATH, environment, build, "kms-signing-public-key.pem");
-
-  return fs.existsSync(encryptionPath) && fs.existsSync(signingPath);
+  return !!KEYS[environment]?.[build];
 }
