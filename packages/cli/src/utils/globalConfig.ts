@@ -15,7 +15,7 @@ import * as path from "path";
 import * as os from "os";
 import { load as loadYaml, dump as dumpYaml } from "js-yaml";
 import { getBuildType } from "@layr-labs/ecloud-sdk";
-
+import * as crypto from "crypto";
 const GLOBAL_CONFIG_FILE = "config.yaml";
 
 export interface ProfileCacheEntry {
@@ -278,11 +278,19 @@ export function getOrCreateUserUUID(): string {
  */
 function generateUUID(): string {
   // UUID v4 format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === "x" ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
+  // Use cryptographically secure random values.
+  const bytes = crypto.randomBytes(16);
+  // Per RFC 4122 section 4.4, set bits for version and `clock_seq_hi_and_reserved`
+  bytes[6] = (bytes[6] & 0x0f) | 0x40; // Version 4
+  bytes[8] = (bytes[8] & 0x3f) | 0x80; // Variant 10
+  const hex = Array.from(bytes, b => b.toString(16).padStart(2, '0'));
+  return (
+    hex.slice(0, 4).join('') + hex.slice(4, 6).join('') + '-' +
+    hex.slice(6, 8).join('') + '-' +
+    hex.slice(8, 10).join('') + '-' +
+    hex.slice(10, 12).join('') + '-' +
+    hex.slice(12, 16).join('')
+  );
 }
 
 /**
