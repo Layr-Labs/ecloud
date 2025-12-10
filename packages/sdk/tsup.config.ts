@@ -12,4 +12,8 @@ export default defineConfig({
   define: {
     BUILD_TYPE_BUILD_TIME: JSON.stringify(buildType),
   },
+  loader: {
+    ".tmpl": "text",
+    ".pem": "text",
+  },
 });
