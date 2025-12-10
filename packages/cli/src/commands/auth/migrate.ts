@@ -16,6 +16,7 @@ import {
   type LegacyKey,
 } from "@layr-labs/ecloud-sdk";
 import { displayWarning } from "../../utils/security";
+import { withTelemetry } from "../../telemetry";
 
 export default class AuthMigrate extends Command {
   static description = "Migrate a private key from eigenx-cli to ecloud";
@@ -23,7 +24,8 @@ export default class AuthMigrate extends Command {
   static examples = ["<%= config.bin %> <%= command.id %>"];
 
   async run(): Promise<void> {
-    const legacyKeys = await getLegacyKeys();
+    return withTelemetry(this, async () => {
+      const legacyKeys = await getLegacyKeys();
 
     if (legacyKeys.length === 0) {
       this.log("No legacy keys found from eigenx-cli.");
@@ -126,5 +128,6 @@ export default class AuthMigrate extends Command {
     } catch (err: any) {
       this.error(`Failed to migrate key: ${err.message}`);
     }
+    });
   }
 }

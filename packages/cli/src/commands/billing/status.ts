@@ -2,6 +2,7 @@ import { Command, Flags } from "@oclif/core";
 import { createBillingClient } from "../../client";
 import { commonFlags } from "../../flags";
 import chalk from "chalk";
+import { withTelemetry } from "../../telemetry";
 
 export default class BillingStatus extends Command {
   static description = "Show subscription status";
@@ -19,7 +20,8 @@ export default class BillingStatus extends Command {
   };
 
   async run() {
-    const { flags } = await this.parse(BillingStatus);
+    return withTelemetry(this, async () => {
+      const { flags } = await this.parse(BillingStatus);
     const billing = await createBillingClient(flags);
 
     const result = await billing.getStatus({
@@ -118,5 +120,6 @@ export default class BillingStatus extends Command {
     }
 
     this.log();
+    });
   }
 }

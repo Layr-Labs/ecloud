@@ -8,6 +8,7 @@ import { Command } from "@oclif/core";
 import { commonFlags } from "../../flags";
 import { createComputeClient } from "../../client";
 import chalk from "chalk";
+import { withTelemetry } from "../../telemetry";
 
 export default class Undelegate extends Command {
   static description = "Undelegate your account from the EIP7702 delegator";
@@ -17,7 +18,8 @@ export default class Undelegate extends Command {
   };
 
   async run(): Promise<void> {
-    const { flags } = await this.parse(Undelegate);
+    return withTelemetry(this, async () => {
+      const { flags } = await this.parse(Undelegate);
     const compute = await createComputeClient(flags);
 
     // Check if account is currently delegated
@@ -34,5 +36,6 @@ export default class Undelegate extends Command {
     } else {
       this.log(`\n✅ ${chalk.green(`Undelegated successfully`)}`);
     }
+    });
   }
 }

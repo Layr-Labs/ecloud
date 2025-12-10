@@ -252,3 +252,48 @@ export function updateProfileCacheEntry(
 
   saveGlobalConfig(config);
 }
+
+/**
+ * Get the user UUID from global config, or generate a new one if it doesn't exist
+ */
+export function getOrCreateUserUUID(): string {
+  const config = loadGlobalConfig();
+  if (config.user_uuid) {
+    return config.user_uuid;
+  }
+
+  // Generate a new UUID (v4)
+  const uuid = generateUUID();
+  
+  // Save it to config
+  config.user_uuid = uuid;
+  config.first_run = false;
+  saveGlobalConfig(config);
+  
+  return uuid;
+}
+
+/**
+ * Generate a UUID v4
+ */
+function generateUUID(): string {
+  // UUID v4 format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+/**
+ * Save user UUID to global config (preserves existing UUID if present)
+ */
+export function saveUserUUID(userUUID: string): void {
+  const config = loadGlobalConfig();
+  // Only update if not already set
+  if (!config.user_uuid) {
+    config.user_uuid = userUUID;
+    saveGlobalConfig(config);
+  }
+}
+

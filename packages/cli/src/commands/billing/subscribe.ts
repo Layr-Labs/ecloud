@@ -4,6 +4,7 @@ import { createBillingClient } from "../../client";
 import { commonFlags } from "../../flags";
 import chalk from "chalk";
 import open from "open";
+import { withTelemetry } from "../../telemetry";
 
 const PAYMENT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 const POLL_INTERVAL_MS = 3_000; // 3 seconds
@@ -24,7 +25,8 @@ export default class BillingSubscribe extends Command {
   };
 
   async run() {
-    const { flags } = await this.parse(BillingSubscribe);
+    return withTelemetry(this, async () => {
+      const { flags } = await this.parse(BillingSubscribe);
     const billing = await createBillingClient(flags);
 
     this.debug(`\nChecking subscription status for ${flags.product}...`);
@@ -88,5 +90,6 @@ export default class BillingSubscribe extends Command {
     // Timeout reached
     this.log(`\n${chalk.yellow("⚠")} Payment confirmation timed out after 5 minutes.`);
     this.log(chalk.gray(`If you completed payment, run 'ecloud billing status' to check status.`));
+    });
   }
 }

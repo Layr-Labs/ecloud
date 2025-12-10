@@ -7,6 +7,7 @@ import {
   executeUpgrade,
   watchUpgrade,
 } from "@layr-labs/ecloud-sdk";
+import { withTelemetry } from "../../../telemetry";
 import { commonFlags } from "../../../flags";
 import {
   getDockerfileInteractive,
@@ -72,7 +73,8 @@ export default class AppUpgrade extends Command {
   };
 
   async run() {
-    const { args, flags } = await this.parse(AppUpgrade);
+    return withTelemetry(this, async () => {
+      const { args, flags } = await this.parse(AppUpgrade);
 
     // Create CLI logger
     const logger = {
@@ -158,6 +160,7 @@ export default class AppUpgrade extends Command {
         instanceType,
         logVisibility,
         resourceUsageMonitoring,
+        skipTelemetry: true,
       },
       logger,
     );
@@ -181,14 +184,16 @@ export default class AppUpgrade extends Command {
         maxPriorityFeePerGas: gasEstimate.maxPriorityFeePerGas,
       },
       logger,
+      true, // skipTelemetry
     );
 
     // 12. Watch until upgrade completes
-    await watchUpgrade(res.appId, privateKey, rpcUrl, environment, logger, getClientId());
+    await watchUpgrade(res.appId, privateKey, rpcUrl, environment, logger, getClientId(), true); // skipTelemetry
 
     this.log(
       `\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${res.appId}, image: ${res.imageRef})`)}`)}`,
     );
+    });
   }
 }
 

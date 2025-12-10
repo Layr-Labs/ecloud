@@ -8,6 +8,7 @@ import { Command, Flags } from "@oclif/core";
 import { confirm } from "@inquirer/prompts";
 import { generateNewPrivateKey, storePrivateKey, keyExists } from "@layr-labs/ecloud-sdk";
 import { showPrivateKey, displayWarning } from "../../utils/security";
+import { withTelemetry } from "../../telemetry";
 
 export default class AuthGenerate extends Command {
   static description = "Generate a new private key";
@@ -27,7 +28,8 @@ export default class AuthGenerate extends Command {
   };
 
   async run(): Promise<void> {
-    const { flags } = await this.parse(AuthGenerate);
+    return withTelemetry(this, async () => {
+      const { flags } = await this.parse(AuthGenerate);
 
     // Generate new key
     this.log("Generating new private key...\n");
@@ -109,5 +111,6 @@ Press 'q' to exit and continue...
       this.log("\nKey not stored in keyring.");
       this.log("Remember to save the key shown above in a secure location.");
     }
+    });
   }
 }

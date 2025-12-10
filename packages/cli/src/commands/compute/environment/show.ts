@@ -2,6 +2,7 @@ import { Command } from "@oclif/core";
 import { getEnvironmentConfig, getAvailableEnvironments } from "@layr-labs/ecloud-sdk";
 import { getDefaultEnvironment } from "../../../utils/globalConfig";
 import chalk from "chalk";
+import { withTelemetry } from "../../../telemetry";
 
 export default class EnvironmentShow extends Command {
   static description = "Show active deployment environment";
@@ -9,7 +10,8 @@ export default class EnvironmentShow extends Command {
   static aliases = ["compute:environment:show", "compute:env:show"];
 
   async run() {
-    const defaultEnv = getDefaultEnvironment();
+    return withTelemetry(this, async () => {
+      const defaultEnv = getDefaultEnvironment();
     const availableEnvs = getAvailableEnvironments();
 
     if (!defaultEnv) {
@@ -43,5 +45,6 @@ export default class EnvironmentShow extends Command {
     console.log(
       `\nRun '${chalk.yellow("ecloud compute environment list")}' to see available deployment environments`,
     );
+    });
   }
 }

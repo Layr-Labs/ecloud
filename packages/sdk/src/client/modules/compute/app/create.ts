@@ -23,6 +23,7 @@ import {
 } from "../../../common/templates/catalog";
 import { fetchTemplate, fetchTemplateSubdirectory } from "../../../common/templates/git";
 import { postProcessTemplate } from "../../../common/templates/postprocess";
+import { withSDKTelemetry } from "../../../common/telemetry/wrapper";
 
 /**
  * Required create app options for SDK (non-interactive)
@@ -38,6 +39,8 @@ export interface SDKCreateAppOpts {
   templateVersion?: string;
   /** Verbose output - optional */
   verbose?: boolean;
+  /** Skip telemetry (used when called from CLI) - optional */
+  skipTelemetry?: boolean;
 }
 
 /**
@@ -50,6 +53,7 @@ export interface CreateAppOpts {
   template?: string;
   templateVersion?: string;
   verbose?: boolean;
+  skipTelemetry?: boolean;
 }
 
 // Language configuration
@@ -148,43 +152,54 @@ export async function createApp(
   options: SDKCreateAppOpts | CreateAppOpts,
   logger: Logger = defaultLogger,
 ): Promise<void> {
-  // 1. Validate required parameters
-  validateProjectName(options.name || "");
-  validateLanguage(options.language || "");
-
-  // 2. Gather project configuration
-  const cfg = await gatherProjectConfig(
+  return withSDKTelemetry(
     {
-      ...options,
-      name: options.name!,
-      language: options.language!,
+      functionName: "createApp",
+      skipTelemetry: options.skipTelemetry,
+      properties: {
+        language: options.language || "",
+      },
     },
-    logger,
+    async () => {
+      // 1. Validate required parameters
+      validateProjectName(options.name || "");
+      validateLanguage(options.language || "");
+
+      // 2. Gather project configuration
+      const cfg = await gatherProjectConfig(
+        {
+          ...options,
+          name: options.name!,
+          language: options.language!,
+        },
+        logger,
+      );
+
+      // 3. Check if directory exists
+      if (fs.existsSync(cfg.name)) {
+        throw new Error(`Directory ${cfg.name} already exists`);
+      }
+
+      // 4. Create project directory
+      fs.mkdirSync(cfg.name, { mode: 0o755 });
+
+      try {
+        // 5. Populate project from template
+        await populateProjectFromTemplate(cfg, options, logger);
+
+        // 6. Post-process template
+        if (cfg.subPath && cfg.language && cfg.templateEntry) {
+          await postProcessTemplate(cfg.name, cfg.language, cfg.templateEntry, logger);
+        }
+
+        logger.info(`Successfully created ${cfg.language || "project"} project: ${cfg.name}`);
+      } catch (error: any) {
+        // Cleanup on failure
+        fs.rmSync(cfg.name, { recursive: true, force: true });
+        throw error;
+      }
+    },
   );
-
-  // 3. Check if directory exists
-  if (fs.existsSync(cfg.name)) {
-    throw new Error(`Directory ${cfg.name} already exists`);
-  }
-
-  // 4. Create project directory
-  fs.mkdirSync(cfg.name, { mode: 0o755 });
-
-  try {
-    // 5. Populate project from template
-    await populateProjectFromTemplate(cfg, options, logger);
-
-    // 6. Post-process template
-    if (cfg.subPath && cfg.language && cfg.templateEntry) {
-      await postProcessTemplate(cfg.name, cfg.language, cfg.templateEntry, logger);
-    }
-
-    logger.info(`Successfully created ${cfg.language || "project"} project: ${cfg.name}`);
-  } catch (error: any) {
-    // Cleanup on failure
-    fs.rmSync(cfg.name, { recursive: true, force: true });
-    throw error;
-  }
 }
 
 /**

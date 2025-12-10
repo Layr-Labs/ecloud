@@ -19,6 +19,7 @@ import { getAppInfosChunked } from "../../../utils/appResolver";
 import { formatAppDisplay, printAppDisplay } from "../../../utils/format";
 import { getClientId } from "../../../utils/version";
 import chalk from "chalk";
+import { withTelemetry } from "../../../telemetry";
 
 export default class AppList extends Command {
   static description = "List all deployed apps";
@@ -37,7 +38,8 @@ export default class AppList extends Command {
   };
 
   async run() {
-    const { flags } = await this.parse(AppList);
+    return withTelemetry(this, async () => {
+      const { flags } = await this.parse(AppList);
 
     // Validate flags and prompt for missing values
     const validatedFlags = await validateCommonFlags(flags);
@@ -208,5 +210,6 @@ export default class AppList extends Command {
 
     console.log();
     this.log(chalk.gray(`Total: ${appItems.length} app(s)`));
+    });
   }
 }

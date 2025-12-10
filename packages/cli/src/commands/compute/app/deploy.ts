@@ -7,6 +7,7 @@ import {
   executeDeploy,
   watchDeployment,
 } from "@layr-labs/ecloud-sdk";
+import { withTelemetry } from "../../../telemetry";
 import { commonFlags } from "../../../flags";
 import {
   getDockerfileInteractive,
@@ -93,7 +94,8 @@ export default class AppDeploy extends Command {
   };
 
   async run() {
-    const { flags } = await this.parse(AppDeploy);
+    return withTelemetry(this, async () => {
+      const { flags } = await this.parse(AppDeploy);
 
     // Create CLI logger
     const logger = {
@@ -162,6 +164,7 @@ export default class AppDeploy extends Command {
         instanceType,
         logVisibility,
         resourceUsageMonitoring,
+        skipTelemetry: true,
       },
       logger,
     );
@@ -185,6 +188,7 @@ export default class AppDeploy extends Command {
         maxPriorityFeePerGas: gasEstimate.maxPriorityFeePerGas,
       },
       logger,
+      true, // skipTelemetry
     );
 
     // 11. Collect app profile while deployment is in progress (optional)
@@ -263,11 +267,13 @@ export default class AppDeploy extends Command {
       environment,
       logger,
       getClientId(),
+      true, // skipTelemetry - CLI already has telemetry
     );
 
     this.log(
       `\n✅ ${chalk.green(`App deployed successfully ${chalk.bold(`(id: ${res.appId}, ip: ${ipAddress})`)}`)}`,
     );
+    });
   }
 }
 

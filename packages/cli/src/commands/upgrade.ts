@@ -5,6 +5,7 @@ import { Command, Flags } from "@oclif/core";
 import { getBuildType } from "@layr-labs/ecloud-sdk";
 
 import chalk from "chalk";
+import { withTelemetry } from "../telemetry";
 
 // Package being upgraded
 const ecloudCLIPackage = "@layr-labs/ecloud-cli";
@@ -84,7 +85,8 @@ export default class Upgrade extends Command {
   };
 
   async run() {
-    const { flags } = await this.parse(Upgrade);
+    return withTelemetry(this, async () => {
+      const { flags } = await this.parse(Upgrade);
 
     const buildType = getBuildType();
     const buildTag = buildType === "dev" ? "dev" : "latest";
@@ -102,5 +104,6 @@ export default class Upgrade extends Command {
       );
       throw e;
     }
+    });
   }
 }

@@ -7,6 +7,7 @@ import {
 import { setDefaultEnvironment } from "../../../utils/globalConfig";
 import { getEnvironmentInteractive } from "../../../utils/prompts";
 import { confirm } from "@inquirer/prompts";
+import { withTelemetry } from "../../../telemetry";
 
 /**
  * Check if an environment is a mainnet environment
@@ -55,7 +56,8 @@ export default class EnvironmentSet extends Command {
   };
 
   async run() {
-    const { args, flags } = await this.parse(EnvironmentSet);
+    return withTelemetry(this, async () => {
+      const { args, flags } = await this.parse(EnvironmentSet);
 
     // Get environment interactively if not provided
     const newEnv = args.environment || (await getEnvironmentInteractive());
@@ -84,5 +86,6 @@ export default class EnvironmentSet extends Command {
     setDefaultEnvironment(newEnv);
 
     console.log(`\n✅ Deployment environment set to ${newEnv}`);
+    });
   }
 }

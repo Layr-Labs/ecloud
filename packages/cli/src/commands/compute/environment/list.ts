@@ -2,6 +2,7 @@ import { Command } from "@oclif/core";
 import { getAvailableEnvironments, getEnvironmentConfig } from "@layr-labs/ecloud-sdk";
 import { getDefaultEnvironment } from "../../../utils/globalConfig";
 import chalk from "chalk";
+import { withTelemetry } from "../../../telemetry";
 
 /**
  * Get environment description
@@ -25,7 +26,8 @@ export default class EnvironmentList extends Command {
   static aliases = ["compute:environment:list", "compute:env:list"];
 
   async run() {
-    const availableEnvs = getAvailableEnvironments();
+    return withTelemetry(this, async () => {
+      const availableEnvs = getAvailableEnvironments();
     const currentEnv = getDefaultEnvironment();
 
     console.log("Available deployment environments:");
@@ -41,5 +43,6 @@ export default class EnvironmentList extends Command {
         console.log(`  • ${name} (unavailable)`);
       }
     }
+    });
   }
 }

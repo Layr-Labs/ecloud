@@ -4,6 +4,7 @@ import { createBillingClient } from "../../client";
 import { commonFlags } from "../../flags";
 import chalk from "chalk";
 import { confirm } from "@inquirer/prompts";
+import { withTelemetry } from "../../telemetry";
 
 export default class BillingCancel extends Command {
   static description = "Cancel subscription";
@@ -26,7 +27,8 @@ export default class BillingCancel extends Command {
   };
 
   async run() {
-    const { flags } = await this.parse(BillingCancel);
+    return withTelemetry(this, async () => {
+      const { flags } = await this.parse(BillingCancel);
     const billing = await createBillingClient(flags);
 
     // Check subscription status first
@@ -65,5 +67,6 @@ export default class BillingCancel extends Command {
     } else {
       this.log(`\n${chalk.gray("Subscription status changed. Current status:")} ${result.status}`);
     }
+    });
   }
 }

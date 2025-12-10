@@ -7,6 +7,7 @@
 import { Command, Flags } from "@oclif/core";
 import { confirm } from "@inquirer/prompts";
 import { deletePrivateKey, getPrivateKey, getAddressFromPrivateKey } from "@layr-labs/ecloud-sdk";
+import { withTelemetry } from "../../telemetry";
 
 export default class AuthLogout extends Command {
   static description = "Remove private key from OS keyring";
@@ -24,7 +25,8 @@ export default class AuthLogout extends Command {
   };
 
   async run(): Promise<void> {
-    const { flags } = await this.parse(AuthLogout);
+    return withTelemetry(this, async () => {
+      const { flags } = await this.parse(AuthLogout);
 
     // Check if key exists
     const privateKey = await getPrivateKey();
@@ -68,5 +70,6 @@ export default class AuthLogout extends Command {
     } catch (err: any) {
       this.error(`Failed to remove key: ${err.message}`);
     }
+    });
   }
 }

@@ -7,6 +7,7 @@
 import { Command } from "@oclif/core";
 import { getPrivateKeyWithSource, getAddressFromPrivateKey } from "@layr-labs/ecloud-sdk";
 import { commonFlags } from "../../flags";
+import { withTelemetry } from "../../telemetry";
 
 export default class AuthWhoami extends Command {
   static description = "Show current authentication status and address";
@@ -21,7 +22,8 @@ export default class AuthWhoami extends Command {
   };
 
   async run(): Promise<void> {
-    const { flags } = await this.parse(AuthWhoami);
+    return withTelemetry(this, async () => {
+      const { flags } = await this.parse(AuthWhoami);
 
     // Try to get private key from any source
     const result = await getPrivateKeyWithSource({
@@ -46,5 +48,6 @@ export default class AuthWhoami extends Command {
     this.log(`Source:  ${result.source}`);
     this.log("");
     this.log("Note: This key is used for all environments (mainnet, sepolia, etc.)");
+    });
   }
 }

@@ -10,6 +10,7 @@ import {
 import { getOrPromptAppID, confirm } from "../../../utils/prompts";
 import { getPrivateKeyInteractive } from "../../../utils/prompts";
 import chalk from "chalk";
+import { withTelemetry } from "../../../telemetry";
 
 export default class AppLifecycleStart extends Command {
   static description = "Start stopped app (start GCP instance)";
@@ -26,7 +27,8 @@ export default class AppLifecycleStart extends Command {
   };
 
   async run() {
-    const { args, flags } = await this.parse(AppLifecycleStart);
+    return withTelemetry(this, async () => {
+      const { args, flags } = await this.parse(AppLifecycleStart);
     const compute = await createComputeClient(flags);
 
     // Get environment config
@@ -79,5 +81,6 @@ export default class AppLifecycleStart extends Command {
     } else {
       this.log(`\n✅ ${chalk.green(`App started successfully`)}`);
     }
+    });
   }
 }

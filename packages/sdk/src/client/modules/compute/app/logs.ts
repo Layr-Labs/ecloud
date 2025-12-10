@@ -13,6 +13,7 @@ import { defaultLogger } from "../../../common/utils";
 import { UserApiClient } from "../../../common/utils/userapi";
 import { getEnvironmentConfig } from "../../../common/config/environment";
 import { validateAppID } from "../../../common/utils/validation";
+import { withSDKTelemetry } from "../../../common/telemetry/wrapper";
 import chalk from "chalk";
 
 /**
@@ -31,6 +32,8 @@ export interface SDKLogsOptions {
   rpcUrl?: string;
   /** Client ID for API requests - optional */
   clientId?: string;
+  /** Skip telemetry (for CLI usage) - optional */
+  skipTelemetry?: boolean;
 }
 
 /**
@@ -180,117 +183,129 @@ async function watchLogs(
 export async function logs(
   options: SDKLogsOptions | LogsOptions,
   logger: Logger = defaultLogger,
+  skipTelemetry: boolean = false,
 ): Promise<void> {
-  console.log();
+  const skipTelemetryFlag = skipTelemetry || (options as SDKLogsOptions).skipTelemetry || false;
 
-  // Validate required parameters
-  if (!options.appID) {
-    throw new Error("appID is required for viewing logs");
-  }
-
-  // Get environment config
-  const environment = options.environment || "sepolia";
-  const environmentConfig = getEnvironmentConfig(environment);
-
-  // Get RPC URL (needed for contract queries and authentication)
-  const rpcUrl = options.rpcUrl || environmentConfig.defaultRPCURL;
-  if (!rpcUrl) {
-    throw new Error("RPC URL is required for authenticated requests");
-  }
-
-  // Validate app ID (must be a valid address - name resolution is done by CLI)
-  const appID = validateAppID(options.appID);
-
-  // Format app display (no profile name in SDK - CLI handles that)
-  const formattedApp = formatAppDisplay(environmentConfig.name, appID, "");
-
-  // Create user API client
-  const userApiClient = new UserApiClient(
-    environmentConfig,
-    options.privateKey,
-    rpcUrl,
-    options.clientId,
-  );
-
-  // Fetch logs
-  let logsText: string;
-  let logsError: Error | null = null;
-  try {
-    logsText = await userApiClient.getLogs(appID);
-  } catch (err: any) {
-    logsError = err;
-    logsText = "";
-  }
-
-  const watchMode = options.watch || false;
-
-  // Handle empty logs or errors
-  if (logsError || logsText.trim() === "") {
-    // If watch mode is enabled, enter watch loop even without initial logs
-    if (watchMode) {
-      logger.info("\nWaiting for logs to become available...");
+  return withSDKTelemetry(
+    {
+      functionName: "logs",
+      skipTelemetry: skipTelemetryFlag,
+      properties: { environment: (options.environment || "sepolia") as string },
+    },
+    async () => {
       console.log();
-      await watchLogs(appID, userApiClient, "");
-      return;
-    }
 
-    // Not watch mode - check app status to provide helpful message and exit
-    try {
-      const statuses = await userApiClient.getStatuses([appID]);
-      if (statuses.length > 0) {
-        const status = statuses[0].status;
-        switch (status) {
-          case AppStatusCreated:
-          case AppStatusDeploying:
-            logger.info(
-              `${formattedApp} is currently being provisioned. Logs will be available once deployment is complete.`,
-            );
-            return;
-          case AppStatusUpgrading:
-            logger.info(
-              `${formattedApp} is currently upgrading. Logs will be available once upgrade is complete.`,
-            );
-            return;
-          case AppStatusResuming:
-            logger.info(`${formattedApp} is currently resuming. Logs will be available shortly.`);
-            return;
-          case AppStatusStopping:
-            logger.info(`${formattedApp} is currently stopping. Logs may be limited.`);
-            return;
-          case AppStatusStopped:
-          case AppStatusTerminating:
-          case AppStatusTerminated:
-          case AppStatusSuspended:
-            logger.info(`${formattedApp} is ${status.toLowerCase()}. Logs are not available.`);
-            return;
-          case AppStatusFailed:
-            logger.info(`${formattedApp} has failed. Check the app status for more information.`);
-            return;
-        }
+      // Validate required parameters
+      if (!options.appID) {
+        throw new Error("appID is required for viewing logs");
       }
-    } catch {
-      // If we can't get status either, continue to error handling
-    }
 
-    // If we can't get status either, return the original logs error
-    if (logsError) {
-      throw new Error(
-        `Failed to get logs, you can watch for logs by calling this command with the --watch flag (or --w): ${logsError.message}`,
+      // Get environment config
+      const environment = options.environment || "sepolia";
+      const environmentConfig = getEnvironmentConfig(environment);
+
+      // Get RPC URL (needed for contract queries and authentication)
+      const rpcUrl = options.rpcUrl || environmentConfig.defaultRPCURL;
+      if (!rpcUrl) {
+        throw new Error("RPC URL is required for authenticated requests");
+      }
+
+      // Validate app ID (must be a valid address - name resolution is done by CLI)
+      const appID = validateAppID(options.appID);
+
+      // Format app display (no profile name in SDK - CLI handles that)
+      const formattedApp = formatAppDisplay(environmentConfig.name, appID, "");
+
+      // Create user API client
+      const userApiClient = new UserApiClient(
+        environmentConfig,
+        options.privateKey,
+        rpcUrl,
+        options.clientId,
       );
-    }
-    throw new Error(
-      "Failed to get logs, you can watch for logs by calling this command with the --watch flag (or --w): empty logs",
-    );
-  }
 
-  // Print initial logs
-  console.log(logsText);
+      // Fetch logs
+      let logsText: string;
+      let logsError: Error | null = null;
+      try {
+        logsText = await userApiClient.getLogs(appID);
+      } catch (err: any) {
+        logsError = err;
+        logsText = "";
+      }
 
-  // Check if watch mode is enabled
-  if (!watchMode) {
-    return;
-  }
+      const watchMode = options.watch || false;
 
-  // Watch mode: continuously fetch and display new logs
-  await watchLogs(appID, userApiClient, logsText);
+      // Handle empty logs or errors
+      if (logsError || logsText.trim() === "") {
+        // If watch mode is enabled, enter watch loop even without initial logs
+        if (watchMode) {
+          logger.info("\nWaiting for logs to become available...");
+          console.log();
+          await watchLogs(appID, userApiClient, "");
+          return;
+        }
+
+        // Not watch mode - check app status to provide helpful message and exit
+        try {
+          const statuses = await userApiClient.getStatuses([appID]);
+          if (statuses.length > 0) {
+            const status = statuses[0].status;
+            switch (status) {
+              case AppStatusCreated:
+              case AppStatusDeploying:
+                logger.info(
+                  `${formattedApp} is currently being provisioned. Logs will be available once deployment is complete.`,
+                );
+                return;
+              case AppStatusUpgrading:
+                logger.info(
+                  `${formattedApp} is currently upgrading. Logs will be available once upgrade is complete.`,
+                );
+                return;
+              case AppStatusResuming:
+                logger.info(`${formattedApp} is currently resuming. Logs will be available shortly.`);
+                return;
+              case AppStatusStopping:
+                logger.info(`${formattedApp} is currently stopping. Logs may be limited.`);
+                return;
+              case AppStatusStopped:
+              case AppStatusTerminating:
+              case AppStatusTerminated:
+              case AppStatusSuspended:
+                logger.info(`${formattedApp} is ${status.toLowerCase()}. Logs are not available.`);
+                return;
+              case AppStatusFailed:
+                logger.info(`${formattedApp} has failed. Check the app status for more information.`);
+                return;
+            }
+          }
+        } catch {
+          // If we can't get status either, continue to error handling
+        }
+
+        // If we can't get status either, return the original logs error
+        if (logsError) {
+          throw new Error(
+            `Failed to get logs, you can watch for logs by calling this command with the --watch flag (or --w): ${logsError.message}`,
+          );
+        }
+        throw new Error(
+          "Failed to get logs, you can watch for logs by calling this command with the --watch flag (or --w): empty logs",
+        );
+      }
+
+      // Print initial logs
+      console.log(logsText);
+
+      // Check if watch mode is enabled
+      if (!watchMode) {
+        return;
+      }
+
+      // Watch mode: continuously fetch and display new logs
+      await watchLogs(appID, userApiClient, logsText);
+    },
+  );
 }

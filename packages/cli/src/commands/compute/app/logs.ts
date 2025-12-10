@@ -3,6 +3,7 @@ import { getEnvironmentConfig } from "@layr-labs/ecloud-sdk";
 import { createComputeClient } from "../../../client";
 import { commonFlags } from "../../../flags";
 import { getOrPromptAppID } from "../../../utils/prompts";
+import { withTelemetry } from "../../../telemetry";
 
 export default class AppLogs extends Command {
   static description = "View app logs";
@@ -24,7 +25,8 @@ export default class AppLogs extends Command {
   };
 
   async run() {
-    const { args, flags } = await this.parse(AppLogs);
+    return withTelemetry(this, async () => {
+      const { args, flags } = await this.parse(AppLogs);
     const compute = await createComputeClient(flags);
 
     // Get environment config
@@ -45,6 +47,7 @@ export default class AppLogs extends Command {
     await compute.app.logs({
       appID,
       watch: flags.watch,
+    });
     });
   }
 }

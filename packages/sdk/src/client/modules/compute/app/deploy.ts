@@ -35,6 +35,7 @@ import {
 } from "../../../common/utils/validation";
 import { doPreflightChecks, PreflightContext } from "../../../common/utils/preflight";
 import { defaultLogger } from "../../../common/utils";
+import { withSDKTelemetry } from "../../../common/telemetry/wrapper";
 
 /**
  * Required deploy options for SDK (non-interactive)
@@ -65,6 +66,8 @@ export interface SDKDeployOptions {
     maxFeePerGas?: bigint;
     maxPriorityFeePerGas?: bigint;
   };
+  /** Skip telemetry (used when called from CLI) - optional */
+  skipTelemetry?: boolean;
 }
 
 /**
@@ -162,8 +165,17 @@ export async function deploy(
   options: SDKDeployOptions,
   logger: Logger = defaultLogger,
 ): Promise<DeployResult> {
-  // 1. Validate all required parameters upfront
-  validateDeployOptions(options);
+  return withSDKTelemetry(
+    {
+      functionName: "deploy",
+      skipTelemetry: options.skipTelemetry,
+      properties: {
+        environment: options.environment || "sepolia",
+      },
+    },
+    async () => {
+      // 1. Validate all required parameters upfront
+      validateDeployOptions(options);
 
   // Convert log visibility to internal format
   const { logRedirect, publicLogs } = validateLogVisibility(options.logVisibility);
@@ -257,13 +269,15 @@ export async function deploy(
     logger,
   );
 
-  return {
-    appId: deployResult.appId,
-    txHash: deployResult.txHash,
-    appName,
-    imageRef: finalImageRef,
-    ipAddress,
-  };
+      return {
+        appId: deployResult.appId,
+        txHash: deployResult.txHash,
+        appName,
+        imageRef: finalImageRef,
+        ipAddress,
+      };
+    },
+  );
 }
 
 /**
@@ -324,11 +338,20 @@ function generateRandomSalt(): Uint8Array {
  * 3. Call executeDeploy with confirmed gas params
  */
 export async function prepareDeploy(
-  options: Omit<SDKDeployOptions, "gas">,
+  options: Omit<SDKDeployOptions, "gas"> & { skipTelemetry?: boolean },
   logger: Logger = defaultLogger,
 ): Promise<PrepareDeployResult> {
-  // 1. Validate all required parameters upfront
-  validateDeployOptions(options as SDKDeployOptions);
+  return withSDKTelemetry(
+    {
+      functionName: "prepareDeploy",
+      skipTelemetry: options.skipTelemetry,
+      properties: {
+        environment: options.environment || "sepolia",
+      },
+    },
+    async () => {
+      // 1. Validate all required parameters upfront
+      validateDeployOptions(options as SDKDeployOptions);
 
   // Convert log visibility to internal format
   const { logRedirect, publicLogs } = validateLogVisibility(options.logVisibility);
@@ -416,19 +439,21 @@ export async function prepareDeploy(
     executions: batch.executions,
   });
 
-  return {
-    prepared: {
-      batch,
-      appName,
-      imageRef: finalImageRef,
-      preflightCtx: {
-        privateKey: preflightCtx.privateKey,
-        rpcUrl: preflightCtx.rpcUrl,
-        environmentConfig: preflightCtx.environmentConfig,
-      },
+      return {
+        prepared: {
+          batch,
+          appName,
+          imageRef: finalImageRef,
+          preflightCtx: {
+            privateKey: preflightCtx.privateKey,
+            rpcUrl: preflightCtx.rpcUrl,
+            environmentConfig: preflightCtx.environmentConfig,
+          },
+        },
+        gasEstimate,
+      };
     },
-    gasEstimate,
-  };
+  );
 }
 
 /**
@@ -442,17 +467,26 @@ export async function executeDeploy(
   prepared: PreparedDeploy,
   gas: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } | undefined,
   logger: Logger = defaultLogger,
+  skipTelemetry?: boolean,
 ): Promise<DeployResult> {
-  // Execute the batch transaction
-  logger.info("Deploying on-chain...");
-  const { appId, txHash } = await executeDeployBatch(prepared.batch, gas, logger);
+  return withSDKTelemetry(
+    {
+      functionName: "executeDeploy",
+      skipTelemetry: skipTelemetry,
+    },
+    async () => {
+      // Execute the batch transaction
+      logger.info("Deploying on-chain...");
+      const { appId, txHash } = await executeDeployBatch(prepared.batch, gas, logger);
 
-  return {
-    appId,
-    txHash,
-    appName: prepared.appName,
-    imageRef: prepared.imageRef,
-  };
+      return {
+        appId,
+        txHash,
+        appName: prepared.appName,
+        imageRef: prepared.imageRef,
+      };
+    },
+  );
 }
 
 /**
@@ -468,19 +502,31 @@ export async function watchDeployment(
   environment: string,
   logger: Logger = defaultLogger,
   clientId?: string,
+  skipTelemetry?: boolean,
 ): Promise<string | undefined> {
-  const environmentConfig = getEnvironmentConfig(environment);
-
-  logger.info("Waiting for app to start...");
-  return watchUntilRunning(
+  return withSDKTelemetry(
     {
-      privateKey,
-      rpcUrl,
-      environmentConfig,
-      appId: appId as `0x${string}`,
-      clientId,
+      functionName: "watchDeployment",
+      skipTelemetry: skipTelemetry,
+      properties: {
+        environment,
+      },
     },
-    logger,
+    async () => {
+      const environmentConfig = getEnvironmentConfig(environment);
+
+      logger.info("Waiting for app to start...");
+      return watchUntilRunning(
+        {
+          privateKey,
+          rpcUrl,
+          environmentConfig,
+          appId: appId as `0x${string}`,
+          clientId,
+        },
+        logger,
+      );
+    },
   );
 }
 

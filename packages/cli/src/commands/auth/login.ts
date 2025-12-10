@@ -17,6 +17,7 @@ import {
   type LegacyKey,
 } from "@layr-labs/ecloud-sdk";
 import { getHiddenInput, displayWarning } from "../../utils/security";
+import { withTelemetry } from "../../telemetry";
 
 export default class AuthLogin extends Command {
   static description = "Store your private key in OS keyring";
@@ -24,8 +25,9 @@ export default class AuthLogin extends Command {
   static examples = ["<%= config.bin %> <%= command.id %>"];
 
   async run(): Promise<void> {
-    // Check if key already exists
-    const exists = await keyExists();
+    return withTelemetry(this, async () => {
+      // Check if key already exists
+      const exists = await keyExists();
 
     if (exists) {
       displayWarning([
@@ -155,5 +157,6 @@ export default class AuthLogin extends Command {
     } catch (err: any) {
       this.error(`Failed to store key: ${err.message}`);
     }
+    });
   }
 }

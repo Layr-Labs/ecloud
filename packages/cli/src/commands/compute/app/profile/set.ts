@@ -11,6 +11,7 @@ import { createAppResolver } from "../../../../utils/appResolver";
 import { invalidateProfileCache } from "../../../../utils/globalConfig";
 import { getClientId } from "../../../../utils/version";
 import chalk from "chalk";
+import { withTelemetry } from "../../../../telemetry";
 
 export default class ProfileSet extends Command {
   static description = "Set public profile information for an app";
@@ -47,7 +48,8 @@ export default class ProfileSet extends Command {
   };
 
   async run() {
-    const { args, flags } = await this.parse(ProfileSet);
+    return withTelemetry(this, async () => {
+      const { args, flags } = await this.parse(ProfileSet);
 
     // Get environment config
     const environment = flags.environment || "sepolia";
@@ -142,5 +144,6 @@ export default class ProfileSet extends Command {
     } catch (error: any) {
       this.error(`Failed to upload profile: ${error.message}`);
     }
+    });
   }
 }

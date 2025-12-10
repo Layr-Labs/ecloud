@@ -34,6 +34,7 @@ import {
 import { doPreflightChecks } from "../../../common/utils/preflight";
 import { checkAppLogPermission } from "../../../common/utils/permissions";
 import { defaultLogger } from "../../../common/utils";
+import { withSDKTelemetry } from "../../../common/telemetry/wrapper";
 
 /**
  * Required upgrade options for SDK (non-interactive)
@@ -64,6 +65,8 @@ export interface SDKUpgradeOptions {
     maxFeePerGas?: bigint;
     maxPriorityFeePerGas?: bigint;
   };
+  /** Skip telemetry (used when called from CLI) - optional */
+  skipTelemetry?: boolean;
 }
 
 export interface UpgradeResult {
@@ -172,9 +175,18 @@ export async function upgrade(
   options: SDKUpgradeOptions,
   logger: Logger = defaultLogger,
 ): Promise<UpgradeResult> {
-  // 1. Do preflight checks (auth, network, etc.) first
-  logger.debug("Performing preflight checks...");
-  const preflightCtx = await doPreflightChecks(
+  return withSDKTelemetry(
+    {
+      functionName: "upgrade",
+      skipTelemetry: options.skipTelemetry,
+      properties: {
+        environment: options.environment || "sepolia",
+      },
+    },
+    async () => {
+      // 1. Do preflight checks (auth, network, etc.) first
+      logger.debug("Performing preflight checks...");
+      const preflightCtx = await doPreflightChecks(
     {
       privateKey: options.privateKey,
       rpcUrl: options.rpcUrl,
@@ -252,11 +264,13 @@ export async function upgrade(
     logger,
   );
 
-  return {
-    appId: appID as string,
-    imageRef: finalImageRef,
-    txHash,
-  };
+      return {
+        appId: appID as string,
+        imageRef: finalImageRef,
+        txHash,
+      };
+    },
+  );
 }
 
 /**
@@ -268,12 +282,21 @@ export async function upgrade(
  * 3. Call executeUpgrade with confirmed gas params
  */
 export async function prepareUpgrade(
-  options: Omit<SDKUpgradeOptions, "gas">,
+  options: Omit<SDKUpgradeOptions, "gas"> & { skipTelemetry?: boolean },
   logger: Logger = defaultLogger,
 ): Promise<PrepareUpgradeResult> {
-  // 1. Do preflight checks (auth, network, etc.) first
-  logger.debug("Performing preflight checks...");
-  const preflightCtx = await doPreflightChecks(
+  return withSDKTelemetry(
+    {
+      functionName: "prepareUpgrade",
+      skipTelemetry: options.skipTelemetry,
+      properties: {
+        environment: options.environment || "sepolia",
+      },
+    },
+    async () => {
+      // 1. Do preflight checks (auth, network, etc.) first
+      logger.debug("Performing preflight checks...");
+      const preflightCtx = await doPreflightChecks(
     {
       privateKey: options.privateKey,
       rpcUrl: options.rpcUrl,
@@ -352,9 +375,11 @@ export async function prepareUpgrade(
         rpcUrl: preflightCtx.rpcUrl,
         environmentConfig: preflightCtx.environmentConfig,
       },
+      },
+      gasEstimate,
+    };
     },
-    gasEstimate,
-  };
+  );
 }
 
 /**
@@ -368,16 +393,25 @@ export async function executeUpgrade(
   prepared: PreparedUpgrade,
   gas: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } | undefined,
   logger: Logger = defaultLogger,
+  skipTelemetry?: boolean,
 ): Promise<UpgradeResult> {
-  // Execute the batch transaction
-  logger.info("Upgrading on-chain...");
-  const txHash = await executeUpgradeBatch(prepared.batch, gas, logger);
+  return withSDKTelemetry(
+    {
+      functionName: "executeUpgrade",
+      skipTelemetry: skipTelemetry,
+    },
+    async () => {
+      // Execute the batch transaction
+      logger.info("Upgrading on-chain...");
+      const txHash = await executeUpgradeBatch(prepared.batch, gas, logger);
 
-  return {
-    appId: prepared.appId,
-    imageRef: prepared.imageRef,
-    txHash,
-  };
+      return {
+        appId: prepared.appId,
+        imageRef: prepared.imageRef,
+        txHash,
+      };
+    },
+  );
 }
 
 /**
@@ -393,18 +427,30 @@ export async function watchUpgrade(
   environment: string,
   logger: Logger = defaultLogger,
   clientId?: string,
+  skipTelemetry?: boolean,
 ): Promise<void> {
-  const environmentConfig = getEnvironmentConfig(environment);
-
-  logger.info("Waiting for upgrade to complete...");
-  await watchUntilUpgradeComplete(
+  return withSDKTelemetry(
     {
-      privateKey,
-      rpcUrl,
-      environmentConfig,
-      appId: appId as Address,
-      clientId,
+      functionName: "watchUpgrade",
+      skipTelemetry: skipTelemetry,
+      properties: {
+        environment,
+      },
     },
-    logger,
+    async () => {
+      const environmentConfig = getEnvironmentConfig(environment);
+
+      logger.info("Waiting for upgrade to complete...");
+      await watchUntilUpgradeComplete(
+        {
+          privateKey,
+          rpcUrl,
+          environmentConfig,
+          appId: appId as Address,
+          clientId,
+        },
+        logger,
+      );
+    },
   );
 }
