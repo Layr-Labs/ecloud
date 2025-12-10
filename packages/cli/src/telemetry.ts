@@ -33,7 +33,7 @@ export function createCLITelemetryClient(): TelemetryClient {
   const telemetryEnabled = getGlobalTelemetryPreference();
   
   return createTelemetryClient(environment, "ecloud-cli", {
-    telemetryEnabled: telemetryEnabled !== false, // Default to enabled if not set
+    telemetryEnabled: telemetryEnabled === true, // Only enabled if explicitly set to true
   });
 }
 

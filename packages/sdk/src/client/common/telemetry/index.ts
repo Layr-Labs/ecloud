@@ -21,7 +21,7 @@ export * from "./wrapper";
  */
 export interface TelemetryClientOptions {
   /**
-   * Whether telemetry is enabled (defaults to true if not provided)
+   * Whether telemetry is enabled (only enabled if explicitly set to true, defaults to disabled)
    */
   telemetryEnabled?: boolean;
   /**
@@ -47,8 +47,10 @@ export function createTelemetryClient(
   namespace: "ecloud-cli" | "ecloud-sdk",
   options?: TelemetryClientOptions,
 ): TelemetryClient {
-  // Check if telemetry is disabled (defaults to enabled if not specified)
-  const telemetryEnabled = options?.telemetryEnabled !== false;
+  // Check if telemetry is enabled
+  // Only enabled if explicitly set to true
+  // If undefined or false, telemetry is disabled
+  const telemetryEnabled = options?.telemetryEnabled === true;
 
   // If telemetry is disabled, return noop client
   if (!telemetryEnabled) {
