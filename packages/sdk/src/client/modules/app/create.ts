@@ -151,6 +151,7 @@ export async function createApp(
   // 1. Validate required parameters
   validateProjectName(options.name || "");
   validateLanguage(options.language || "");
+  validateSafeDirname(options.name || ""); // Additional validation for filesystem safety
 
   // 2. Gather project configuration
   const cfg = await gatherProjectConfig(
