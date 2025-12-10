@@ -8,11 +8,6 @@
 import { TelemetryClient, Metric, AppEnvironment } from "./types";
 import { NoopClient, isNoopClient } from "./noop";
 import { PostHogClient, getPostHogAPIKey, getPostHogEndpoint } from "./posthog";
-import {
-  getGlobalTelemetryPreference,
-  getOrCreateUserUUID,
-  loadGlobalConfig,
-} from "../config/globalConfig";
 import * as os from "os";
 
 export * from "./types";
@@ -22,35 +17,53 @@ export * from "./posthog";
 export * from "./wrapper";
 
 /**
+ * Options for creating a telemetry client
+ */
+export interface TelemetryClientOptions {
+  /**
+   * Whether telemetry is enabled (defaults to true if not provided)
+   */
+  telemetryEnabled?: boolean;
+  /**
+   * PostHog API key (if not provided, will check environment variables)
+   */
+  apiKey?: string;
+  /**
+   * PostHog endpoint (if not provided, will use default)
+   */
+  endpoint?: string;
+}
+
+/**
  * Create a telemetry client
  * 
- * @param environment - Application environment information
+ * @param environment - Application environment information (must include userUUID)
  * @param namespace - Namespace for telemetry events ("ecloud-cli" or "ecloud-sdk")
- * @param apiKey - Optional PostHog API key (if not provided, will check environment variables)
+ * @param options - Optional telemetry client options
  * @returns TelemetryClient instance (NoopClient if telemetry is disabled or no API key)
  */
 export function createTelemetryClient(
   environment: AppEnvironment,
   namespace: "ecloud-cli" | "ecloud-sdk",
-  apiKey?: string,
+  options?: TelemetryClientOptions,
 ): TelemetryClient {
-  // Get global telemetry preference
-  const telemetryEnabled = getGlobalTelemetryPreference();
+  // Check if telemetry is disabled (defaults to enabled if not specified)
+  const telemetryEnabled = options?.telemetryEnabled !== false;
 
-  // If telemetry is disabled or not set, return noop client
-  if (telemetryEnabled === false) {
+  // If telemetry is disabled, return noop client
+  if (!telemetryEnabled) {
     return new NoopClient();
   }
 
-  // Get API key from parameter, environment variable, or return noop
-  const resolvedApiKey = apiKey || getPostHogAPIKey();
+  // Get API key from options, environment variable, or return noop
+  const resolvedApiKey = options?.apiKey || getPostHogAPIKey();
   if (!resolvedApiKey) {
     // No API key available, return noop client
     return new NoopClient();
   }
 
-  // Get endpoint
-  const endpoint = getPostHogEndpoint();
+  // Get endpoint from options or environment variable
+  const endpoint = options?.endpoint || getPostHogEndpoint();
 
   try {
     return new PostHogClient(environment, namespace, resolvedApiKey, endpoint);
@@ -63,24 +76,23 @@ export function createTelemetryClient(
 /**
  * Create an AppEnvironment from current system information
  * 
+ * @param userUUID - User UUID for identification (required - no I/O in SDK)
  * @param cliVersion - Optional CLI version (for CLI usage)
+ * @param osOverride - Optional OS override (defaults to current platform)
+ * @param archOverride - Optional architecture override (defaults to current architecture)
  * @returns AppEnvironment with user UUID, OS, and architecture
  */
-export function createAppEnvironment(cliVersion?: string): AppEnvironment {
-  const userUUID = getOrCreateUserUUID();
-  
-  // Ensure UserUUID is saved for consistent tracking across sessions
-  const config = loadGlobalConfig();
-  if (!config.user_uuid) {
-    // This will be saved by getOrCreateUserUUID, but we can also save it explicitly
-    // The function already handles saving, so this is just for safety
-  }
-
+export function createAppEnvironment(
+  userUUID: string,
+  cliVersion?: string,
+  osOverride?: string,
+  archOverride?: string,
+): AppEnvironment {
   return {
     userUUID,
     cliVersion,
-    os: os.platform(),
-    arch: os.arch(),
+    os: osOverride || os.platform(),
+    arch: archOverride || os.arch(),
   };
 }
 

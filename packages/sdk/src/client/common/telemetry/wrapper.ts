@@ -13,6 +13,15 @@ import {
   emitMetrics,
   type TelemetryClient,
 } from "./index";
+import { randomUUID } from "crypto";
+
+/**
+ * Generate a random UUID for telemetry identification
+ * Used when userUUID is not provided (SDK usage outside CLI)
+ */
+function generateRandomUUID(): string {
+  return randomUUID();
+}
 
 /**
  * Options for telemetry wrapper
@@ -30,6 +39,23 @@ export interface TelemetryWrapperOptions {
    * Additional properties to include in telemetry
    */
   properties?: Record<string, string>;
+  /**
+   * User UUID for identification (required if skipTelemetry is false)
+   * If not provided and telemetry is enabled, will generate a random UUID for this session
+   */
+  userUUID?: string;
+  /**
+   * Whether telemetry is enabled (defaults to true if not provided)
+   */
+  telemetryEnabled?: boolean;
+  /**
+   * PostHog API key (optional, will check environment variables if not provided)
+   */
+  apiKey?: string;
+  /**
+   * PostHog endpoint (optional, will use default if not provided)
+   */
+  endpoint?: string;
 }
 
 /**
@@ -48,8 +74,16 @@ export async function withSDKTelemetry<T>(
     return action();
   }
 
-  const environment = createAppEnvironment();
-  const client = createTelemetryClient(environment, "ecloud-sdk");
+  // Generate a random UUID if not provided (for SDK usage outside CLI)
+  // This ensures each SDK session has a unique identifier
+  const userUUID = options.userUUID || generateRandomUUID();
+  
+  const environment = createAppEnvironment(userUUID);
+  const client = createTelemetryClient(environment, "ecloud-sdk", {
+    telemetryEnabled: options.telemetryEnabled,
+    apiKey: options.apiKey,
+    endpoint: options.endpoint,
+  });
   const metrics = createMetricsContext();
 
   // Set source to identify SDK usage

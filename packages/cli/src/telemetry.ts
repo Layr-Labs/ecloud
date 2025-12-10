@@ -15,14 +15,26 @@ import {
   getBuildType,
 } from "@layr-labs/ecloud-sdk";
 import { Command } from "@oclif/core";
-import { getDefaultEnvironment } from "./utils/globalConfig";
+import {
+  getDefaultEnvironment,
+  getOrCreateUserUUID,
+  getGlobalTelemetryPreference,
+} from "./utils/globalConfig";
 
 /**
  * Create a telemetry client for CLI usage
  */
 export function createCLITelemetryClient(): TelemetryClient {
-  const environment = createAppEnvironment();
-  return createTelemetryClient(environment, "ecloud-cli");
+  // Get user UUID from CLI's globalConfig (handles I/O)
+  const userUUID = getOrCreateUserUUID();
+  const environment = createAppEnvironment(userUUID);
+  
+  // Get telemetry preference from CLI's globalConfig
+  const telemetryEnabled = getGlobalTelemetryPreference();
+  
+  return createTelemetryClient(environment, "ecloud-cli", {
+    telemetryEnabled: telemetryEnabled !== false, // Default to enabled if not set
+  });
 }
 
 /**

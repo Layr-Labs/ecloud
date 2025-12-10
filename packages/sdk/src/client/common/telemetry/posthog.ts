@@ -1,19 +1,18 @@
 /**
  * PostHog telemetry client implementation
  * 
- * Uses PostHog HTTP API directly
+ * Uses the official posthog-node library
  */
 
-import axios from "axios";
+import { PostHog } from "posthog-node";
 import { TelemetryClient, Metric, AppEnvironment } from "./types";
 
 /**
- * PostHogClient implements the TelemetryClient interface using PostHog HTTP API
+ * PostHogClient implements the TelemetryClient interface using posthog-node
  */
 export class PostHogClient implements TelemetryClient {
+  private readonly client: PostHog;
   private readonly namespace: string;
-  private readonly apiKey: string;
-  private readonly endpoint: string;
   private readonly appEnvironment: AppEnvironment;
 
   constructor(
@@ -23,44 +22,53 @@ export class PostHogClient implements TelemetryClient {
     endpoint?: string,
   ) {
     this.namespace = namespace;
-    this.apiKey = apiKey;
-    this.endpoint = endpoint || "https://us.i.posthog.com";
     this.appEnvironment = environment;
+
+    // Initialize PostHog client
+    // posthog-node expects the full URL for the host option
+    const host = endpoint || "https://us.i.posthog.com";
+
+    this.client = new PostHog(apiKey, {
+      host: host,
+      flushAt: 1, // Flush immediately for CLI/SDK usage
+      flushInterval: 0, // Disable interval flushing
+    });
+
+    // Identify the user with their UUID
+    this.client.identify({
+      distinctId: environment.userUUID,
+      properties: {
+        os: environment.os,
+        arch: environment.arch,
+        ...(environment.cliVersion ? { cliVersion: environment.cliVersion } : {}),
+      },
+    });
   }
 
   /**
    * AddMetric implements the TelemetryClient interface
    */
   async addMetric(metric: Metric): Promise<void> {
-    // Create properties map starting with base properties
-    const props: Record<string, any> = {
-      name: metric.name,
-      value: metric.value,
-    };
-
-    // Add metric dimensions
-    for (const [k, v] of Object.entries(metric.dimensions)) {
-      props[k] = v;
-    }
-
     // Never throw errors from telemetry operations
     try {
-      // Send event to PostHog capture endpoint
-      await axios.post(
-        `${this.endpoint}/capture/`,
-        {
-          api_key: this.apiKey,
-          event: this.namespace,
-          distinct_id: this.appEnvironment.userUUID,
-          properties: props,
-        },
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-          timeout: 5000, // 5 second timeout
-        },
-      );
+      // Create properties map starting with base properties
+      const props: Record<string, any> = {
+        name: metric.name,
+        value: metric.value,
+      };
+
+      // Add metric dimensions
+      for (const [k, v] of Object.entries(metric.dimensions)) {
+        props[k] = v;
+      }
+
+      // Capture event using the namespace as the event name
+      // With flushAt: 1, events are automatically flushed after each capture
+      this.client.capture({
+        distinctId: this.appEnvironment.userUUID,
+        event: this.namespace,
+        properties: props,
+      });
     } catch (err) {
       // Silently ignore telemetry errors
     }
@@ -70,8 +78,13 @@ export class PostHogClient implements TelemetryClient {
    * Close implements the TelemetryClient interface
    */
   async close(): Promise<void> {
-    // PostHog HTTP API doesn't require explicit close
-    // This is a no-op to match the interface
+    try {
+      // Shutdown PostHog client and flush any pending events
+      // shutdown() is synchronous but internally handles async cleanup
+      this.client.shutdown();
+    } catch (err) {
+      // Silently ignore errors during shutdown
+    }
   }
 }
 
