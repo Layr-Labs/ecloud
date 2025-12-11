@@ -7,6 +7,7 @@
   "types": "dist/index.d.ts",
   "files": [
     "dist",
+    "tools",
     "VERSION",
     "README.md"
   ],
@@ -18,8 +19,7 @@
     }
   },
   "scripts": {
-    "build": "tsup && npm run build:copy-templates",
-    "build:copy-templates": "node scripts/copy-templates.js",
+    "build": "tsup",
     "prepublishOnly": "cp ../../README.md .",
     "lint": "eslint .",
     "format": "prettier --check .",

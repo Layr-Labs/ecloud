@@ -41,11 +41,9 @@ export async function fetchTemplate(
     });
 
     // Checkout the desired ref
-    await execFileAsync(
-      "git",
-      ["-C", targetDir, "checkout", "--quiet", ref],
-      { maxBuffer: 10 * 1024 * 1024 },
-    );
+    await execFileAsync("git", ["-C", targetDir, "checkout", "--quiet", ref], {
+      maxBuffer: 10 * 1024 * 1024,
+    });
 
     // Update submodules
     await execAsync(`git -C ${targetDir} submodule update --init --recursive --progress`);

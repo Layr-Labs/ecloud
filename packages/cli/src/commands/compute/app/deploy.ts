@@ -73,6 +73,22 @@ export default class AppDeploy extends Command {
       options: ["enable", "disable"],
       env: "ECLOUD_RESOURCE_USAGE_MONITORING",
     }),
+    website: Flags.string({
+      required: false,
+      description: "App website URL (optional)",
+    }),
+    description: Flags.string({
+      required: false,
+      description: "App description (optional)",
+    }),
+    "x-url": Flags.string({
+      required: false,
+      description: "X (Twitter) profile URL (optional)",
+    }),
+    image: Flags.string({
+      required: false,
+      description: "Path to app icon/logo image - JPG/PNG, max 4MB, square recommended (optional)",
+    }),
   };
 
   async run() {
@@ -172,41 +188,64 @@ export default class AppDeploy extends Command {
 
     // 11. Collect app profile while deployment is in progress (optional)
     if (!flags["skip-profile"]) {
-      this.log(
-        "\nDeployment confirmed onchain. While your instance provisions, set up a public profile:",
-      );
+      // Check if any profile flags were provided
+      const hasProfileFlags = flags.website || flags.description || flags["x-url"] || flags.image;
 
-      try {
-        const profile = await getAppProfileInteractive(appName, true);
+      let profile: {
+        name: string;
+        website?: string;
+        description?: string;
+        xURL?: string;
+        imagePath?: string;
+      } | null = null;
 
-        if (profile) {
-          // Upload profile if provided (non-blocking - warn on failure but don't fail deployment)
-          logger.info("Uploading app profile...");
-          try {
-            const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl);
-            await userApiClient.uploadAppProfile(
-              res.appId as `0x${string}`,
-              profile.name,
-              profile.website,
-              profile.description,
-              profile.xURL,
-              profile.imagePath,
-            );
-            logger.info("✓ Profile uploaded successfully");
+      if (hasProfileFlags) {
+        // Use flags directly if any were provided
+        profile = {
+          name: appName,
+          website: flags.website,
+          description: flags.description,
+          xURL: flags["x-url"],
+          imagePath: flags.image,
+        };
+      } else {
+        // Otherwise prompt interactively
+        this.log(
+          "\nDeployment confirmed onchain. While your instance provisions, set up a public profile:",
+        );
 
-            // Invalidate profile cache to ensure fresh data on next command
-            try {
-              invalidateProfileCache(environment);
-            } catch (cacheErr: any) {
-              logger.debug(`Failed to invalidate profile cache: ${cacheErr.message}`);
-            }
-          } catch (uploadErr: any) {
-            logger.warn(`Failed to upload profile: ${uploadErr.message}`);
-          }
+        try {
+          profile = (await getAppProfileInteractive(appName, true)) || null;
+        } catch {
+          // Profile collection cancelled or failed - continue without profile
+          logger.debug("Profile collection skipped or cancelled");
         }
-      } catch {
-        // Profile collection cancelled or failed - continue without profile
-        logger.debug("Profile collection skipped or cancelled");
+      }
+
+      if (profile) {
+        // Upload profile if provided (non-blocking - warn on failure but don't fail deployment)
+        logger.info("Uploading app profile...");
+        try {
+          const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl);
+          await userApiClient.uploadAppProfile(
+            res.appId as `0x${string}`,
+            profile.name,
+            profile.website,
+            profile.description,
+            profile.xURL,
+            profile.imagePath,
+          );
+          logger.info("✓ Profile uploaded successfully");
+
+          // Invalidate profile cache to ensure fresh data on next command
+          try {
+            invalidateProfileCache(environment);
+          } catch (cacheErr: any) {
+            logger.debug(`Failed to invalidate profile cache: ${cacheErr.message}`);
+          }
+        } catch (uploadErr: any) {
+          logger.warn(`Failed to upload profile: ${uploadErr.message}`);
+        }
       }
     }
 
