@@ -21,8 +21,9 @@ Version: 0.0.1-dev.1
 Commit:  be757436b79faff7959b8375dbb051cc47cb0895
 ```
 
-### Migrating Your Account from Eigenx
-
+### Migrating auth key from Eigenx
+> [!NOTE]
+> For simplicity, the `ecloud` CLI only supports storing one key for all environments. To use a different key, you can use the `--private-key` flag or set the `ECLOUD_PRIVATE_KEY` environment variable.
 Run the migrate command:
 
 ```bash
@@ -35,15 +36,13 @@ You should see output similar to the following:
 
 Use the up/down arrow keys to select the wallet you want to migrate.
 
-> [!NOTE]
-> For simplicity, the `ecloud` CLI only supports storing one key for all environments. To use a different key, you can use the `--private-key` flag or set the `ECLOUD_PRIVATE_KEY` environment variable.
 
 After selecting the key you want to migrate, you should see something like this:
 
 ![post selection](./images/migration/post-selection.png)
 
 > [!NOTE]
-> We recommend keeping your eigenx keys intact and not deleting them until you have verified that the migrated keys work correctly.
+> We recommend keeping your eigenx keys intact and not deleting them until you have verified that the migrated key work correctly.
 
 Once the migration is complete, you will see a message like this:
 
