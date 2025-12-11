@@ -1,7 +1,15 @@
 import { defineConfig } from "tsup";
+import { readFileSync } from "fs";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
 
 // Get BUILD_TYPE from environment, default to 'prod'
 const buildType = process.env.BUILD_TYPE?.toLowerCase() || "prod";
+
+// Get version: prefer PACKAGE_VERSION env var (set by CI from git tag), fallback to package.json
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const packageJson = JSON.parse(readFileSync(resolve(__dirname, "package.json"), "utf-8"));
+const sdkVersion = process.env.PACKAGE_VERSION || packageJson.version || "0.0.0";
 
 export default defineConfig({
   entry: ["src/index.ts"],
@@ -11,6 +19,7 @@ export default defineConfig({
   sourcemap: true,
   define: {
     BUILD_TYPE_BUILD_TIME: JSON.stringify(buildType),
+    SDK_VERSION_BUILD_TIME: JSON.stringify(sdkVersion),
   },
   loader: {
     ".tmpl": "text",

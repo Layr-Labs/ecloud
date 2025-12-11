@@ -60,6 +60,7 @@ jobs:
         working-directory: ./packages/sdk
         env:
           BUILD_TYPE: dev
+          PACKAGE_VERSION: ${{ env.PACKAGE_VERSION }}
         run: |
           pnpm run build
 
@@ -67,6 +68,7 @@ jobs:
         working-directory: ./packages/cli
         env:
           BUILD_TYPE: dev
+          PACKAGE_VERSION: ${{ env.PACKAGE_VERSION }}
         run: |
           pnpm run build
 

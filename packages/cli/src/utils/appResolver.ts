@@ -22,6 +22,7 @@ import {
   getAppName as getLocalAppName,
   resolveAppIDFromRegistry,
 } from "./appNames";
+import { getClientId } from "./version";
 
 const CHUNK_SIZE = 10;
 
@@ -234,7 +235,12 @@ export class AppResolver {
       }
 
       // Fetch info for all apps to get profile names
-      const userApiClient = new UserApiClient(this.environmentConfig, this.privateKey, this.rpcUrl);
+      const userApiClient = new UserApiClient(
+        this.environmentConfig,
+        this.privateKey,
+        this.rpcUrl,
+        getClientId(),
+      );
       const appInfos = await getAppInfosChunked(userApiClient, apps);
 
       // Build profile names map

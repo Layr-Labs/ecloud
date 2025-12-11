@@ -39,7 +39,7 @@ export async function getImageDigestAndName(imageRef: string): Promise<ImageDige
     const { stdout } = await execFileAsync(
       "docker",
       ["manifest", "inspect", imageRef],
-      { maxBuffer: 10 * 1024 * 1024 } // 10MB buffer
+      { maxBuffer: 10 * 1024 * 1024 }, // 10MB buffer
     );
 
     const manifest: Manifest = JSON.parse(stdout);

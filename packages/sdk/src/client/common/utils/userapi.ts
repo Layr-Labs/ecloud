@@ -65,20 +65,38 @@ export const CanViewAppLogsPermission = "0x2fd3f2fe" as Hex;
 export const CanViewSensitiveAppInfoPermission = "0x0e67b22f" as Hex;
 export const CanUpdateAppProfilePermission = "0x036fef61" as Hex;
 
+/**
+ * SDK_VERSION_BUILD_TIME is replaced at build time by tsup's define option
+ */
+// @ts-ignore - SDK_VERSION_BUILD_TIME is injected at build time by tsup
+declare const SDK_VERSION_BUILD_TIME: string | undefined;
+
+/**
+ * Get the default client ID using the build-time version
+ */
+function getDefaultClientId(): string {
+  // @ts-ignore - SDK_VERSION_BUILD_TIME is injected at build time
+  const version = typeof SDK_VERSION_BUILD_TIME !== "undefined" ? SDK_VERSION_BUILD_TIME : "0.0.0";
+  return `ecloud-sdk/v${version}`;
+}
+
 export class UserApiClient {
   private readonly account?: ReturnType<typeof privateKeyToAccount>;
   private readonly rpcUrl?: string;
+  private readonly clientId: string;
 
   constructor(
     private readonly config: EnvironmentConfig,
     privateKey?: string | Hex,
     rpcUrl?: string,
+    clientId?: string,
   ) {
     if (privateKey) {
       const privateKeyHex = addHexPrefix(privateKey);
       this.account = privateKeyToAccount(privateKeyHex);
     }
     this.rpcUrl = rpcUrl;
+    this.clientId = clientId || getDefaultClientId();
   }
 
   async getInfos(appIDs: Address[], addressCount = 1): Promise<AppInfo[]> {
@@ -212,7 +230,7 @@ export class UserApiClient {
 
     // Make authenticated POST request
     const headers: Record<string, string> = {
-      "x-client-id": "ecloud-cli/v0.0.1",
+      "x-client-id": this.clientId,
       ...formData.getHeaders(),
     };
 
@@ -278,7 +296,7 @@ export class UserApiClient {
     permission?: Hex,
   ): Promise<{ json: () => Promise<any>; text: () => Promise<string> }> {
     const headers: Record<string, string> = {
-      "x-client-id": "ecloud-cli/v0.0.1",
+      "x-client-id": this.clientId,
     };
     // Add auth headers if permission is specified
     if (permission && this.account) {

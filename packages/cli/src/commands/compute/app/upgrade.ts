@@ -21,6 +21,7 @@ import {
   confirm,
   getPrivateKeyInteractive,
 } from "../../../utils/prompts";
+import { getClientId } from "../../../utils/version";
 import chalk from "chalk";
 
 export default class AppUpgrade extends Command {
@@ -111,7 +112,7 @@ export default class AppUpgrade extends Command {
     // 5. Get current instance type (best-effort, used as default)
     let currentInstanceType = "";
     try {
-      const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl);
+      const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl, getClientId());
       const infos = await userApiClient.getInfos([appID], 1);
       if (infos.length > 0) {
         currentInstanceType = infos[0].machineType || "";
@@ -200,7 +201,7 @@ async function fetchAvailableInstanceTypes(
   rpcUrl?: string,
 ): Promise<Array<{ sku: string; description: string }>> {
   try {
-    const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl);
+    const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl, getClientId());
 
     const skuList = await userApiClient.getSKUs();
     if (skuList.skus.length === 0) {

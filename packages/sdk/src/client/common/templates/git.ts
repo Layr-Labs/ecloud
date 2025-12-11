@@ -49,7 +49,7 @@ export async function fetchTemplate(
     await execFileAsync(
       "git",
       ["-C", targetDir, "submodule", "update", "--init", "--recursive", "--progress"],
-      { maxBuffer: 10 * 1024 * 1024 }
+      { maxBuffer: 10 * 1024 * 1024 },
     );
 
     logger.info(`Clone repo complete: ${repoURL}\n`);

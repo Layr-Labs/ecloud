@@ -17,6 +17,7 @@ import {
 } from "../../../utils/prompts";
 import { getAppInfosChunked } from "../../../utils/appResolver";
 import { formatAppDisplay, printAppDisplay } from "../../../utils/format";
+import { getClientId } from "../../../utils/version";
 import chalk from "chalk";
 
 export default class AppList extends Command {
@@ -88,7 +89,7 @@ export default class AppList extends Command {
     }
 
     // Create UserAPI client to get additional info
-    const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl);
+    const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl, getClientId());
 
     // Fetch all data in parallel
     const addressCount = flags["address-count"];
