@@ -9,7 +9,7 @@ import { promisify } from "util";
 import { ImageDigestResult } from "../types";
 import { DOCKER_PLATFORM } from "../constants";
 
-const execFile = promisify(child_process.execFile);
+const execFileAsync = promisify(child_process.execFile);
 
 interface Platform {
   os: string;
@@ -35,10 +35,12 @@ interface Manifest {
  */
 export async function getImageDigestAndName(imageRef: string): Promise<ImageDigestResult> {
   try {
-    // Use docker manifest inspect to get the manifest
-    const { stdout } = await execFile("docker", ["manifest", "inspect", imageRef], {
-      maxBuffer: 10 * 1024 * 1024, // 10MB buffer
-    });
+    // Use docker manifest inspect to get the manifest safely
+    const { stdout } = await execFileAsync(
+      "docker",
+      ["manifest", "inspect", imageRef],
+      { maxBuffer: 10 * 1024 * 1024 } // 10MB buffer
+    );
 
     const manifest: Manifest = JSON.parse(stdout);
 
