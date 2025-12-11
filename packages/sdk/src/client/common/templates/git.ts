@@ -46,7 +46,11 @@ export async function fetchTemplate(
     });
 
     // Update submodules
-    await execAsync(`git -C ${targetDir} submodule update --init --recursive --progress`);
+    await execFileAsync(
+      "git",
+      ["-C", targetDir, "submodule", "update", "--init", "--recursive", "--progress"],
+      { maxBuffer: 10 * 1024 * 1024 }
+    );
 
     logger.info(`Clone repo complete: ${repoURL}\n`);
   } catch (error: any) {
