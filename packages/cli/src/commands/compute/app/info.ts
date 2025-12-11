@@ -8,6 +8,7 @@ import {
 import { commonFlags, validateCommonFlags } from "../../../flags";
 import { getOrPromptAppID } from "../../../utils/prompts";
 import { formatAppDisplay, printAppDisplay } from "../../../utils/format";
+import { getClientId } from "../../../utils/version";
 import { Address } from "viem";
 import chalk from "chalk";
 
@@ -56,7 +57,7 @@ export default class AppInfo extends Command {
     });
 
     // Create UserAPI client
-    const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl);
+    const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl, getClientId());
 
     if (flags.watch) {
       await this.watchMode(appID, userApiClient, rpcUrl, environmentConfig, flags["address-count"]);

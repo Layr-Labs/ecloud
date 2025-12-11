@@ -23,6 +23,7 @@ import {
   getPrivateKeyInteractive,
 } from "../../../utils/prompts";
 import { invalidateProfileCache } from "../../../utils/globalConfig";
+import { getClientId } from "../../../utils/version";
 import chalk from "chalk";
 
 export default class AppDeploy extends Command {
@@ -226,7 +227,12 @@ export default class AppDeploy extends Command {
         // Upload profile if provided (non-blocking - warn on failure but don't fail deployment)
         logger.info("Uploading app profile...");
         try {
-          const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl);
+          const userApiClient = new UserApiClient(
+            environmentConfig,
+            privateKey,
+            rpcUrl,
+            getClientId(),
+          );
           await userApiClient.uploadAppProfile(
             res.appId as `0x${string}`,
             profile.name,
@@ -267,7 +273,7 @@ async function fetchAvailableInstanceTypes(
   rpcUrl?: string,
 ): Promise<Array<{ sku: string; description: string }>> {
   try {
-    const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl);
+    const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl, getClientId());
 
     const skuList = await userApiClient.getSKUs();
     if (skuList.skus.length === 0) {

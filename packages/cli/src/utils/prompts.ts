@@ -30,6 +30,7 @@ import {
 import { getAppInfosChunked } from "./appResolver";
 import { getDefaultEnvironment, getProfileCache, setProfileCache } from "./globalConfig";
 import { listApps, isAppNameAvailable, findAvailableName } from "./appNames";
+import { getClientId } from "./version";
 
 // Helper to add hex prefix
 function addHexPrefix(value: string): `0x${string}` {
@@ -799,6 +800,7 @@ async function getAppIDInteractive(options: GetAppIDOptions): Promise<Address> {
         environmentConfig,
         options.privateKey,
         options.rpcUrl,
+        getClientId(),
       );
       const appInfos = await getAppInfosChunked(userApiClient, apps);
 

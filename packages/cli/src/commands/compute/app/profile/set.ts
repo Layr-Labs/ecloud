@@ -9,6 +9,7 @@ import {
 } from "../../../../utils/prompts";
 import { createAppResolver } from "../../../../utils/appResolver";
 import { invalidateProfileCache } from "../../../../utils/globalConfig";
+import { getClientId } from "../../../../utils/version";
 import chalk from "chalk";
 
 export default class ProfileSet extends Command {
@@ -110,7 +111,7 @@ export default class ProfileSet extends Command {
     // Upload profile via API
     this.log("\nUploading app profile...");
 
-    const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl);
+    const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl, getClientId());
 
     try {
       const response = await userApiClient.uploadAppProfile(
