@@ -9,10 +9,11 @@ import * as os from "os";
 import * as path from "path";
 import * as child_process from "child_process";
 
-import { exec } from "child_process";
+import { exec, execFile } from "child_process";
 import { promisify } from "util";
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 /**
  * Extract hostname from a registry URL/string for safe comparison
@@ -247,7 +248,7 @@ async function verifyImageExists(
 
   while (retries > 0) {
     try {
-      await execAsync(`docker manifest inspect ${imageRef}`, {
+      await execFileAsync("docker", ["manifest", "inspect", imageRef], {
         maxBuffer: 10 * 1024 * 1024,
         timeout: 10000, // 10 second timeout
       });
