@@ -29,6 +29,8 @@ export interface SDKLogsOptions {
   privateKey?: string;
   /** RPC URL - optional, uses environment default */
   rpcUrl?: string;
+  /** Client ID for API requests - optional */
+  clientId?: string;
 }
 
 /**
@@ -41,6 +43,7 @@ export interface LogsOptions {
   environment?: string;
   privateKey?: string;
   rpcUrl?: string;
+  clientId?: string;
 }
 
 // App status constants
@@ -202,7 +205,12 @@ export async function logs(
   const formattedApp = formatAppDisplay(environmentConfig.name, appID, "");
 
   // Create user API client
-  const userApiClient = new UserApiClient(environmentConfig, options.privateKey, rpcUrl);
+  const userApiClient = new UserApiClient(
+    environmentConfig,
+    options.privateKey,
+    rpcUrl,
+    options.clientId,
+  );
 
   // Fetch logs
   let logsText: string;

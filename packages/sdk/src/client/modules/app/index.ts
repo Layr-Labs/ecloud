@@ -79,6 +79,7 @@ export interface AppModuleConfig {
   privateKey: `0x${string}`;
   rpcUrl: string;
   environment: string;
+  clientId?: string;
 }
 
 export function createAppModule(ctx: AppModuleConfig): AppModule {
@@ -154,6 +155,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           appID: opts.appID,
           watch: opts.watch,
           environment: ctx.environment,
+          clientId: ctx.clientId,
         },
         logger,
       );

@@ -13,6 +13,7 @@ export interface WatchUntilRunningOptions {
   rpcUrl: string;
   environmentConfig: EnvironmentConfig;
   appId: Address;
+  clientId?: string;
 }
 
 const WATCH_POLL_INTERVAL_SECONDS = 5;
@@ -27,10 +28,10 @@ export async function watchUntilRunning(
   options: WatchUntilRunningOptions,
   logger: Logger,
 ): Promise<string | undefined> {
-  const { environmentConfig, appId, privateKey, rpcUrl } = options;
+  const { environmentConfig, appId, privateKey, rpcUrl, clientId } = options;
 
   // Create UserAPI client
-  const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl);
+  const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl, clientId);
 
   // Track initial status and whether we've seen a change
   let initialStatus: string | undefined;
@@ -106,6 +107,7 @@ export interface WatchUntilUpgradeCompleteOptions {
   rpcUrl: string;
   environmentConfig: EnvironmentConfig;
   appId: Address;
+  clientId?: string;
 }
 
 const APP_STATUS_STOPPED = "Stopped";
@@ -119,10 +121,10 @@ export async function watchUntilUpgradeComplete(
   options: WatchUntilUpgradeCompleteOptions,
   logger: Logger,
 ): Promise<void> {
-  const { environmentConfig, appId, privateKey, rpcUrl } = options;
+  const { environmentConfig, appId, privateKey, rpcUrl, clientId } = options;
 
   // Create UserAPI client
-  const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl);
+  const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl, clientId);
 
   // Track initial status and whether we've seen a change
   let initialStatus: string | undefined;

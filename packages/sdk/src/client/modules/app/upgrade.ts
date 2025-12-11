@@ -392,6 +392,7 @@ export async function watchUpgrade(
   rpcUrl: string,
   environment: string,
   logger: Logger = defaultLogger,
+  clientId?: string,
 ): Promise<void> {
   const environmentConfig = getEnvironmentConfig(environment);
 
@@ -402,6 +403,7 @@ export async function watchUpgrade(
       rpcUrl,
       environmentConfig,
       appId: appId as Address,
+      clientId,
     },
     logger,
   );
