@@ -9,7 +9,7 @@ import { promisify } from "util";
 import { ImageDigestResult } from "../types";
 import { DOCKER_PLATFORM } from "../constants";
 
-const exec = promisify(child_process.exec);
+const execFile = promisify(child_process.execFile);
 
 interface Platform {
   os: string;
@@ -36,7 +36,7 @@ interface Manifest {
 export async function getImageDigestAndName(imageRef: string): Promise<ImageDigestResult> {
   try {
     // Use docker manifest inspect to get the manifest
-    const { stdout } = await exec(`docker manifest inspect ${imageRef}`, {
+    const { stdout } = await execFile("docker", ["manifest", "inspect", imageRef], {
       maxBuffer: 10 * 1024 * 1024, // 10MB buffer
     });
 
@@ -97,7 +97,7 @@ async function extractDigestFromSinglePlatform(
   // and then inspect the image to get platform info
   try {
     // Use docker inspect to get platform info
-    const { stdout } = await exec(`docker inspect ${imageRef}`, {
+    const { stdout } = await execFile("docker", ["inspect", imageRef], {
       maxBuffer: 10 * 1024 * 1024,
     });
 
