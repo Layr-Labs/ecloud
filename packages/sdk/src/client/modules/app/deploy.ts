@@ -467,6 +467,7 @@ export async function watchDeployment(
   rpcUrl: string,
   environment: string,
   logger: Logger = defaultLogger,
+  clientId?: string,
 ): Promise<string | undefined> {
   const environmentConfig = getEnvironmentConfig(environment);
 
@@ -477,6 +478,7 @@ export async function watchDeployment(
       rpcUrl,
       environmentConfig,
       appId: appId as `0x${string}`,
+      clientId,
     },
     logger,
   );

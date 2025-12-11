@@ -256,7 +256,14 @@ export default class AppDeploy extends Command {
     }
 
     // 12. Watch until app is running
-    const ipAddress = await watchDeployment(res.appId, privateKey, rpcUrl, environment, logger);
+    const ipAddress = await watchDeployment(
+      res.appId,
+      privateKey,
+      rpcUrl,
+      environment,
+      logger,
+      getClientId(),
+    );
 
     this.log(
       `\n✅ ${chalk.green(`App deployed successfully ${chalk.bold(`(id: ${res.appId}, ip: ${ipAddress})`)}`)}`,

@@ -184,7 +184,7 @@ export default class AppUpgrade extends Command {
     );
 
     // 12. Watch until upgrade completes
-    await watchUpgrade(res.appId, privateKey, rpcUrl, environment, logger);
+    await watchUpgrade(res.appId, privateKey, rpcUrl, environment, logger, getClientId());
 
     this.log(
       `\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${res.appId}, image: ${res.imageRef})`)}`)}`,

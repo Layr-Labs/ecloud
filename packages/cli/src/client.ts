@@ -7,6 +7,7 @@ import {
 } from "@layr-labs/ecloud-sdk";
 import { CommonFlags, validateCommonFlags } from "./flags";
 import { getPrivateKeyInteractive } from "./utils/prompts";
+import { getClientId } from "./utils/version";
 import { Hex } from "viem";
 
 export async function createAppClient(flags: CommonFlags) {
@@ -28,6 +29,7 @@ export async function createAppClient(flags: CommonFlags) {
     privateKey,
     rpcUrl,
     environment,
+    clientId: getClientId(),
   });
 }
 

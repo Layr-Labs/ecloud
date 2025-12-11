@@ -16,12 +16,14 @@ export async function getCurrentInstanceType(
   preflightCtx: PreflightContext,
   appID: Address,
   logger: Logger,
+  clientId?: string,
 ): Promise<string> {
   try {
     const userApiClient = new UserApiClient(
       preflightCtx.environmentConfig,
       preflightCtx.privateKey,
       preflightCtx.rpcUrl,
+      clientId,
     );
 
     const infos = await userApiClient.getInfos([appID], 1);
