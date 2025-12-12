@@ -2,7 +2,7 @@
  * Main SDK Client entry point
  */
 
-import { createAppModule, type AppModule } from "./modules/app";
+import { createComputeModule, type ComputeModule } from "./modules/compute";
 import {
   getEnvironmentConfig,
   isEnvironmentAvailable,
@@ -24,8 +24,8 @@ export {
   SDKCreateAppOpts,
   PRIMARY_LANGUAGES,
   getAvailableTemplates,
-} from "./modules/app/create";
-export { logs, LogsOptions, SDKLogsOptions } from "./modules/app/logs";
+} from "./modules/compute/app/create";
+export { logs, LogsOptions, SDKLogsOptions } from "./modules/compute/app/logs";
 export {
   SDKDeployOptions,
   prepareDeploy,
@@ -33,7 +33,7 @@ export {
   watchDeployment,
   type PreparedDeploy,
   type PrepareDeployResult,
-} from "./modules/app/deploy";
+} from "./modules/compute/app/deploy";
 export {
   SDKUpgradeOptions,
   prepareUpgrade,
@@ -41,17 +41,22 @@ export {
   watchUpgrade,
   type PreparedUpgrade,
   type PrepareUpgradeResult,
-} from "./modules/app/upgrade";
+} from "./modules/compute/app/upgrade";
 
-// Export modules for standalone use
+// Export compute module for standalone use
 export {
-  createAppModule,
-  type AppModuleConfig,
+  createComputeModule,
+  type ComputeModule,
+  type ComputeModuleConfig,
   encodeStartAppData,
   encodeStopAppData,
   encodeTerminateAppData,
-} from "./modules/app";
-export { createBillingModule, type BillingModuleConfig } from "./modules/billing";
+} from "./modules/compute";
+export {
+  createBillingModule,
+  type BillingModule,
+  type BillingModuleConfig,
+} from "./modules/billing";
 
 // Export environment config utilities
 export {
@@ -112,7 +117,7 @@ export interface ClientConfig {
 }
 
 export interface ECloudClient {
-  app: AppModule;
+  compute: ComputeModule;
   billing: BillingModule;
 }
 
@@ -143,7 +148,7 @@ export function createECloudClient(cfg: ClientConfig): ECloudClient {
   }
 
   return {
-    app: createAppModule({
+    compute: createComputeModule({
       rpcUrl,
       verbose: cfg.verbose,
       privateKey: cfg.privateKey,

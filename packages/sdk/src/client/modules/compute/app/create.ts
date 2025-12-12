@@ -9,8 +9,8 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import { Logger } from "../../common/types";
-import { defaultLogger } from "../../common/utils";
+import { Logger } from "../../../common/types";
+import { defaultLogger } from "../../../common/utils";
 import {
   fetchTemplateCatalog,
   getTemplate,
@@ -20,9 +20,9 @@ import {
   ENV_VAR_USE_LOCAL_TEMPLATES,
   ENV_VAR_TEMPLATES_PATH,
   type TemplateEntry,
-} from "../../common/templates/catalog";
-import { fetchTemplate, fetchTemplateSubdirectory } from "../../common/templates/git";
-import { postProcessTemplate } from "../../common/templates/postprocess";
+} from "../../../common/templates/catalog";
+import { fetchTemplate, fetchTemplateSubdirectory } from "../../../common/templates/git";
+import { postProcessTemplate } from "../../../common/templates/postprocess";
 
 /**
  * Required create app options for SDK (non-interactive)

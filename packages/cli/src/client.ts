@@ -1,5 +1,5 @@
 import {
-  createAppModule,
+  createComputeModule,
   createBillingModule,
   getEnvironmentConfig,
   requirePrivateKey,
@@ -10,7 +10,7 @@ import { getPrivateKeyInteractive } from "./utils/prompts";
 import { getClientId } from "./utils/version";
 import { Hex } from "viem";
 
-export async function createAppClient(flags: CommonFlags) {
+export async function createComputeClient(flags: CommonFlags) {
   flags = await validateCommonFlags(flags);
 
   const environment = flags.environment!;
@@ -24,7 +24,7 @@ export async function createAppClient(flags: CommonFlags) {
     console.log(`Using private key from: ${source}`);
   }
 
-  return createAppModule({
+  return createComputeModule({
     verbose: flags.verbose,
     privateKey,
     rpcUrl,

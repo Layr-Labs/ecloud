@@ -16,6 +16,16 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./compute": {
+      "types": "./dist/compute.d.ts",
+      "import": "./dist/compute.js",
+      "require": "./dist/compute.cjs"
+    },
+    "./billing": {
+      "types": "./dist/billing.d.ts",
+      "import": "./dist/billing.js",
+      "require": "./dist/billing.cjs"
     }
   },
   "scripts": {

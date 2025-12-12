@@ -12,7 +12,7 @@ const packageJson = JSON.parse(readFileSync(resolve(__dirname, "package.json"), 
 const sdkVersion = process.env.PACKAGE_VERSION || packageJson.version || "0.0.0";
 
 export default defineConfig({
-  entry: ["src/index.ts"],
+  entry: ["src/index.ts", "src/compute.ts", "src/billing.ts"],
   dts: true,
   format: ["esm", "cjs"],
   clean: true,

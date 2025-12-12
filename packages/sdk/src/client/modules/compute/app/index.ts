@@ -8,11 +8,15 @@ import { upgrade as upgradeApp } from "./upgrade";
 import { createApp, CreateAppOpts } from "./create";
 import { logs, LogsOptions } from "./logs";
 
-import { getEnvironmentConfig } from "../../common/config/environment";
-import { sendAndWaitForTransaction, undelegate, isDelegated } from "../../common/contract/caller";
+import { getEnvironmentConfig } from "../../../common/config/environment";
+import {
+  sendAndWaitForTransaction,
+  undelegate,
+  isDelegated,
+} from "../../../common/contract/caller";
 
-import type { AppId, DeployAppOpts, LifecycleOpts, UpgradeAppOpts } from "../../common/types";
-import { getLogger, addHexPrefix } from "../../common/utils";
+import type { AppId, DeployAppOpts, LifecycleOpts, UpgradeAppOpts } from "../../../common/types";
+import { getLogger, addHexPrefix } from "../../../common/utils";
 
 // Minimal ABI
 const CONTROLLER_ABI = parseAbi([

@@ -1,6 +1,6 @@
 import { Command, Args, Flags } from "@oclif/core";
 import { getEnvironmentConfig } from "@layr-labs/ecloud-sdk";
-import { createAppClient } from "../../../client";
+import { createComputeClient } from "../../../client";
 import { commonFlags } from "../../../flags";
 import { getOrPromptAppID } from "../../../utils/prompts";
 
@@ -25,7 +25,7 @@ export default class AppLogs extends Command {
 
   async run() {
     const { args, flags } = await this.parse(AppLogs);
-    const app = await createAppClient(flags);
+    const compute = await createComputeClient(flags);
 
     // Get environment config
     const environment = flags.environment || "sepolia";
@@ -42,7 +42,7 @@ export default class AppLogs extends Command {
     });
 
     // Call SDK with the resolved app ID
-    await app.logs({
+    await compute.app.logs({
       appID,
       watch: flags.watch,
     });

@@ -99,7 +99,7 @@ async function extractDigestFromSinglePlatform(
   // and then inspect the image to get platform info
   try {
     // Use docker inspect to get platform info
-    const { stdout } = await execFile("docker", ["inspect", imageRef], {
+    const { stdout } = await execFileAsync("docker", ["inspect", imageRef], {
       maxBuffer: 10 * 1024 * 1024,
     });
 
