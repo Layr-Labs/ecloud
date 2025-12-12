@@ -27,33 +27,31 @@ jobs:
           VERSION="${{ github.ref_name }}"
           # Clean leading v from provided version
           PACKAGE_VERSION="${VERSION#v}"
+          # Extract base semantic version (x.y.z) - strip everything after first hyphen
           BASE_VERSION="${VERSION%%-*}"
-          TAG_VERSION="${VERSION#"$BASE_VERSION"}"
-          # Insert dev after the base and before the tag
-          DEV_VERSION_PREFIX="${BASE_VERSION}-dev${TAG_VERSION}"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "PACKAGE_VERSION=$PACKAGE_VERSION" >> $GITHUB_ENV
-          echo "DEV_VERSION_PREFIX=$DEV_VERSION_PREFIX" >> $GITHUB_ENV
+          echo "BASE_VERSION=$BASE_VERSION" >> $GITHUB_ENV
           echo "Building production version: $PACKAGE_VERSION"
-          echo "Will verify dev tag exists: $DEV_VERSION_PREFIX"
+          echo "Will verify dev tag exists for base version: $BASE_VERSION"
 
       - name: Verify dev testing occurred
         run: |
-          echo "Looking for dev tag with prefix: ${{ env.DEV_VERSION_PREFIX }}"
+          echo "Looking for dev tag with base version: ${{ env.BASE_VERSION }}"
 
-          # Check if dev tag exists (with or without suffix)
-          DEV_TAGS=$(git tag -l "${DEV_VERSION_PREFIX}*" | head -10)
+          # Check if any dev tag exists for this semantic version (e.g., v0.1.0-dev*)
+          DEV_TAGS=$(git tag -l "${{ env.BASE_VERSION }}-dev*" | head -10)
           if [ -z "$DEV_TAGS" ]; then
-            echo "ERROR: No dev tag found with prefix ${DEV_VERSION_PREFIX}"
+            echo "ERROR: No dev tag found for version ${{ env.BASE_VERSION }}"
             echo ""
             echo "Available dev tags:"
             git tag -l "*-dev*" | head -10 || echo "No dev tags found"
             echo ""
-            echo "Must test in dev first: git tag ${DEV_VERSION_PREFIX} or ${DEV_VERSION_PREFIX}.1"
+            echo "Must test in dev first: git tag ${{ env.BASE_VERSION }}-dev"
             exit 1
           fi
 
-          echo "✅ Found dev tags:"
+          echo "✅ Found dev tags for ${{ env.BASE_VERSION }}:"
           echo "$DEV_TAGS"
 
           # Verify dev and prod tags point to same commit
@@ -79,7 +77,7 @@ jobs:
             echo "  $DEV_TAG: $DEV_COMMIT"
           done
           echo ""
-          echo "Create a dev tag on the same commit: git tag ${DEV_VERSION_PREFIX} $PROD_COMMIT"
+          echo "Create a dev tag on the same commit: git tag ${{ env.BASE_VERSION }}-dev $PROD_COMMIT"
           exit 1
 
       - name: Setup pnpm
