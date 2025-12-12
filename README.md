@@ -12,8 +12,8 @@ ECloud SDK and CLI enables developers to:
 - Monitor application status and logs
 
 ## Prerequsites
-* Docker - To package and publish application images (Download)
-* Sepolia ETH - For deployment transactions (Google Cloud Faucet | Alchemy Faucet)
+* Docker - To package and publish application images ([Download](https://www.docker.com/get-started/))
+* ETH for gas - For deployment transactions
 
 ## Mainnet Alpha Limitations
 * Not recommended for customer funds - Mainnet Alpha is intended to enable developers to build, test and ship applications. We do not recommend holding significant customer funds at this stage in Mainnet Alpha.
@@ -39,7 +39,7 @@ ecloud auth login
 
 **Don't have a private key?** Use `ecloud auth generate --store` instead
 
-**Need Sepolia ETH?** Run `ecloud auth whoami` to see your address, then get funds from [Google Cloud](https://cloud.google.com/application/web3/faucet/ethereum/sepolia) or [Alchemy](https://sepoliafaucet.com/)
+**Need ETH for gas?** Run `ecloud auth whoami` to see your address. For sepolia, get funds from [Google Cloud](https://cloud.google.com/application/web3/faucet/ethereum/sepolia) or [Alchemy](https://sepoliafaucet.com/)
 
 ### Get a billing account
 This is required to create apps
@@ -307,7 +307,7 @@ import { createECloudClient } from "@layr-labs/ecloud-sdk";
 // Create a client
 const client = createECloudClient({
   privateKey: "0x...",
-  environment: "sepolia", // or "sepolia-dev" or "mainnet-alpha"
+  environment: "sepolia", // or "sepolia" or "mainnet-alpha"
   rpcUrl: "https://sepolia.infura.io/v3/...",
 });
 

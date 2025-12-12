@@ -17,7 +17,7 @@ ecloud version
 You should see output similar to the following:
 
 ```bash
-Version: 0.0.1-dev.1
+Version: 0.0.1
 Commit:  be757436b79faff7959b8375dbb051cc47cb0895
 ```
 
