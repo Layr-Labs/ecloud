@@ -3,6 +3,7 @@
  */
 
 import { Address } from "viem";
+import { GasEstimate } from "../contract/caller";
 
 export type AppId = Address;
 
@@ -22,7 +23,7 @@ export interface DeployAppOpts {
   /** Log visibility setting - required */
   logVisibility: logVisibility;
   /** Optional gas params from estimation */
-  gas?: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint };
+  gas?: GasEstimate;
 }
 
 export interface UpgradeAppOpts {
@@ -36,11 +37,11 @@ export interface UpgradeAppOpts {
   instanceType: string;
   /** Log visibility setting - required */
   logVisibility: logVisibility;
-  gas?: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint };
+  gas?: GasEstimate;
 }
 
 export interface LifecycleOpts {
-  gas?: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint };
+  gas?: GasEstimate;
 }
 
 export interface AppRecord {

@@ -2,7 +2,7 @@
  * Main App namespace entry point
  */
 
-import { parseAbi, encodeFunctionData } from "viem";
+import { encodeFunctionData, parseAbi } from "viem";
 import { deploy as deployApp } from "./deploy";
 import { upgrade as upgradeApp } from "./upgrade";
 import { createApp, CreateAppOpts } from "./create";
@@ -14,45 +14,19 @@ import { sendAndWaitForTransaction, undelegate } from "../../common/contract/cal
 import type { AppId, DeployAppOpts, LifecycleOpts, UpgradeAppOpts } from "../../common/types";
 import { getLogger, addHexPrefix } from "../../common/utils";
 
-// Minimal ABI
+// Re-export encoder functions from the browser-safe module
+export {
+  encodeStartAppData,
+  encodeStopAppData,
+  encodeTerminateAppData,
+} from "../../common/contract/encoders";
+
+// Minimal ABI for lifecycle operations (used internally)
 const CONTROLLER_ABI = parseAbi([
   "function startApp(address appId)",
   "function stopApp(address appId)",
   "function terminateApp(address appId)",
 ]);
-
-/**
- * Encode start app call data for gas estimation
- */
-export function encodeStartAppData(appId: AppId): `0x${string}` {
-  return encodeFunctionData({
-    abi: CONTROLLER_ABI,
-    functionName: "startApp",
-    args: [appId],
-  });
-}
-
-/**
- * Encode stop app call data for gas estimation
- */
-export function encodeStopAppData(appId: AppId): `0x${string}` {
-  return encodeFunctionData({
-    abi: CONTROLLER_ABI,
-    functionName: "stopApp",
-    args: [appId],
-  });
-}
-
-/**
- * Encode terminate app call data for gas estimation
- */
-export function encodeTerminateAppData(appId: AppId): `0x${string}` {
-  return encodeFunctionData({
-    abi: CONTROLLER_ABI,
-    functionName: "terminateApp",
-    args: [appId],
-  });
-}
 
 export interface AppModule {
   create: (opts: CreateAppOpts) => Promise<void>;

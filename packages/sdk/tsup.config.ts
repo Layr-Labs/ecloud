@@ -12,11 +12,12 @@ const packageJson = JSON.parse(readFileSync(resolve(__dirname, "package.json"), 
 const sdkVersion = process.env.PACKAGE_VERSION || packageJson.version || "0.0.0";
 
 export default defineConfig({
-  entry: ["src/index.ts"],
+  entry: ["src/index.ts", "src/browser.ts"],
   dts: true,
   format: ["esm", "cjs"],
   clean: true,
   sourcemap: true,
+  splitting: false, // Prevent shared chunks between entry points
   define: {
     BUILD_TYPE_BUILD_TIME: JSON.stringify(buildType),
     SDK_VERSION_BUILD_TIME: JSON.stringify(sdkVersion),
