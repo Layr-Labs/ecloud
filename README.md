@@ -22,6 +22,8 @@ No SLA - Mainnet Alpha does not have SLAs around support, and uptime of infrastr
 
 
 ## Quick Start
+> [!NOTE]
+> Migrating from `eigenx`? Head over to [Migration guide](./MIGRATION.md) first
 ### Installation
 
 ```bash

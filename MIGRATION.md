@@ -24,6 +24,7 @@ Commit:  be757436b79faff7959b8375dbb051cc47cb0895
 ### Migrating auth key from Eigenx
 > [!NOTE]
 > For simplicity, the `ecloud` CLI only supports storing one key for all environments. To use a different key, you can use the `--private-key` flag or set the `ECLOUD_PRIVATE_KEY` environment variable.
+
 Run the migrate command:
 
 ```bash
