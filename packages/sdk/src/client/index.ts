@@ -84,8 +84,12 @@ export {
   type EstimateGasOptions,
 } from "./common/contract/caller";
 
-// Export batch gas estimation
-export { estimateBatchGas, type EstimateBatchGasOptions } from "./common/contract/eip7702";
+// Export batch gas estimation and delegation check
+export {
+  estimateBatchGas,
+  checkERC7702Delegation,
+  type EstimateBatchGasOptions,
+} from "./common/contract/eip7702";
 
 // Export instance type utilities
 export { getCurrentInstanceType } from "./common/utils/instance";

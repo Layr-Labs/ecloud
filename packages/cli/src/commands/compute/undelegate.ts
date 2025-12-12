@@ -20,6 +20,13 @@ export default class Undelegate extends Command {
     const { flags } = await this.parse(Undelegate);
     const app = await createAppClient(flags);
 
+    // Check if account is currently delegated
+    const isDelegated = await app.isDelegated();
+    if (!isDelegated) {
+      this.log(`\n${chalk.gray(`Account is not currently delegated`)}`);
+      return;
+    }
+
     const res = await app.undelegate();
 
     if (!res.tx) {
