@@ -9,7 +9,7 @@ import { createApp, CreateAppOpts } from "./create";
 import { logs, LogsOptions } from "./logs";
 
 import { getEnvironmentConfig } from "../../common/config/environment";
-import { sendAndWaitForTransaction, undelegate } from "../../common/contract/caller";
+import { sendAndWaitForTransaction, undelegate, isDelegated } from "../../common/contract/caller";
 
 import type { AppId, DeployAppOpts, LifecycleOpts, UpgradeAppOpts } from "../../common/types";
 import { getLogger, addHexPrefix } from "../../common/utils";
@@ -71,6 +71,7 @@ export interface AppModule {
   start: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: `0x${string}` | false }>;
   stop: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: `0x${string}` | false }>;
   terminate: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: `0x${string}` | false }>;
+  isDelegated: () => Promise<boolean>;
   undelegate: () => Promise<{ tx: `0x${string}` | false }>;
 }
 
@@ -234,6 +235,14 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
         logger,
       );
       return { tx };
+    },
+
+    async isDelegated() {
+      return isDelegated({
+        privateKey,
+        rpcUrl: ctx.rpcUrl,
+        environmentConfig: environment,
+      });
     },
 
     async undelegate() {

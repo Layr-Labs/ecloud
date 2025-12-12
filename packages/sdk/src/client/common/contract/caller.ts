@@ -5,7 +5,7 @@
  */
 
 import { privateKeyToAccount } from "viem/accounts";
-import { executeBatch } from "./eip7702";
+import { executeBatch, checkERC7702Delegation } from "./eip7702";
 import {
   createWalletClient,
   createPublicClient,
@@ -961,6 +961,33 @@ export async function suspend(
       txDescription: "Suspend",
     },
     logger,
+  );
+}
+
+/**
+ * Check if account is delegated to the ERC-7702 delegator
+ */
+export async function isDelegated(options: {
+  privateKey: string;
+  rpcUrl: string;
+  environmentConfig: EnvironmentConfig;
+}): Promise<boolean> {
+  const { privateKey, rpcUrl, environmentConfig } = options;
+
+  const privateKeyHex = addHexPrefix(privateKey);
+  const account = privateKeyToAccount(privateKeyHex);
+
+  const chain = getChainFromID(environmentConfig.chainID);
+
+  const publicClient = createPublicClient({
+    chain,
+    transport: http(rpcUrl),
+  });
+
+  return checkERC7702Delegation(
+    publicClient,
+    account.address,
+    environmentConfig.erc7702DelegatorAddress as Address,
   );
 }
 
