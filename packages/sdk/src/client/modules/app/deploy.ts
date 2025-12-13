@@ -286,7 +286,7 @@ async function checkQuotaAvailable(preflightCtx: PreflightContext): Promise<void
   // If quota is 0, user needs to subscribe
   if (maxQuota === 0) {
     throw new Error(
-      "no app quota available. Run 'npx ecloud billing subscribe' to enable app deployment",
+      "no app quota available. Run 'ecloud billing subscribe' to enable app deployment",
     );
   }
 

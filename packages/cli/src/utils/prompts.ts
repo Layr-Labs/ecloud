@@ -399,7 +399,7 @@ export async function getImageReferenceInteractive(
   if (buildFromDockerfile) {
     console.log("\n📦 Build & Push Configuration");
     console.log("Your Docker image will be built and pushed to a registry");
-    console.log("so that EigenX can pull and run it in the TEE.");
+    console.log("so that Ecloud CLI can pull and run it in the TEE.");
     console.log();
 
     if (registries.length > 0) {
