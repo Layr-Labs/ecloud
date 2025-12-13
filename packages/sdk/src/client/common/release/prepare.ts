@@ -147,7 +147,7 @@ export async function prepareRelease(
   }
 
   // 4. Add instance type to public env
-  publicEnv["EIGEN_MACHINE_TYPE"] = instanceType;
+  publicEnv["EIGEN_MACHINE_TYPE_PUBLIC"] = instanceType;
   logger.info(`Instance type: ${instanceType}`);
 
   // 5. Encrypt private environment variables

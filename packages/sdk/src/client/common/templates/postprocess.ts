@@ -150,7 +150,7 @@ Before deploying, you'll need:
 ## Deployment
 
 \`\`\`bash
-eigenx app deploy username/image-name
+ecloud compute app deploy username/image-name
 \`\`\`
 
 The CLI will automatically detect the \`Dockerfile\` and build your app before deploying.
@@ -158,13 +158,13 @@ The CLI will automatically detect the \`Dockerfile\` and build your app before d
 ## Management & Monitoring
 
 \`\`\`bash
-npx ecloud app list                    # List all apps
-npx ecloud app info [app-name]         # Get app details
-npx ecloud app logs [app-name]         # View logs
-npx ecloud app start [app-name]        # Start stopped app
-npx ecloud app stop [app-name]         # Stop running app
-npx ecloud app terminate [app-name]    # Terminate app
-npx ecloud app upgrade [app-name] [image] # Update deployment
+ecloud compute app list                    # List all apps
+ecloud compute app info [app-name]         # Get app details
+ecloud compute app logs [app-name]         # View logs
+ecloud compute app start [app-name]        # Start stopped app
+ecloud compute app stop [app-name]         # Stop running app
+ecloud compute app terminate [app-name]    # Terminate app
+ecloud compute app upgrade [app-name] [image] # Update deployment
 \`\`\`
 `;
 }

@@ -142,7 +142,7 @@ export async function watchUntilUpgradeComplete(
       if (status === APP_STATUS_STOPPED && ip) {
         logger.info("App upgrade complete.");
         logger.info(`Status: ${status}`);
-        logger.info(`To start the app, run: eigenx app start ${appId}`);
+        logger.info(`To start the app, run: ecloud compute app start ${appId}`);
         return true;
       }
     }
@@ -156,7 +156,7 @@ export async function watchUntilUpgradeComplete(
     if (status === APP_STATUS_STOPPED && ip && hasChanged) {
       logger.info("App upgrade complete.");
       logger.info(`Status: ${status}`);
-      logger.info(`To start the app, run: eigenx app start ${appId}`);
+      logger.info(`To start the app, run: ecloud compute app start ${appId}`);
       return true;
     }
 
