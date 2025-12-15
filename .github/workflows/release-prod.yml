@@ -101,6 +101,7 @@ jobs:
         env:
           BUILD_TYPE: prod
           PACKAGE_VERSION: ${{ env.PACKAGE_VERSION }}
+          POSTHOG_API_KEY_BUILD_TIME: ${{ secrets.POSTHOG_API_KEY }}
         run: |
           pnpm run build
 
@@ -109,6 +110,7 @@ jobs:
         env:
           BUILD_TYPE: prod
           PACKAGE_VERSION: ${{ env.PACKAGE_VERSION }}
+          POSTHOG_API_KEY_BUILD_TIME: ${{ secrets.POSTHOG_API_KEY }}
         run: |
           pnpm run build
 

@@ -11,6 +11,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageJson = JSON.parse(readFileSync(resolve(__dirname, "package.json"), "utf-8"));
 const cliVersion = process.env.PACKAGE_VERSION || packageJson.version || "0.0.0";
 
+// Get PostHog API key from environment (for build-time injection)
+const posthogApiKey = process.env.POSTHOG_API_KEY_BUILD_TIME;
+
 export default defineConfig({
   entry: ["src/commands/**/*.ts"],
   format: ["esm"],
@@ -24,6 +27,7 @@ export default defineConfig({
   define: {
     BUILD_TYPE_BUILD_TIME: JSON.stringify(buildType),
     CLI_VERSION_BUILD_TIME: JSON.stringify(cliVersion),
+    ...(posthogApiKey ? { POSTHOG_API_KEY_BUILD_TIME: JSON.stringify(posthogApiKey) } : {}),
   },
   loader: {
     ".tmpl": "text",

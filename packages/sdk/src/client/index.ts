@@ -71,6 +71,9 @@ export { isSubscriptionActive } from "./common/utils/billing";
 // Export auth utilities
 export * from "./common/auth";
 
+// Export telemetry
+export * from "./common/telemetry";
+
 // Export template catalog utilities for CLI
 export {
   fetchTemplateCatalog,

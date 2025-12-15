@@ -7,6 +7,7 @@ import {
   executeDeploy,
   watchDeployment,
 } from "@layr-labs/ecloud-sdk";
+import { withTelemetry } from "../../../telemetry";
 import { commonFlags } from "../../../flags";
 import {
   getDockerfileInteractive,
@@ -93,181 +94,190 @@ export default class AppDeploy extends Command {
   };
 
   async run() {
-    const { flags } = await this.parse(AppDeploy);
+    return withTelemetry(this, async () => {
+      const { flags } = await this.parse(AppDeploy);
 
-    // Create CLI logger
-    const logger = {
-      info: (msg: string) => this.log(msg),
-      warn: (msg: string) => this.warn(msg),
-      error: (msg: string) => this.error(msg),
-      debug: (msg: string) => flags.verbose && this.log(msg),
-    };
+      // Create CLI logger
+      const logger = {
+        info: (msg: string) => this.log(msg),
+        warn: (msg: string) => this.warn(msg),
+        error: (msg: string) => this.error(msg),
+        debug: (msg: string) => flags.verbose && this.log(msg),
+      };
 
-    // Get environment config for fetching available instance types
-    const environment = flags.environment || "sepolia";
-    const environmentConfig = getEnvironmentConfig(environment);
-    const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
+      // Get environment config for fetching available instance types
+      const environment = flags.environment || "sepolia";
+      const environmentConfig = getEnvironmentConfig(environment);
+      const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
 
-    // Get private key interactively if not provided
-    const privateKey = await getPrivateKeyInteractive(flags["private-key"]);
+      // Get private key interactively if not provided
+      const privateKey = await getPrivateKeyInteractive(flags["private-key"]);
 
-    // 1. Get dockerfile path interactively
-    const dockerfilePath = await getDockerfileInteractive(flags.dockerfile);
-    const buildFromDockerfile = dockerfilePath !== "";
+      // 1. Get dockerfile path interactively
+      const dockerfilePath = await getDockerfileInteractive(flags.dockerfile);
+      const buildFromDockerfile = dockerfilePath !== "";
 
-    // 2. Get image reference interactively (context-aware)
-    const imageRef = await getImageReferenceInteractive(flags["image-ref"], buildFromDockerfile);
+      // 2. Get image reference interactively (context-aware)
+      const imageRef = await getImageReferenceInteractive(flags["image-ref"], buildFromDockerfile);
 
-    // 3. Get app name interactively
-    const appName = await getOrPromptAppName(flags.name, environment, imageRef);
+      // 3. Get app name interactively
+      const appName = await getOrPromptAppName(flags.name, environment, imageRef);
 
-    // 4. Get env file path interactively
-    const envFilePath = await getEnvFileInteractive(flags["env-file"]);
+      // 4. Get env file path interactively
+      const envFilePath = await getEnvFileInteractive(flags["env-file"]);
 
-    // 5. Get instance type interactively
-    // First, fetch available instance types from backend
-    const availableTypes = await fetchAvailableInstanceTypes(environmentConfig, privateKey, rpcUrl);
-    const instanceType = await getInstanceTypeInteractive(
-      flags["instance-type"],
-      "", // No default for new deployments
-      availableTypes,
-    );
+      // 5. Get instance type interactively
+      // First, fetch available instance types from backend
+      const availableTypes = await fetchAvailableInstanceTypes(
+        environmentConfig,
+        privateKey,
+        rpcUrl,
+      );
+      const instanceType = await getInstanceTypeInteractive(
+        flags["instance-type"],
+        "", // No default for new deployments
+        availableTypes,
+      );
 
-    // 6. Get log visibility interactively
-    const logSettings = await getLogSettingsInteractive(
-      flags["log-visibility"] as LogVisibility | undefined,
-    );
+      // 6. Get log visibility interactively
+      const logSettings = await getLogSettingsInteractive(
+        flags["log-visibility"] as LogVisibility | undefined,
+      );
 
-    // 7. Get resource usage monitoring interactively
-    const resourceUsageMonitoring = await getResourceUsageMonitoringInteractive(
-      flags["resource-usage-monitoring"] as ResourceUsageMonitoring | undefined,
-    );
+      // 7. Get resource usage monitoring interactively
+      const resourceUsageMonitoring = await getResourceUsageMonitoringInteractive(
+        flags["resource-usage-monitoring"] as ResourceUsageMonitoring | undefined,
+      );
 
-    // 8. Prepare deployment (builds image, pushes to registry, prepares batch, estimates gas)
-    const logVisibility = logSettings.publicLogs
-      ? "public"
-      : logSettings.logRedirect
-        ? "private"
-        : "off";
+      // 8. Prepare deployment (builds image, pushes to registry, prepares batch, estimates gas)
+      const logVisibility = logSettings.publicLogs
+        ? "public"
+        : logSettings.logRedirect
+          ? "private"
+          : "off";
 
-    const { prepared, gasEstimate } = await prepareDeploy(
-      {
+      const { prepared, gasEstimate } = await prepareDeploy(
+        {
+          privateKey,
+          rpcUrl,
+          environment,
+          dockerfilePath,
+          imageRef,
+          envFilePath,
+          appName,
+          instanceType,
+          logVisibility,
+          resourceUsageMonitoring,
+          skipTelemetry: true,
+        },
+        logger,
+      );
+
+      // 9. Show gas estimate and prompt for confirmation on mainnet
+      this.log(`\nEstimated transaction cost: ${chalk.cyan(gasEstimate.maxCostEth)} ETH`);
+
+      if (isMainnet(environmentConfig)) {
+        const confirmed = await confirm(`Continue with deployment?`);
+        if (!confirmed) {
+          this.log(`\n${chalk.gray(`Deployment cancelled`)}`);
+          return;
+        }
+      }
+
+      // 10. Execute the deployment
+      const res = await executeDeploy(
+        prepared,
+        {
+          maxFeePerGas: gasEstimate.maxFeePerGas,
+          maxPriorityFeePerGas: gasEstimate.maxPriorityFeePerGas,
+        },
+        logger,
+        true, // skipTelemetry
+      );
+
+      // 11. Collect app profile while deployment is in progress (optional)
+      if (!flags["skip-profile"]) {
+        // Check if any profile flags were provided
+        const hasProfileFlags = flags.website || flags.description || flags["x-url"] || flags.image;
+
+        let profile: {
+          name: string;
+          website?: string;
+          description?: string;
+          xURL?: string;
+          imagePath?: string;
+        } | null = null;
+
+        if (hasProfileFlags) {
+          // Use flags directly if any were provided
+          profile = {
+            name: appName,
+            website: flags.website,
+            description: flags.description,
+            xURL: flags["x-url"],
+            imagePath: flags.image,
+          };
+        } else {
+          // Otherwise prompt interactively
+          this.log(
+            "\nDeployment confirmed onchain. While your instance provisions, set up a public profile:",
+          );
+
+          try {
+            profile = (await getAppProfileInteractive(appName, true)) || null;
+          } catch {
+            // Profile collection cancelled or failed - continue without profile
+            logger.debug("Profile collection skipped or cancelled");
+          }
+        }
+
+        if (profile) {
+          // Upload profile if provided (non-blocking - warn on failure but don't fail deployment)
+          logger.info("Uploading app profile...");
+          try {
+            const userApiClient = new UserApiClient(
+              environmentConfig,
+              privateKey,
+              rpcUrl,
+              getClientId(),
+            );
+            await userApiClient.uploadAppProfile(
+              res.appId as `0x${string}`,
+              profile.name,
+              profile.website,
+              profile.description,
+              profile.xURL,
+              profile.imagePath,
+            );
+            logger.info("✓ Profile uploaded successfully");
+
+            // Invalidate profile cache to ensure fresh data on next command
+            try {
+              invalidateProfileCache(environment);
+            } catch (cacheErr: any) {
+              logger.debug(`Failed to invalidate profile cache: ${cacheErr.message}`);
+            }
+          } catch (uploadErr: any) {
+            logger.warn(`Failed to upload profile: ${uploadErr.message}`);
+          }
+        }
+      }
+
+      // 12. Watch until app is running
+      const ipAddress = await watchDeployment(
+        res.appId,
         privateKey,
         rpcUrl,
         environment,
-        dockerfilePath,
-        imageRef,
-        envFilePath,
-        appName,
-        instanceType,
-        logVisibility,
-        resourceUsageMonitoring,
-      },
-      logger,
-    );
+        logger,
+        getClientId(),
+        true, // skipTelemetry - CLI already has telemetry
+      );
 
-    // 9. Show gas estimate and prompt for confirmation on mainnet
-    this.log(`\nEstimated transaction cost: ${chalk.cyan(gasEstimate.maxCostEth)} ETH`);
-
-    if (isMainnet(environmentConfig)) {
-      const confirmed = await confirm(`Continue with deployment?`);
-      if (!confirmed) {
-        this.log(`\n${chalk.gray(`Deployment cancelled`)}`);
-        return;
-      }
-    }
-
-    // 10. Execute the deployment
-    const res = await executeDeploy(
-      prepared,
-      {
-        maxFeePerGas: gasEstimate.maxFeePerGas,
-        maxPriorityFeePerGas: gasEstimate.maxPriorityFeePerGas,
-      },
-      logger,
-    );
-
-    // 11. Collect app profile while deployment is in progress (optional)
-    if (!flags["skip-profile"]) {
-      // Check if any profile flags were provided
-      const hasProfileFlags = flags.website || flags.description || flags["x-url"] || flags.image;
-
-      let profile: {
-        name: string;
-        website?: string;
-        description?: string;
-        xURL?: string;
-        imagePath?: string;
-      } | null = null;
-
-      if (hasProfileFlags) {
-        // Use flags directly if any were provided
-        profile = {
-          name: appName,
-          website: flags.website,
-          description: flags.description,
-          xURL: flags["x-url"],
-          imagePath: flags.image,
-        };
-      } else {
-        // Otherwise prompt interactively
-        this.log(
-          "\nDeployment confirmed onchain. While your instance provisions, set up a public profile:",
-        );
-
-        try {
-          profile = (await getAppProfileInteractive(appName, true)) || null;
-        } catch {
-          // Profile collection cancelled or failed - continue without profile
-          logger.debug("Profile collection skipped or cancelled");
-        }
-      }
-
-      if (profile) {
-        // Upload profile if provided (non-blocking - warn on failure but don't fail deployment)
-        logger.info("Uploading app profile...");
-        try {
-          const userApiClient = new UserApiClient(
-            environmentConfig,
-            privateKey,
-            rpcUrl,
-            getClientId(),
-          );
-          await userApiClient.uploadAppProfile(
-            res.appId as `0x${string}`,
-            profile.name,
-            profile.website,
-            profile.description,
-            profile.xURL,
-            profile.imagePath,
-          );
-          logger.info("✓ Profile uploaded successfully");
-
-          // Invalidate profile cache to ensure fresh data on next command
-          try {
-            invalidateProfileCache(environment);
-          } catch (cacheErr: any) {
-            logger.debug(`Failed to invalidate profile cache: ${cacheErr.message}`);
-          }
-        } catch (uploadErr: any) {
-          logger.warn(`Failed to upload profile: ${uploadErr.message}`);
-        }
-      }
-    }
-
-    // 12. Watch until app is running
-    const ipAddress = await watchDeployment(
-      res.appId,
-      privateKey,
-      rpcUrl,
-      environment,
-      logger,
-      getClientId(),
-    );
-
-    this.log(
-      `\n✅ ${chalk.green(`App deployed successfully ${chalk.bold(`(id: ${res.appId}, ip: ${ipAddress})`)}`)}`,
-    );
+      this.log(
+        `\n✅ ${chalk.green(`App deployed successfully ${chalk.bold(`(id: ${res.appId}, ip: ${ipAddress})`)}`)}`,
+      );
+    });
   }
 }
 

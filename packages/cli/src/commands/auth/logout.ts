@@ -7,6 +7,7 @@
 import { Command, Flags } from "@oclif/core";
 import { confirm } from "@inquirer/prompts";
 import { deletePrivateKey, getPrivateKey, getAddressFromPrivateKey } from "@layr-labs/ecloud-sdk";
+import { withTelemetry } from "../../telemetry";
 
 export default class AuthLogout extends Command {
   static description = "Remove private key from OS keyring";
@@ -24,49 +25,51 @@ export default class AuthLogout extends Command {
   };
 
   async run(): Promise<void> {
-    const { flags } = await this.parse(AuthLogout);
+    return withTelemetry(this, async () => {
+      const { flags } = await this.parse(AuthLogout);
 
-    // Check if key exists
-    const privateKey = await getPrivateKey();
+      // Check if key exists
+      const privateKey = await getPrivateKey();
 
-    if (!privateKey) {
-      this.log("No key found in keyring");
-      this.log("\nNothing to remove.");
-      return;
-    }
-
-    // Show address
-    const address = getAddressFromPrivateKey(privateKey);
-    this.log("Found stored key:");
-    this.log(`  Address: ${address}`);
-    this.log("");
-
-    // Confirm unless forced
-    if (!flags.force) {
-      const confirmed = await confirm({
-        message: "Remove private key from keyring?",
-        default: false,
-      });
-
-      if (!confirmed) {
-        this.log("Logout cancelled");
+      if (!privateKey) {
+        this.log("No key found in keyring");
+        this.log("\nNothing to remove.");
         return;
       }
-    }
 
-    // Remove from keyring
-    try {
-      const deleted = await deletePrivateKey();
+      // Show address
+      const address = getAddressFromPrivateKey(privateKey);
+      this.log("Found stored key:");
+      this.log(`  Address: ${address}`);
+      this.log("");
 
-      if (deleted) {
-        this.log("\n✓ Successfully removed key from keyring");
-        this.log("\nYou will need to provide --private-key flag for future commands,");
-        this.log("or run 'ecloud auth login' to store a key again.");
-      } else {
-        this.log("\nFailed to remove key (it may have already been removed)");
+      // Confirm unless forced
+      if (!flags.force) {
+        const confirmed = await confirm({
+          message: "Remove private key from keyring?",
+          default: false,
+        });
+
+        if (!confirmed) {
+          this.log("Logout cancelled");
+          return;
+        }
       }
-    } catch (err: any) {
-      this.error(`Failed to remove key: ${err.message}`);
-    }
+
+      // Remove from keyring
+      try {
+        const deleted = await deletePrivateKey();
+
+        if (deleted) {
+          this.log("\n✓ Successfully removed key from keyring");
+          this.log("\nYou will need to provide --private-key flag for future commands,");
+          this.log("or run 'ecloud auth login' to store a key again.");
+        } else {
+          this.log("\nFailed to remove key (it may have already been removed)");
+        }
+      } catch (err: any) {
+        this.error(`Failed to remove key: ${err.message}`);
+      }
+    });
   }
 }

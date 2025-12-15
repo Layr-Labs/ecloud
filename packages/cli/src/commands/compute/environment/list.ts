@@ -2,6 +2,7 @@ import { Command } from "@oclif/core";
 import { getAvailableEnvironments, getEnvironmentConfig } from "@layr-labs/ecloud-sdk";
 import { getDefaultEnvironment } from "../../../utils/globalConfig";
 import chalk from "chalk";
+import { withTelemetry } from "../../../telemetry";
 
 /**
  * Get environment description
@@ -25,21 +26,23 @@ export default class EnvironmentList extends Command {
   static aliases = ["compute:environment:list", "compute:env:list"];
 
   async run() {
-    const availableEnvs = getAvailableEnvironments();
-    const currentEnv = getDefaultEnvironment();
+    return withTelemetry(this, async () => {
+      const availableEnvs = getAvailableEnvironments();
+      const currentEnv = getDefaultEnvironment();
 
-    console.log("Available deployment environments:");
+      console.log("Available deployment environments:");
 
-    for (const name of availableEnvs) {
-      try {
-        const config = getEnvironmentConfig(name);
-        const description = getEnvironmentDescription(name) || `- ${config.name}`;
-        const marker = currentEnv === name ? ` ${chalk.green("(active)")}` : "";
-        console.log(`  • ${name} ${description}${marker}`);
-      } catch {
-        // Skip environments that can't be loaded
-        console.log(`  • ${name} (unavailable)`);
+      for (const name of availableEnvs) {
+        try {
+          const config = getEnvironmentConfig(name);
+          const description = getEnvironmentDescription(name) || `- ${config.name}`;
+          const marker = currentEnv === name ? ` ${chalk.green("(active)")}` : "";
+          console.log(`  • ${name} ${description}${marker}`);
+        } catch {
+          // Skip environments that can't be loaded
+          console.log(`  • ${name} (unavailable)`);
+        }
       }
-    }
+    });
   }
 }

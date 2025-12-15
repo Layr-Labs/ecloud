@@ -34,6 +34,7 @@ import {
 import { doPreflightChecks } from "../../../common/utils/preflight";
 import { checkAppLogPermission } from "../../../common/utils/permissions";
 import { defaultLogger } from "../../../common/utils";
+import { withSDKTelemetry } from "../../../common/telemetry/wrapper";
 
 /**
  * Required upgrade options for SDK (non-interactive)
@@ -64,6 +65,8 @@ export interface SDKUpgradeOptions {
     maxFeePerGas?: bigint;
     maxPriorityFeePerGas?: bigint;
   };
+  /** Skip telemetry (used when called from CLI) - optional */
+  skipTelemetry?: boolean;
 }
 
 export interface UpgradeResult {
@@ -172,91 +175,102 @@ export async function upgrade(
   options: SDKUpgradeOptions,
   logger: Logger = defaultLogger,
 ): Promise<UpgradeResult> {
-  // 1. Do preflight checks (auth, network, etc.) first
-  logger.debug("Performing preflight checks...");
-  const preflightCtx = await doPreflightChecks(
+  return withSDKTelemetry(
     {
-      privateKey: options.privateKey,
-      rpcUrl: options.rpcUrl,
-      environment: options.environment,
+      functionName: "upgrade",
+      skipTelemetry: options.skipTelemetry,
+      properties: {
+        environment: options.environment || "sepolia",
+      },
     },
-    logger,
-  );
+    async () => {
+      // 1. Do preflight checks (auth, network, etc.) first
+      logger.debug("Performing preflight checks...");
+      const preflightCtx = await doPreflightChecks(
+        {
+          privateKey: options.privateKey,
+          rpcUrl: options.rpcUrl,
+          environment: options.environment,
+        },
+        logger,
+      );
 
-  // 2. Validate all required parameters upfront
-  const appID = validateUpgradeOptions(options);
+      // 2. Validate all required parameters upfront
+      const appID = validateUpgradeOptions(options);
 
-  // Convert log visibility to internal format
-  const { logRedirect, publicLogs } = validateLogVisibility(options.logVisibility);
+      // Convert log visibility to internal format
+      const { logRedirect, publicLogs } = validateLogVisibility(options.logVisibility);
 
-  // Convert resource usage monitoring to internal format (defaults to "always")
-  const resourceUsageAllow = validateResourceUsageMonitoring(options.resourceUsageMonitoring);
+      // Convert resource usage monitoring to internal format (defaults to "always")
+      const resourceUsageAllow = validateResourceUsageMonitoring(options.resourceUsageMonitoring);
 
-  // 3. Check if docker is running, else try to start it
-  logger.debug("Checking Docker...");
-  await ensureDockerIsRunning();
+      // 3. Check if docker is running, else try to start it
+      logger.debug("Checking Docker...");
+      await ensureDockerIsRunning();
 
-  // Use provided values (already validated)
-  const dockerfilePath = options.dockerfilePath || "";
-  const imageRef = options.imageRef || "";
-  const envFilePath = options.envFilePath || "";
-  const instanceType = options.instanceType;
+      // Use provided values (already validated)
+      const dockerfilePath = options.dockerfilePath || "";
+      const imageRef = options.imageRef || "";
+      const envFilePath = options.envFilePath || "";
+      const instanceType = options.instanceType;
 
-  // 4. Prepare the release (includes build/push if needed, with automatic retry on permission errors)
-  logger.info("Preparing release...");
-  const { release, finalImageRef } = await prepareRelease(
-    {
-      dockerfilePath,
-      imageRef,
-      envFilePath,
-      logRedirect,
-      resourceUsageAllow,
-      instanceType,
-      environmentConfig: preflightCtx.environmentConfig,
-      appId: appID as string,
+      // 4. Prepare the release (includes build/push if needed, with automatic retry on permission errors)
+      logger.info("Preparing release...");
+      const { release, finalImageRef } = await prepareRelease(
+        {
+          dockerfilePath,
+          imageRef,
+          envFilePath,
+          logRedirect,
+          resourceUsageAllow,
+          instanceType,
+          environmentConfig: preflightCtx.environmentConfig,
+          appId: appID as string,
+        },
+        logger,
+      );
+
+      // 5. Check current permission state and determine if change is needed
+      logger.debug("Checking current log permission state...");
+      const currentlyPublic = await checkAppLogPermission(preflightCtx, appID, logger);
+      const needsPermissionChange = currentlyPublic !== publicLogs;
+
+      // 6. Upgrade the app
+      logger.info("Upgrading on-chain...");
+      const txHash = await upgradeApp(
+        {
+          privateKey: preflightCtx.privateKey,
+          rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
+          environmentConfig: preflightCtx.environmentConfig,
+          appId: appID,
+          release,
+          publicLogs,
+          needsPermissionChange,
+          imageRef: finalImageRef,
+          gas: options.gas,
+        },
+        logger,
+      );
+
+      // 7. Watch until upgrade completes
+      logger.info("Waiting for upgrade to complete...");
+      await watchUntilUpgradeComplete(
+        {
+          privateKey: preflightCtx.privateKey,
+          rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
+          environmentConfig: preflightCtx.environmentConfig,
+          appId: appID,
+        },
+        logger,
+      );
+
+      return {
+        appId: appID as string,
+        imageRef: finalImageRef,
+        txHash,
+      };
     },
-    logger,
   );
-
-  // 5. Check current permission state and determine if change is needed
-  logger.debug("Checking current log permission state...");
-  const currentlyPublic = await checkAppLogPermission(preflightCtx, appID, logger);
-  const needsPermissionChange = currentlyPublic !== publicLogs;
-
-  // 6. Upgrade the app
-  logger.info("Upgrading on-chain...");
-  const txHash = await upgradeApp(
-    {
-      privateKey: preflightCtx.privateKey,
-      rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
-      environmentConfig: preflightCtx.environmentConfig,
-      appId: appID,
-      release,
-      publicLogs,
-      needsPermissionChange,
-      imageRef: finalImageRef,
-      gas: options.gas,
-    },
-    logger,
-  );
-
-  // 7. Watch until upgrade completes
-  logger.info("Waiting for upgrade to complete...");
-  await watchUntilUpgradeComplete(
-    {
-      privateKey: preflightCtx.privateKey,
-      rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
-      environmentConfig: preflightCtx.environmentConfig,
-      appId: appID,
-    },
-    logger,
-  );
-
-  return {
-    appId: appID as string,
-    imageRef: finalImageRef,
-    txHash,
-  };
 }
 
 /**
@@ -268,93 +282,104 @@ export async function upgrade(
  * 3. Call executeUpgrade with confirmed gas params
  */
 export async function prepareUpgrade(
-  options: Omit<SDKUpgradeOptions, "gas">,
+  options: Omit<SDKUpgradeOptions, "gas"> & { skipTelemetry?: boolean },
   logger: Logger = defaultLogger,
 ): Promise<PrepareUpgradeResult> {
-  // 1. Do preflight checks (auth, network, etc.) first
-  logger.debug("Performing preflight checks...");
-  const preflightCtx = await doPreflightChecks(
+  return withSDKTelemetry(
     {
-      privateKey: options.privateKey,
-      rpcUrl: options.rpcUrl,
-      environment: options.environment,
-    },
-    logger,
-  );
-
-  // 2. Validate all required parameters upfront
-  const appID = validateUpgradeOptions(options as SDKUpgradeOptions);
-
-  // Convert log visibility to internal format
-  const { logRedirect, publicLogs } = validateLogVisibility(options.logVisibility);
-
-  // Convert resource usage monitoring to internal format (defaults to "always")
-  const resourceUsageAllow = validateResourceUsageMonitoring(options.resourceUsageMonitoring);
-
-  // 3. Check if docker is running, else try to start it
-  logger.debug("Checking Docker...");
-  await ensureDockerIsRunning();
-
-  // Use provided values (already validated)
-  const dockerfilePath = options.dockerfilePath || "";
-  const imageRef = options.imageRef || "";
-  const envFilePath = options.envFilePath || "";
-  const instanceType = options.instanceType;
-
-  // 4. Prepare the release (includes build/push if needed)
-  logger.info("Preparing release...");
-  const { release, finalImageRef } = await prepareRelease(
-    {
-      dockerfilePath,
-      imageRef,
-      envFilePath,
-      logRedirect,
-      resourceUsageAllow,
-      instanceType,
-      environmentConfig: preflightCtx.environmentConfig,
-      appId: appID as string,
-    },
-    logger,
-  );
-
-  // 5. Check current permission state and determine if change is needed
-  logger.debug("Checking current log permission state...");
-  const currentlyPublic = await checkAppLogPermission(preflightCtx, appID, logger);
-  const needsPermissionChange = currentlyPublic !== publicLogs;
-
-  // 6. Prepare the upgrade batch (creates executions without sending)
-  logger.debug("Preparing upgrade batch...");
-  const batch = await prepareUpgradeBatch({
-    privateKey: preflightCtx.privateKey,
-    rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
-    environmentConfig: preflightCtx.environmentConfig,
-    appId: appID,
-    release,
-    publicLogs,
-    needsPermissionChange,
-  });
-
-  // 7. Estimate gas for the batch
-  logger.debug("Estimating gas...");
-  const gasEstimate = await estimateBatchGas({
-    publicClient: batch.publicClient,
-    environmentConfig: batch.environmentConfig,
-    executions: batch.executions,
-  });
-
-  return {
-    prepared: {
-      batch,
-      appId: appID as string,
-      imageRef: finalImageRef,
-      preflightCtx: {
-        privateKey: preflightCtx.privateKey,
-        rpcUrl: preflightCtx.rpcUrl,
-        environmentConfig: preflightCtx.environmentConfig,
+      functionName: "prepareUpgrade",
+      skipTelemetry: options.skipTelemetry,
+      properties: {
+        environment: options.environment || "sepolia",
       },
     },
-    gasEstimate,
-  };
+    async () => {
+      // 1. Do preflight checks (auth, network, etc.) first
+      logger.debug("Performing preflight checks...");
+      const preflightCtx = await doPreflightChecks(
+        {
+          privateKey: options.privateKey,
+          rpcUrl: options.rpcUrl,
+          environment: options.environment,
+        },
+        logger,
+      );
+
+      // 2. Validate all required parameters upfront
+      const appID = validateUpgradeOptions(options as SDKUpgradeOptions);
+
+      // Convert log visibility to internal format
+      const { logRedirect, publicLogs } = validateLogVisibility(options.logVisibility);
+
+      // Convert resource usage monitoring to internal format (defaults to "always")
+      const resourceUsageAllow = validateResourceUsageMonitoring(options.resourceUsageMonitoring);
+
+      // 3. Check if docker is running, else try to start it
+      logger.debug("Checking Docker...");
+      await ensureDockerIsRunning();
+
+      // Use provided values (already validated)
+      const dockerfilePath = options.dockerfilePath || "";
+      const imageRef = options.imageRef || "";
+      const envFilePath = options.envFilePath || "";
+      const instanceType = options.instanceType;
+
+      // 4. Prepare the release (includes build/push if needed)
+      logger.info("Preparing release...");
+      const { release, finalImageRef } = await prepareRelease(
+        {
+          dockerfilePath,
+          imageRef,
+          envFilePath,
+          logRedirect,
+          resourceUsageAllow,
+          instanceType,
+          environmentConfig: preflightCtx.environmentConfig,
+          appId: appID as string,
+        },
+        logger,
+      );
+
+      // 5. Check current permission state and determine if change is needed
+      logger.debug("Checking current log permission state...");
+      const currentlyPublic = await checkAppLogPermission(preflightCtx, appID, logger);
+      const needsPermissionChange = currentlyPublic !== publicLogs;
+
+      // 6. Prepare the upgrade batch (creates executions without sending)
+      logger.debug("Preparing upgrade batch...");
+      const batch = await prepareUpgradeBatch({
+        privateKey: preflightCtx.privateKey,
+        rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
+        environmentConfig: preflightCtx.environmentConfig,
+        appId: appID,
+        release,
+        publicLogs,
+        needsPermissionChange,
+      });
+
+      // 7. Estimate gas for the batch
+      logger.debug("Estimating gas...");
+      const gasEstimate = await estimateBatchGas({
+        publicClient: batch.publicClient,
+        environmentConfig: batch.environmentConfig,
+        executions: batch.executions,
+      });
+
+      return {
+        prepared: {
+          batch,
+          appId: appID as string,
+          imageRef: finalImageRef,
+          preflightCtx: {
+            privateKey: preflightCtx.privateKey,
+            rpcUrl: preflightCtx.rpcUrl,
+            environmentConfig: preflightCtx.environmentConfig,
+          },
+        },
+        gasEstimate,
+      };
+    },
+  );
 }
 
 /**
@@ -368,16 +393,25 @@ export async function executeUpgrade(
   prepared: PreparedUpgrade,
   gas: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } | undefined,
   logger: Logger = defaultLogger,
+  skipTelemetry?: boolean,
 ): Promise<UpgradeResult> {
-  // Execute the batch transaction
-  logger.info("Upgrading on-chain...");
-  const txHash = await executeUpgradeBatch(prepared.batch, gas, logger);
+  return withSDKTelemetry(
+    {
+      functionName: "executeUpgrade",
+      skipTelemetry: skipTelemetry,
+    },
+    async () => {
+      // Execute the batch transaction
+      logger.info("Upgrading on-chain...");
+      const txHash = await executeUpgradeBatch(prepared.batch, gas, logger);
 
-  return {
-    appId: prepared.appId,
-    imageRef: prepared.imageRef,
-    txHash,
-  };
+      return {
+        appId: prepared.appId,
+        imageRef: prepared.imageRef,
+        txHash,
+      };
+    },
+  );
 }
 
 /**
@@ -393,18 +427,30 @@ export async function watchUpgrade(
   environment: string,
   logger: Logger = defaultLogger,
   clientId?: string,
+  skipTelemetry?: boolean,
 ): Promise<void> {
-  const environmentConfig = getEnvironmentConfig(environment);
-
-  logger.info("Waiting for upgrade to complete...");
-  await watchUntilUpgradeComplete(
+  return withSDKTelemetry(
     {
-      privateKey,
-      rpcUrl,
-      environmentConfig,
-      appId: appId as Address,
-      clientId,
+      functionName: "watchUpgrade",
+      skipTelemetry: skipTelemetry,
+      properties: {
+        environment,
+      },
     },
-    logger,
+    async () => {
+      const environmentConfig = getEnvironmentConfig(environment);
+
+      logger.info("Waiting for upgrade to complete...");
+      await watchUntilUpgradeComplete(
+        {
+          privateKey,
+          rpcUrl,
+          environmentConfig,
+          appId: appId as Address,
+          clientId,
+        },
+        logger,
+      );
+    },
   );
 }

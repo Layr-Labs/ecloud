@@ -10,6 +10,7 @@ import {
 import { getOrPromptAppID, confirm } from "../../../utils/prompts";
 import { getPrivateKeyInteractive } from "../../../utils/prompts";
 import chalk from "chalk";
+import { withTelemetry } from "../../../telemetry";
 
 export default class AppLifecycleStop extends Command {
   static description = "Stop running app (stop GCP instance)";
@@ -26,58 +27,62 @@ export default class AppLifecycleStop extends Command {
   };
 
   async run() {
-    const { args, flags } = await this.parse(AppLifecycleStop);
-    const compute = await createComputeClient(flags);
+    return withTelemetry(this, async () => {
+      const { args, flags } = await this.parse(AppLifecycleStop);
+      const compute = await createComputeClient(flags);
 
-    // Get environment config
-    const environment = flags.environment || "sepolia";
-    const environmentConfig = getEnvironmentConfig(environment);
+      // Get environment config
+      const environment = flags.environment || "sepolia";
+      const environmentConfig = getEnvironmentConfig(environment);
 
-    // Get RPC URL (needed for contract queries and authentication)
-    const rpcUrl = flags.rpcUrl || environmentConfig.defaultRPCURL;
+      // Get RPC URL (needed for contract queries and authentication)
+      const rpcUrl = flags.rpcUrl || environmentConfig.defaultRPCURL;
 
-    // Get private key for gas estimation
-    const privateKey = flags["private-key"] || (await getPrivateKeyInteractive(environment));
+      // Get private key for gas estimation
+      const privateKey = flags["private-key"] || (await getPrivateKeyInteractive(environment));
 
-    // Resolve app ID (prompt if not provided)
-    const appId = await getOrPromptAppID({
-      appID: args["app-id"],
-      environment: flags["environment"]!,
-      privateKey,
-      rpcUrl,
-      action: "stop",
-    });
+      // Resolve app ID (prompt if not provided)
+      const appId = await getOrPromptAppID({
+        appID: args["app-id"],
+        environment: flags["environment"]!,
+        privateKey,
+        rpcUrl,
+        action: "stop",
+      });
 
-    // Estimate gas cost
-    const callData = encodeStopAppData(appId as `0x${string}`);
-    const estimate = await estimateTransactionGas({
-      privateKey,
-      rpcUrl,
-      environmentConfig,
-      to: environmentConfig.appControllerAddress as `0x${string}`,
-      data: callData,
-    });
+      // Estimate gas cost
+      const callData = encodeStopAppData(appId as `0x${string}`);
+      const estimate = await estimateTransactionGas({
+        privateKey,
+        rpcUrl,
+        environmentConfig,
+        to: environmentConfig.appControllerAddress as `0x${string}`,
+        data: callData,
+      });
 
-    // On mainnet, prompt for confirmation with cost
-    if (isMainnet(environmentConfig)) {
-      const confirmed = await confirm(`This will cost up to ${estimate.maxCostEth} ETH. Continue?`);
-      if (!confirmed) {
-        this.log(`\n${chalk.gray(`Stop cancelled`)}`);
-        return;
+      // On mainnet, prompt for confirmation with cost
+      if (isMainnet(environmentConfig)) {
+        const confirmed = await confirm(
+          `This will cost up to ${estimate.maxCostEth} ETH. Continue?`,
+        );
+        if (!confirmed) {
+          this.log(`\n${chalk.gray(`Stop cancelled`)}`);
+          return;
+        }
       }
-    }
 
-    const res = await compute.app.stop(appId, {
-      gas: {
-        maxFeePerGas: estimate.maxFeePerGas,
-        maxPriorityFeePerGas: estimate.maxPriorityFeePerGas,
-      },
+      const res = await compute.app.stop(appId, {
+        gas: {
+          maxFeePerGas: estimate.maxFeePerGas,
+          maxPriorityFeePerGas: estimate.maxPriorityFeePerGas,
+        },
+      });
+
+      if (!res.tx) {
+        this.log(`\n${chalk.gray(`Stop failed`)}`);
+      } else {
+        this.log(`\n✅ ${chalk.green(`App stopped successfully`)}`);
+      }
     });
-
-    if (!res.tx) {
-      this.log(`\n${chalk.gray(`Stop failed`)}`);
-    } else {
-      this.log(`\n✅ ${chalk.green(`App stopped successfully`)}`);
-    }
   }
 }

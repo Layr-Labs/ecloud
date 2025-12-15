@@ -8,6 +8,7 @@ import { Command } from "@oclif/core";
 import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";
+import { withTelemetry } from "../telemetry";
 import { fileURLToPath } from "url";
 
 interface VersionInfo {
@@ -60,34 +61,36 @@ export default class Version extends Command {
   static examples = ["<%= config.bin %> <%= command.id %>"];
 
   async run(): Promise<void> {
-    const versionInfo = readVersionFile();
+    return withTelemetry(this, async () => {
+      const versionInfo = readVersionFile();
 
-    // Version will always be present when published, for unpublished pull from current env
-    if (!versionInfo) {
-      this.log(`Version: ${this.config.version} (unpublished)`);
+      // Version will always be present when published, for unpublished pull from current env
+      if (!versionInfo) {
+        this.log(`Version: ${this.config.version} (unpublished)`);
 
-      // Attempt to get version from package root
-      try {
-        // Pull current working dir to pull commit hash
-        const __dirname = path.dirname(fileURLToPath(import.meta.url));
-        const packageRoot = path.resolve(__dirname, "..");
+        // Attempt to get version from package root
+        try {
+          // Pull current working dir to pull commit hash
+          const __dirname = path.dirname(fileURLToPath(import.meta.url));
+          const packageRoot = path.resolve(__dirname, "..");
 
-        // Print the short sha from the projects root .git dir
-        // Run git directly, setting cwd so no shell expansion/risk
-        const commitSha = execSync("git rev-parse --short HEAD", {
-          cwd: packageRoot,
-          encoding: "utf8",
-        }).trim();
-        this.log(`Commit: ${commitSha}`);
-      } catch {
-        // If we can't get the commit then print unknown
-        this.log(`Commit: unknown`);
+          // Print the short sha from the projects root .git dir
+          // Run git directly, setting cwd so no shell expansion/risk
+          const commitSha = execSync("git rev-parse --short HEAD", {
+            cwd: packageRoot,
+            encoding: "utf8",
+          }).trim();
+          this.log(`Commit: ${commitSha}`);
+        } catch {
+          // If we can't get the commit then print unknown
+          this.log(`Commit: unknown`);
+        }
+
+        return;
       }
 
-      return;
-    }
-
-    this.log(`Version: ${versionInfo.version}`);
-    this.log(`Commit:  ${versionInfo.commit}`);
+      this.log(`Version: ${versionInfo.version}`);
+      this.log(`Commit:  ${versionInfo.commit}`);
+    });
   }
 }

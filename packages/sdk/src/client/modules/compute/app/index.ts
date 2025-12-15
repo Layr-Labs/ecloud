@@ -14,6 +14,7 @@ import {
   undelegate,
   isDelegated,
 } from "../../../common/contract/caller";
+import { withSDKTelemetry } from "../../../common/telemetry/wrapper";
 
 import type { AppId, DeployAppOpts, LifecycleOpts, UpgradeAppOpts } from "../../../common/types";
 import { getLogger, addHexPrefix } from "../../../common/utils";
@@ -85,10 +86,12 @@ export interface AppModuleConfig {
   rpcUrl: string;
   environment: string;
   clientId?: string;
+  skipTelemetry?: boolean; // Skip telemetry when called from CLI
 }
 
 export function createAppModule(ctx: AppModuleConfig): AppModule {
   const privateKey = addHexPrefix(ctx.privateKey);
+  const skipTelemetry = ctx.skipTelemetry || false;
 
   // Pull config for selected Environment
   const environment = getEnvironmentConfig(ctx.environment);
@@ -163,82 +166,110 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           clientId: ctx.clientId,
         },
         logger,
+        skipTelemetry, // Skip if called from CLI
       );
     },
 
     async start(appId, opts) {
-      const pendingMessage = `Starting app ${appId}...`;
-
-      const data = encodeFunctionData({
-        abi: CONTROLLER_ABI,
-        functionName: "startApp",
-        args: [appId],
-      });
-
-      const tx = await sendAndWaitForTransaction(
+      return withSDKTelemetry(
         {
-          privateKey,
-          rpcUrl: ctx.rpcUrl,
-          environmentConfig: environment,
-          to: environment.appControllerAddress as `0x${string}`,
-          data,
-          pendingMessage,
-          txDescription: "StartApp",
-          gas: opts?.gas,
+          functionName: "start",
+          skipTelemetry: skipTelemetry, // Skip if called from CLI
+          properties: { environment: ctx.environment },
         },
-        logger,
+        async () => {
+          const pendingMessage = `Starting app ${appId}...`;
+
+          const data = encodeFunctionData({
+            abi: CONTROLLER_ABI,
+            functionName: "startApp",
+            args: [appId],
+          });
+
+          const tx = await sendAndWaitForTransaction(
+            {
+              privateKey,
+              rpcUrl: ctx.rpcUrl,
+              environmentConfig: environment,
+              to: environment.appControllerAddress as `0x${string}`,
+              data,
+              pendingMessage,
+              txDescription: "StartApp",
+              gas: opts?.gas,
+            },
+            logger,
+          );
+          return { tx };
+        },
       );
-      return { tx };
     },
 
     async stop(appId, opts) {
-      const pendingMessage = `Stopping app ${appId}...`;
-
-      const data = encodeFunctionData({
-        abi: CONTROLLER_ABI,
-        functionName: "stopApp",
-        args: [appId],
-      });
-
-      const tx = await sendAndWaitForTransaction(
+      return withSDKTelemetry(
         {
-          privateKey,
-          rpcUrl: ctx.rpcUrl,
-          environmentConfig: environment,
-          to: environment.appControllerAddress as `0x${string}`,
-          data,
-          pendingMessage,
-          txDescription: "StopApp",
-          gas: opts?.gas,
+          functionName: "stop",
+          skipTelemetry: skipTelemetry, // Skip if called from CLI
+          properties: { environment: ctx.environment },
         },
-        logger,
+        async () => {
+          const pendingMessage = `Stopping app ${appId}...`;
+
+          const data = encodeFunctionData({
+            abi: CONTROLLER_ABI,
+            functionName: "stopApp",
+            args: [appId],
+          });
+
+          const tx = await sendAndWaitForTransaction(
+            {
+              privateKey,
+              rpcUrl: ctx.rpcUrl,
+              environmentConfig: environment,
+              to: environment.appControllerAddress as `0x${string}`,
+              data,
+              pendingMessage,
+              txDescription: "StopApp",
+              gas: opts?.gas,
+            },
+            logger,
+          );
+          return { tx };
+        },
       );
-      return { tx };
     },
 
     async terminate(appId, opts) {
-      const pendingMessage = `Terminating app ${appId}...`;
-
-      const data = encodeFunctionData({
-        abi: CONTROLLER_ABI,
-        functionName: "terminateApp",
-        args: [appId],
-      });
-
-      const tx = await sendAndWaitForTransaction(
+      return withSDKTelemetry(
         {
-          privateKey,
-          rpcUrl: ctx.rpcUrl,
-          environmentConfig: environment,
-          to: environment.appControllerAddress as `0x${string}`,
-          data,
-          pendingMessage,
-          txDescription: "TerminateApp",
-          gas: opts?.gas,
+          functionName: "terminate",
+          skipTelemetry: skipTelemetry, // Skip if called from CLI
+          properties: { environment: ctx.environment },
         },
-        logger,
+        async () => {
+          const pendingMessage = `Terminating app ${appId}...`;
+
+          const data = encodeFunctionData({
+            abi: CONTROLLER_ABI,
+            functionName: "terminateApp",
+            args: [appId],
+          });
+
+          const tx = await sendAndWaitForTransaction(
+            {
+              privateKey,
+              rpcUrl: ctx.rpcUrl,
+              environmentConfig: environment,
+              to: environment.appControllerAddress as `0x${string}`,
+              data,
+              pendingMessage,
+              txDescription: "TerminateApp",
+              gas: opts?.gas,
+            },
+            logger,
+          );
+          return { tx };
+        },
       );
-      return { tx };
     },
 
     async isDelegated() {
@@ -250,17 +281,26 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
     },
 
     async undelegate() {
-      // perform the undelegate EIP7702 tx (sets delegated to zero address)
-      const tx = await undelegate(
+      return withSDKTelemetry(
         {
-          privateKey,
-          rpcUrl: ctx.rpcUrl,
-          environmentConfig: environment,
+          functionName: "undelegate",
+          skipTelemetry: skipTelemetry, // Skip if called from CLI
+          properties: { environment: ctx.environment },
         },
-        logger,
-      );
+        async () => {
+          // perform the undelegate EIP7702 tx (sets delegated to zero address)
+          const tx = await undelegate(
+            {
+              privateKey,
+              rpcUrl: ctx.rpcUrl,
+              environmentConfig: environment,
+            },
+            logger,
+          );
 
-      return { tx };
+          return { tx };
+        },
+      );
     },
   };
 }

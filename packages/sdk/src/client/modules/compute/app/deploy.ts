@@ -35,6 +35,7 @@ import {
 } from "../../../common/utils/validation";
 import { doPreflightChecks, PreflightContext } from "../../../common/utils/preflight";
 import { defaultLogger } from "../../../common/utils";
+import { withSDKTelemetry } from "../../../common/telemetry/wrapper";
 
 /**
  * Required deploy options for SDK (non-interactive)
@@ -65,6 +66,8 @@ export interface SDKDeployOptions {
     maxFeePerGas?: bigint;
     maxPriorityFeePerGas?: bigint;
   };
+  /** Skip telemetry (used when called from CLI) - optional */
+  skipTelemetry?: boolean;
 }
 
 /**
@@ -162,108 +165,119 @@ export async function deploy(
   options: SDKDeployOptions,
   logger: Logger = defaultLogger,
 ): Promise<DeployResult> {
-  // 1. Validate all required parameters upfront
-  validateDeployOptions(options);
-
-  // Convert log visibility to internal format
-  const { logRedirect, publicLogs } = validateLogVisibility(options.logVisibility);
-
-  // Convert resource usage monitoring to internal format (defaults to "always")
-  const resourceUsageAllow = validateResourceUsageMonitoring(options.resourceUsageMonitoring);
-
-  // 2. Do preflight checks (auth, network, etc.)
-  logger.debug("Performing preflight checks...");
-  const preflightCtx = await doPreflightChecks(
+  return withSDKTelemetry(
     {
-      privateKey: options.privateKey,
-      rpcUrl: options.rpcUrl,
-      environment: options.environment,
+      functionName: "deploy",
+      skipTelemetry: options.skipTelemetry,
+      properties: {
+        environment: options.environment || "sepolia",
+      },
     },
-    logger,
-  );
+    async () => {
+      // 1. Validate all required parameters upfront
+      validateDeployOptions(options);
 
-  // 3. Check quota availability
-  logger.debug("Checking quota availability...");
-  await checkQuotaAvailable(preflightCtx);
+      // Convert log visibility to internal format
+      const { logRedirect, publicLogs } = validateLogVisibility(options.logVisibility);
 
-  // 4. Check if docker is running, else try to start it
-  logger.debug("Checking Docker...");
-  await ensureDockerIsRunning();
+      // Convert resource usage monitoring to internal format (defaults to "always")
+      const resourceUsageAllow = validateResourceUsageMonitoring(options.resourceUsageMonitoring);
 
-  // Use provided values (already validated)
-  const dockerfilePath = options.dockerfilePath || "";
-  const imageRef = options.imageRef || "";
-  const appName = options.appName;
-  const envFilePath = options.envFilePath || "";
-  const instanceType = options.instanceType;
+      // 2. Do preflight checks (auth, network, etc.)
+      logger.debug("Performing preflight checks...");
+      const preflightCtx = await doPreflightChecks(
+        {
+          privateKey: options.privateKey,
+          rpcUrl: options.rpcUrl,
+          environment: options.environment,
+        },
+        logger,
+      );
 
-  // 5. Generate random salt
-  const salt = generateRandomSalt();
-  logger.debug(`Generated salt: ${Buffer.from(salt).toString("hex")}`);
+      // 3. Check quota availability
+      logger.debug("Checking quota availability...");
+      await checkQuotaAvailable(preflightCtx);
 
-  // 6. Get app ID (calculate from salt and address)
-  logger.debug("Calculating app ID...");
-  const appIDToBeDeployed = await calculateAppID(
-    preflightCtx.privateKey,
-    options.rpcUrl || preflightCtx.rpcUrl,
-    preflightCtx.environmentConfig,
-    salt,
-  );
-  logger.info(``);
-  logger.info(`App ID: ${appIDToBeDeployed}`);
-  logger.info(``);
+      // 4. Check if docker is running, else try to start it
+      logger.debug("Checking Docker...");
+      await ensureDockerIsRunning();
 
-  // 7. Prepare the release (includes build/push if needed, with automatic retry on permission errors)
-  logger.info("Preparing release...");
-  const { release, finalImageRef } = await prepareRelease(
-    {
-      dockerfilePath,
-      imageRef,
-      envFilePath,
-      logRedirect,
-      resourceUsageAllow,
-      instanceType,
-      environmentConfig: preflightCtx.environmentConfig,
-      appId: appIDToBeDeployed,
+      // Use provided values (already validated)
+      const dockerfilePath = options.dockerfilePath || "";
+      const imageRef = options.imageRef || "";
+      const appName = options.appName;
+      const envFilePath = options.envFilePath || "";
+      const instanceType = options.instanceType;
+
+      // 5. Generate random salt
+      const salt = generateRandomSalt();
+      logger.debug(`Generated salt: ${Buffer.from(salt).toString("hex")}`);
+
+      // 6. Get app ID (calculate from salt and address)
+      logger.debug("Calculating app ID...");
+      const appIDToBeDeployed = await calculateAppID(
+        preflightCtx.privateKey,
+        options.rpcUrl || preflightCtx.rpcUrl,
+        preflightCtx.environmentConfig,
+        salt,
+      );
+      logger.info(``);
+      logger.info(`App ID: ${appIDToBeDeployed}`);
+      logger.info(``);
+
+      // 7. Prepare the release (includes build/push if needed, with automatic retry on permission errors)
+      logger.info("Preparing release...");
+      const { release, finalImageRef } = await prepareRelease(
+        {
+          dockerfilePath,
+          imageRef,
+          envFilePath,
+          logRedirect,
+          resourceUsageAllow,
+          instanceType,
+          environmentConfig: preflightCtx.environmentConfig,
+          appId: appIDToBeDeployed,
+        },
+        logger,
+      );
+
+      // 8. Deploy the app
+      logger.info("Deploying on-chain...");
+      const deployResult = await deployApp(
+        {
+          privateKey: preflightCtx.privateKey,
+          rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
+          environmentConfig: preflightCtx.environmentConfig,
+          salt,
+          release,
+          publicLogs,
+          imageRef: finalImageRef,
+          gas: options.gas,
+        },
+        logger,
+      );
+
+      // 9. Watch until app is running
+      logger.info("Waiting for app to start...");
+      const ipAddress = await watchUntilRunning(
+        {
+          privateKey: preflightCtx.privateKey,
+          rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
+          environmentConfig: preflightCtx.environmentConfig,
+          appId: deployResult.appId,
+        },
+        logger,
+      );
+
+      return {
+        appId: deployResult.appId,
+        txHash: deployResult.txHash,
+        appName,
+        imageRef: finalImageRef,
+        ipAddress,
+      };
     },
-    logger,
   );
-
-  // 8. Deploy the app
-  logger.info("Deploying on-chain...");
-  const deployResult = await deployApp(
-    {
-      privateKey: preflightCtx.privateKey,
-      rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
-      environmentConfig: preflightCtx.environmentConfig,
-      salt,
-      release,
-      publicLogs,
-      imageRef: finalImageRef,
-      gas: options.gas,
-    },
-    logger,
-  );
-
-  // 9. Watch until app is running
-  logger.info("Waiting for app to start...");
-  const ipAddress = await watchUntilRunning(
-    {
-      privateKey: preflightCtx.privateKey,
-      rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
-      environmentConfig: preflightCtx.environmentConfig,
-      appId: deployResult.appId,
-    },
-    logger,
-  );
-
-  return {
-    appId: deployResult.appId,
-    txHash: deployResult.txHash,
-    appName,
-    imageRef: finalImageRef,
-    ipAddress,
-  };
 }
 
 /**
@@ -324,111 +338,122 @@ function generateRandomSalt(): Uint8Array {
  * 3. Call executeDeploy with confirmed gas params
  */
 export async function prepareDeploy(
-  options: Omit<SDKDeployOptions, "gas">,
+  options: Omit<SDKDeployOptions, "gas"> & { skipTelemetry?: boolean },
   logger: Logger = defaultLogger,
 ): Promise<PrepareDeployResult> {
-  // 1. Validate all required parameters upfront
-  validateDeployOptions(options as SDKDeployOptions);
-
-  // Convert log visibility to internal format
-  const { logRedirect, publicLogs } = validateLogVisibility(options.logVisibility);
-
-  // Convert resource usage monitoring to internal format (defaults to "always")
-  const resourceUsageAllow = validateResourceUsageMonitoring(options.resourceUsageMonitoring);
-
-  // 2. Do preflight checks (auth, network, etc.)
-  logger.debug("Performing preflight checks...");
-  const preflightCtx = await doPreflightChecks(
+  return withSDKTelemetry(
     {
-      privateKey: options.privateKey,
-      rpcUrl: options.rpcUrl,
-      environment: options.environment,
-    },
-    logger,
-  );
-
-  // 3. Check quota availability
-  logger.debug("Checking quota availability...");
-  await checkQuotaAvailable(preflightCtx);
-
-  // 4. Check if docker is running, else try to start it
-  logger.debug("Checking Docker...");
-  await ensureDockerIsRunning();
-
-  // Use provided values (already validated)
-  const dockerfilePath = options.dockerfilePath || "";
-  const imageRef = options.imageRef || "";
-  const appName = options.appName;
-  const envFilePath = options.envFilePath || "";
-  const instanceType = options.instanceType;
-
-  // 5. Generate random salt
-  const salt = generateRandomSalt();
-  logger.debug(`Generated salt: ${Buffer.from(salt).toString("hex")}`);
-
-  // 6. Get app ID (calculate from salt and address)
-  logger.debug("Calculating app ID...");
-  const appIDToBeDeployed = await calculateAppID(
-    preflightCtx.privateKey,
-    options.rpcUrl || preflightCtx.rpcUrl,
-    preflightCtx.environmentConfig,
-    salt,
-  );
-  logger.info(``);
-  logger.info(`App ID: ${appIDToBeDeployed}`);
-  logger.info(``);
-
-  // 7. Prepare the release (includes build/push if needed)
-  logger.info("Preparing release...");
-  const { release, finalImageRef } = await prepareRelease(
-    {
-      dockerfilePath,
-      imageRef,
-      envFilePath,
-      logRedirect,
-      resourceUsageAllow,
-      instanceType,
-      environmentConfig: preflightCtx.environmentConfig,
-      appId: appIDToBeDeployed,
-    },
-    logger,
-  );
-
-  // 8. Prepare the deploy batch (creates executions without sending)
-  logger.debug("Preparing deploy batch...");
-  const batch = await prepareDeployBatch(
-    {
-      privateKey: preflightCtx.privateKey,
-      rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
-      environmentConfig: preflightCtx.environmentConfig,
-      salt,
-      release,
-      publicLogs,
-    },
-    logger,
-  );
-
-  // 9. Estimate gas for the batch
-  logger.debug("Estimating gas...");
-  const gasEstimate = await estimateBatchGas({
-    publicClient: batch.publicClient,
-    environmentConfig: batch.environmentConfig,
-    executions: batch.executions,
-  });
-
-  return {
-    prepared: {
-      batch,
-      appName,
-      imageRef: finalImageRef,
-      preflightCtx: {
-        privateKey: preflightCtx.privateKey,
-        rpcUrl: preflightCtx.rpcUrl,
-        environmentConfig: preflightCtx.environmentConfig,
+      functionName: "prepareDeploy",
+      skipTelemetry: options.skipTelemetry,
+      properties: {
+        environment: options.environment || "sepolia",
       },
     },
-    gasEstimate,
-  };
+    async () => {
+      // 1. Validate all required parameters upfront
+      validateDeployOptions(options as SDKDeployOptions);
+
+      // Convert log visibility to internal format
+      const { logRedirect, publicLogs } = validateLogVisibility(options.logVisibility);
+
+      // Convert resource usage monitoring to internal format (defaults to "always")
+      const resourceUsageAllow = validateResourceUsageMonitoring(options.resourceUsageMonitoring);
+
+      // 2. Do preflight checks (auth, network, etc.)
+      logger.debug("Performing preflight checks...");
+      const preflightCtx = await doPreflightChecks(
+        {
+          privateKey: options.privateKey,
+          rpcUrl: options.rpcUrl,
+          environment: options.environment,
+        },
+        logger,
+      );
+
+      // 3. Check quota availability
+      logger.debug("Checking quota availability...");
+      await checkQuotaAvailable(preflightCtx);
+
+      // 4. Check if docker is running, else try to start it
+      logger.debug("Checking Docker...");
+      await ensureDockerIsRunning();
+
+      // Use provided values (already validated)
+      const dockerfilePath = options.dockerfilePath || "";
+      const imageRef = options.imageRef || "";
+      const appName = options.appName;
+      const envFilePath = options.envFilePath || "";
+      const instanceType = options.instanceType;
+
+      // 5. Generate random salt
+      const salt = generateRandomSalt();
+      logger.debug(`Generated salt: ${Buffer.from(salt).toString("hex")}`);
+
+      // 6. Get app ID (calculate from salt and address)
+      logger.debug("Calculating app ID...");
+      const appIDToBeDeployed = await calculateAppID(
+        preflightCtx.privateKey,
+        options.rpcUrl || preflightCtx.rpcUrl,
+        preflightCtx.environmentConfig,
+        salt,
+      );
+      logger.info(``);
+      logger.info(`App ID: ${appIDToBeDeployed}`);
+      logger.info(``);
+
+      // 7. Prepare the release (includes build/push if needed)
+      logger.info("Preparing release...");
+      const { release, finalImageRef } = await prepareRelease(
+        {
+          dockerfilePath,
+          imageRef,
+          envFilePath,
+          logRedirect,
+          resourceUsageAllow,
+          instanceType,
+          environmentConfig: preflightCtx.environmentConfig,
+          appId: appIDToBeDeployed,
+        },
+        logger,
+      );
+
+      // 8. Prepare the deploy batch (creates executions without sending)
+      logger.debug("Preparing deploy batch...");
+      const batch = await prepareDeployBatch(
+        {
+          privateKey: preflightCtx.privateKey,
+          rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
+          environmentConfig: preflightCtx.environmentConfig,
+          salt,
+          release,
+          publicLogs,
+        },
+        logger,
+      );
+
+      // 9. Estimate gas for the batch
+      logger.debug("Estimating gas...");
+      const gasEstimate = await estimateBatchGas({
+        publicClient: batch.publicClient,
+        environmentConfig: batch.environmentConfig,
+        executions: batch.executions,
+      });
+
+      return {
+        prepared: {
+          batch,
+          appName,
+          imageRef: finalImageRef,
+          preflightCtx: {
+            privateKey: preflightCtx.privateKey,
+            rpcUrl: preflightCtx.rpcUrl,
+            environmentConfig: preflightCtx.environmentConfig,
+          },
+        },
+        gasEstimate,
+      };
+    },
+  );
 }
 
 /**
@@ -442,17 +467,26 @@ export async function executeDeploy(
   prepared: PreparedDeploy,
   gas: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } | undefined,
   logger: Logger = defaultLogger,
+  skipTelemetry?: boolean,
 ): Promise<DeployResult> {
-  // Execute the batch transaction
-  logger.info("Deploying on-chain...");
-  const { appId, txHash } = await executeDeployBatch(prepared.batch, gas, logger);
+  return withSDKTelemetry(
+    {
+      functionName: "executeDeploy",
+      skipTelemetry: skipTelemetry,
+    },
+    async () => {
+      // Execute the batch transaction
+      logger.info("Deploying on-chain...");
+      const { appId, txHash } = await executeDeployBatch(prepared.batch, gas, logger);
 
-  return {
-    appId,
-    txHash,
-    appName: prepared.appName,
-    imageRef: prepared.imageRef,
-  };
+      return {
+        appId,
+        txHash,
+        appName: prepared.appName,
+        imageRef: prepared.imageRef,
+      };
+    },
+  );
 }
 
 /**
@@ -468,19 +502,31 @@ export async function watchDeployment(
   environment: string,
   logger: Logger = defaultLogger,
   clientId?: string,
+  skipTelemetry?: boolean,
 ): Promise<string | undefined> {
-  const environmentConfig = getEnvironmentConfig(environment);
-
-  logger.info("Waiting for app to start...");
-  return watchUntilRunning(
+  return withSDKTelemetry(
     {
-      privateKey,
-      rpcUrl,
-      environmentConfig,
-      appId: appId as `0x${string}`,
-      clientId,
+      functionName: "watchDeployment",
+      skipTelemetry: skipTelemetry,
+      properties: {
+        environment,
+      },
     },
-    logger,
+    async () => {
+      const environmentConfig = getEnvironmentConfig(environment);
+
+      logger.info("Waiting for app to start...");
+      return watchUntilRunning(
+        {
+          privateKey,
+          rpcUrl,
+          environmentConfig,
+          appId: appId as `0x${string}`,
+          clientId,
+        },
+        logger,
+      );
+    },
   );
 }
 

@@ -30,6 +30,7 @@ export async function createComputeClient(flags: CommonFlags) {
     rpcUrl,
     environment,
     clientId: getClientId(),
+    skipTelemetry: true, // CLI already has telemetry, skip SDK telemetry
   });
 }
 
@@ -42,5 +43,6 @@ export async function createBillingClient(flags: { "private-key"?: string; verbo
   return createBillingModule({
     verbose: flags.verbose ?? false,
     privateKey: privateKey as Hex,
+    skipTelemetry: true, // CLI already has telemetry, skip SDK telemetry
   });
 }

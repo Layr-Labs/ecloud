@@ -14,6 +14,7 @@ export interface ComputeModuleConfig {
   rpcUrl: string;
   environment: string;
   clientId?: string;
+  skipTelemetry?: boolean;
 }
 
 export function createComputeModule(config: ComputeModuleConfig): ComputeModule {

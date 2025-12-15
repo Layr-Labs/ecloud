@@ -7,6 +7,7 @@ import {
 import { setDefaultEnvironment } from "../../../utils/globalConfig";
 import { getEnvironmentInteractive } from "../../../utils/prompts";
 import { confirm } from "@inquirer/prompts";
+import { withTelemetry } from "../../../telemetry";
 
 /**
  * Check if an environment is a mainnet environment
@@ -55,34 +56,36 @@ export default class EnvironmentSet extends Command {
   };
 
   async run() {
-    const { args, flags } = await this.parse(EnvironmentSet);
+    return withTelemetry(this, async () => {
+      const { args, flags } = await this.parse(EnvironmentSet);
 
-    // Get environment interactively if not provided
-    const newEnv = args.environment || (await getEnvironmentInteractive());
+      // Get environment interactively if not provided
+      const newEnv = args.environment || (await getEnvironmentInteractive());
 
-    // Validate that the environment exists and is available
-    if (!isEnvironmentAvailable(newEnv)) {
-      const available = getAvailableEnvironments().join(", ");
-      throw new Error(
-        `Unknown environment: ${newEnv}\nRun 'ecloud environment list' to see available environments (${available})`,
-      );
-    }
+      // Validate that the environment exists and is available
+      if (!isEnvironmentAvailable(newEnv)) {
+        const available = getAvailableEnvironments().join(", ");
+        throw new Error(
+          `Unknown environment: ${newEnv}\nRun 'ecloud environment list' to see available environments (${available})`,
+        );
+      }
 
-    // Validate environment config exists
-    try {
-      getEnvironmentConfig(newEnv);
-    } catch (err: any) {
-      throw new Error(`Invalid environment: ${newEnv} - ${err.message}`);
-    }
+      // Validate environment config exists
+      try {
+        getEnvironmentConfig(newEnv);
+      } catch (err: any) {
+        throw new Error(`Invalid environment: ${newEnv} - ${err.message}`);
+      }
 
-    // Check if this is mainnet and requires confirmation
-    if (isMainnetEnvironment(newEnv) && !flags.yes) {
-      await confirmMainnetEnvironment(newEnv);
-    }
+      // Check if this is mainnet and requires confirmation
+      if (isMainnetEnvironment(newEnv) && !flags.yes) {
+        await confirmMainnetEnvironment(newEnv);
+      }
 
-    // Set the deployment environment
-    setDefaultEnvironment(newEnv);
+      // Set the deployment environment
+      setDefaultEnvironment(newEnv);
 
-    console.log(`\n✅ Deployment environment set to ${newEnv}`);
+      console.log(`\n✅ Deployment environment set to ${newEnv}`);
+    });
   }
 }
