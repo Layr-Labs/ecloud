@@ -113,7 +113,8 @@ export default class BillingStatus extends Command {
 
     // Display portal URL for management
     if (result.portalUrl) {
-      this.log(`\n  ${chalk.dim("Manage subscription:")} ${chalk.cyan(result.portalUrl)}`);
+      this.log(`\n${chalk.bold("Payment & Invoices:")}`);
+      this.log(`  ${chalk.cyan(result.portalUrl)}`);
     }
 
     this.log();

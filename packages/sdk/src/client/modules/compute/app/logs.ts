@@ -8,11 +8,11 @@
  */
 
 import { Address } from "viem";
-import { Logger } from "../../common/types";
-import { defaultLogger } from "../../common/utils";
-import { UserApiClient } from "../../common/utils/userapi";
-import { getEnvironmentConfig } from "../../common/config/environment";
-import { validateAppID } from "../../common/utils/validation";
+import { Logger } from "../../../common/types";
+import { defaultLogger } from "../../../common/utils";
+import { UserApiClient } from "../../../common/utils/userapi";
+import { getEnvironmentConfig } from "../../../common/config/environment";
+import { validateAppID } from "../../../common/utils/validation";
 import chalk from "chalk";
 
 /**

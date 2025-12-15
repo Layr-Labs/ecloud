@@ -8,10 +8,10 @@
  * provided explicitly. Use the CLI for interactive parameter collection.
  */
 
-import { DeployResult, Logger, EnvironmentConfig } from "../../common/types";
-import { getEnvironmentConfig } from "../../common/config/environment";
-import { ensureDockerIsRunning } from "../../common/docker/build";
-import { prepareRelease } from "../../common/release/prepare";
+import { DeployResult, Logger, EnvironmentConfig } from "../../../common/types";
+import { getEnvironmentConfig } from "../../../common/config/environment";
+import { ensureDockerIsRunning } from "../../../common/docker/build";
+import { prepareRelease } from "../../../common/release/prepare";
 import {
   deployApp,
   calculateAppID,
@@ -20,10 +20,10 @@ import {
   prepareDeployBatch,
   executeDeployBatch,
   type PreparedDeployBatch,
-} from "../../common/contract/caller";
-import { estimateBatchGas } from "../../common/contract/eip7702";
-import { type GasEstimate } from "../../common/contract/caller";
-import { watchUntilRunning } from "../../common/contract/watcher";
+} from "../../../common/contract/caller";
+import { estimateBatchGas } from "../../../common/contract/eip7702";
+import { type GasEstimate } from "../../../common/contract/caller";
+import { watchUntilRunning } from "../../../common/contract/watcher";
 import {
   validateAppName,
   validateLogVisibility,
@@ -32,9 +32,9 @@ import {
   assertValidFilePath,
   LogVisibility,
   ResourceUsageMonitoring,
-} from "../../common/utils/validation";
-import { doPreflightChecks, PreflightContext } from "../../common/utils/preflight";
-import { defaultLogger } from "../../common/utils";
+} from "../../../common/utils/validation";
+import { doPreflightChecks, PreflightContext } from "../../../common/utils/preflight";
+import { defaultLogger } from "../../../common/utils";
 
 /**
  * Required deploy options for SDK (non-interactive)
@@ -485,4 +485,4 @@ export async function watchDeployment(
 }
 
 // Re-export for convenience
-export { extractAppNameFromImage } from "../../common/utils/validation";
+export { extractAppNameFromImage } from "../../../common/utils/validation";

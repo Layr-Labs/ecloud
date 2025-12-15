@@ -314,7 +314,7 @@ const client = createECloudClient({
 });
 
 // Deploy an application
-const result = await client.app.deploy({
+const result = await client.compute.app.deploy({
   image: "myapp:latest",
 });
 
@@ -322,13 +322,13 @@ console.log(`Deployed app ID: ${result.appId}`);
 console.log(`Transaction hash: ${result.tx}`);
 
 // Start an application
-await client.app.start(result.appId);
+await client.compute.app.start(result.appId);
 
 // Stop an application
-await client.app.stop(result.appId);
+await client.compute.app.stop(result.appId);
 
 // Terminate an application
-await client.app.terminate(result.appId);
+await client.compute.app.terminate(result.appId);
 ```
 
 ## Environments

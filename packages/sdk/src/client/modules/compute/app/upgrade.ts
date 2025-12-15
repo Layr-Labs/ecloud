@@ -9,19 +9,19 @@
  */
 
 import { Address } from "viem";
-import { Logger, EnvironmentConfig } from "../../common/types";
-import { getEnvironmentConfig } from "../../common/config/environment";
-import { ensureDockerIsRunning } from "../../common/docker/build";
-import { prepareRelease } from "../../common/release/prepare";
+import { Logger, EnvironmentConfig } from "../../../common/types";
+import { getEnvironmentConfig } from "../../../common/config/environment";
+import { ensureDockerIsRunning } from "../../../common/docker/build";
+import { prepareRelease } from "../../../common/release/prepare";
 import {
   upgradeApp,
   prepareUpgradeBatch,
   executeUpgradeBatch,
   type PreparedUpgradeBatch,
   type GasEstimate,
-} from "../../common/contract/caller";
-import { estimateBatchGas } from "../../common/contract/eip7702";
-import { watchUntilUpgradeComplete } from "../../common/contract/watcher";
+} from "../../../common/contract/caller";
+import { estimateBatchGas } from "../../../common/contract/eip7702";
+import { watchUntilUpgradeComplete } from "../../../common/contract/watcher";
 import {
   validateAppID,
   validateLogVisibility,
@@ -30,10 +30,10 @@ import {
   assertValidFilePath,
   LogVisibility,
   ResourceUsageMonitoring,
-} from "../../common/utils/validation";
-import { doPreflightChecks } from "../../common/utils/preflight";
-import { checkAppLogPermission } from "../../common/utils/permissions";
-import { defaultLogger } from "../../common/utils";
+} from "../../../common/utils/validation";
+import { doPreflightChecks } from "../../../common/utils/preflight";
+import { checkAppLogPermission } from "../../../common/utils/permissions";
+import { defaultLogger } from "../../../common/utils";
 
 /**
  * Required upgrade options for SDK (non-interactive)

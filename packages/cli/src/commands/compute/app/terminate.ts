@@ -1,5 +1,5 @@
 import { Command, Args, Flags } from "@oclif/core";
-import { createAppClient } from "../../../client";
+import { createComputeClient } from "../../../client";
 import { commonFlags } from "../../../flags";
 import {
   getEnvironmentConfig,
@@ -32,7 +32,7 @@ export default class AppLifecycleTerminate extends Command {
 
   async run() {
     const { args, flags } = await this.parse(AppLifecycleTerminate);
-    const app = await createAppClient(flags);
+    const compute = await createComputeClient(flags);
 
     // Get environment config
     const environment = flags.environment || "sepolia";
@@ -75,7 +75,7 @@ export default class AppLifecycleTerminate extends Command {
       }
     }
 
-    const res = await app.terminate(appId, {
+    const res = await compute.app.terminate(appId, {
       gas: {
         maxFeePerGas: estimate.maxFeePerGas,
         maxPriorityFeePerGas: estimate.maxPriorityFeePerGas,
