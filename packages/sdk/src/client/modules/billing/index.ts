@@ -5,9 +5,10 @@
 import { BillingApiClient } from "../../common/utils/billingapi";
 import { getBillingEnvironmentConfig, getBuildType } from "../../common/config/environment";
 import { getLogger, isSubscriptionActive, addHexPrefix } from "../../common/utils";
+import { getAddressFromPrivateKey } from "../../common/auth";
 import { withSDKTelemetry } from "../../common/telemetry/wrapper";
 
-import type { Hex } from "viem";
+import type { Address, Hex } from "viem";
 import type {
   ProductID,
   SubscriptionOpts,
@@ -17,6 +18,7 @@ import type {
 } from "../../common/types";
 
 export interface BillingModule {
+  address: Address;
   subscribe: (opts?: SubscriptionOpts) => Promise<SubscribeResponse>;
   getStatus: (opts?: SubscriptionOpts) => Promise<ProductSubscriptionResponse>;
   cancel: (opts?: SubscriptionOpts) => Promise<CancelResponse>;
@@ -31,6 +33,7 @@ export interface BillingModuleConfig {
 export function createBillingModule(config: BillingModuleConfig): BillingModule {
   const { verbose = false, skipTelemetry = false } = config;
   const privateKey = addHexPrefix(config.privateKey);
+  const address = getAddressFromPrivateKey(privateKey) as Address;
 
   const logger = getLogger(verbose);
 
@@ -41,6 +44,7 @@ export function createBillingModule(config: BillingModuleConfig): BillingModule 
   const billingApi = new BillingApiClient(billingEnvConfig, privateKey);
 
   return {
+    address,
     async subscribe(opts) {
       return withSDKTelemetry(
         {

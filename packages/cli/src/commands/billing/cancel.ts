@@ -47,7 +47,7 @@ export default class BillingCancel extends Command {
       // Confirm cancellation unless --force flag is used
       if (!flags.force) {
         const confirmed = await confirm({
-          message: `${chalk.yellow("Warning:")} This will cancel your ${flags.product} subscription. Continue?`,
+          message: `${chalk.yellow("Warning:")} This will cancel the ${flags.product} subscription for wallet ${chalk.bold(billing.address)}. Continue?`,
         });
         if (!confirmed) {
           this.log(chalk.gray("\nCancellation aborted."));

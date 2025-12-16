@@ -58,6 +58,7 @@ export default class BillingStatus extends Command {
       };
 
       this.log(`\n${chalk.bold("Subscription Status:")}`);
+      this.log(`  Wallet: ${billing.address}`);
       this.log(`  Status: ${formatStatus(result.subscriptionStatus)}`);
       this.log(`  Product: ${result.productId}`);
 
