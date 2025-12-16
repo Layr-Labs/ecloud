@@ -1,4 +1,4 @@
 # CODEOWNERS - Workflow Protection
 # Protect all workflows
-/.github/workflows/ @Layr-Labs/security
-/.github/CODEOWNERS @Layr-Labs/security
+/.github/workflows/ @anupsv @vineetguptadev
+/.github/CODEOWNERS @anupsv @vineetguptadev
