@@ -1,0 +1,4 @@
+# CODEOWNERS - Workflow Protection
+# Protect all workflows
+/.github/workflows/ @Layr-Labs/security
+/.github/CODEOWNERS @Layr-Labs/security
