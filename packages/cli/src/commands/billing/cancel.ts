@@ -32,7 +32,7 @@ export default class BillingCancel extends Command {
       const billing = await createBillingClient(flags);
 
       // Check subscription status first
-      this.log(`\nChecking subscription status for ${flags.product}...`);
+      this.debug(`\nChecking subscription status for ${flags.product}...`);
       const status = await billing.getStatus({
         productId: flags.product as "compute",
       });
