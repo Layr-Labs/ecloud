@@ -74,9 +74,9 @@ export class BuildApiClient {
     };
     if (this.clientId) headers["x-client-id"] = this.clientId;
 
-    // Builds API uses BillingAuth signature format (same as Billing API)
-    // Script uses 1 hour expiry; keep the same to avoid short-expiry flakiness.
-    const expiry = BigInt(Math.floor(Date.now() / 1000) + 60 * 60);
+    // Builds API uses BillingAuth signature format (same as Billing API).
+    // Keep expiry short to reduce replay window.
+    const expiry = BigInt(Math.floor(Date.now() / 1000) + 60);
     const { signature } = await calculateBillingAuthSignature({
       account: this.account,
       product: "compute",
@@ -104,7 +104,7 @@ export class BuildApiClient {
     const headers: Record<string, string> = {};
     if (this.clientId) headers["x-client-id"] = this.clientId;
 
-    const expiry = BigInt(Math.floor(Date.now() / 1000) + 60 * 60);
+    const expiry = BigInt(Math.floor(Date.now() / 1000) + 60);
     const { signature } = await calculateBillingAuthSignature({
       account: this.account,
       product: "compute",
