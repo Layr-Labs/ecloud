@@ -1,6 +1,6 @@
 {
   "name": "@layr-labs/ecloud-cli",
-  "version": "0.0.1-rfc.1",
+  "version": "development",
   "type": "module",
   "files": [
     "dist",
