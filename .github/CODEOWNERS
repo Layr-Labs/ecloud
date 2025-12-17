@@ -1,0 +1,4 @@
+# CODEOWNERS - Workflow Protection
+# Protect all workflows
+/.github/workflows/ @anupsv @vineetguptadev
+/.github/CODEOWNERS @anupsv @vineetguptadev
