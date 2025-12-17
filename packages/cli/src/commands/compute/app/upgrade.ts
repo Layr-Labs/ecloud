@@ -4,11 +4,13 @@ import {
   UserApiClient,
   isMainnet,
   prepareUpgrade,
+  prepareUpgradeFromVerifiableBuild,
   executeUpgrade,
   watchUpgrade,
 } from "@layr-labs/ecloud-sdk";
 import { withTelemetry } from "../../../telemetry";
 import { commonFlags } from "../../../flags";
+import { createBuildClient } from "../../../client";
 import {
   getDockerfileInteractive,
   getImageReferenceInteractive,
@@ -24,6 +26,8 @@ import {
 } from "../../../utils/prompts";
 import { getClientId } from "../../../utils/version";
 import chalk from "chalk";
+import { formatVerifiableBuildSummary } from "../../../utils/build";
+import { assertCommitSha40, runVerifiableBuildAndVerify } from "../../../utils/verifiableBuild";
 
 export default class AppUpgrade extends Command {
   static description = "Upgrade existing deployment";
@@ -70,6 +74,34 @@ export default class AppUpgrade extends Command {
       options: ["enable", "disable"],
       env: "ECLOUD_RESOURCE_USAGE_MONITORING",
     }),
+
+    // Verifiable build flags
+    verifiable: Flags.boolean({
+      description: "Enable verifiable build mode",
+      default: false,
+    }),
+    repo: Flags.string({
+      description: "Git repository URL (required with --verifiable)",
+      env: "ECLOUD_BUILD_REPO",
+    }),
+    commit: Flags.string({
+      description: "Git commit SHA (required with --verifiable)",
+      env: "ECLOUD_BUILD_COMMIT",
+    }),
+    "build-dockerfile": Flags.string({
+      description: "Dockerfile path for verifiable build",
+      default: "Dockerfile",
+      env: "ECLOUD_BUILD_DOCKERFILE",
+    }),
+    "build-context": Flags.string({
+      description: "Build context path for verifiable build",
+      default: ".",
+      env: "ECLOUD_BUILD_CONTEXT",
+    }),
+    "build-dependencies": Flags.string({
+      description: "Dependency digests for verifiable build (sha256:...)",
+      multiple: true,
+    }),
   };
 
   async run() {
@@ -101,12 +133,65 @@ export default class AppUpgrade extends Command {
         action: "upgrade",
       });
 
-      // 2. Get dockerfile path interactively
-      const dockerfilePath = await getDockerfileInteractive(flags.dockerfile);
+      // Optional: verifiable build mode
+      let verifiableImageUrl: string | undefined;
+      let verifiableImageDigest: string | undefined;
+      if (flags.verifiable) {
+        if (!flags.repo) this.error("--repo is required when using --verifiable");
+        if (!flags.commit) this.error("--commit is required when using --verifiable");
+        try {
+          assertCommitSha40(flags.commit);
+        } catch (e: any) {
+          this.error(e?.message || String(e));
+        }
+
+        this.log(chalk.blue("Building from source with verifiable build..."));
+        this.log("");
+
+        const buildClient = await createBuildClient({
+          ...flags,
+          "private-key": privateKey,
+        });
+
+        const { build, verified } = await runVerifiableBuildAndVerify(
+          buildClient,
+          {
+            repoUrl: flags.repo,
+            gitRef: flags.commit,
+            dockerfilePath: flags["build-dockerfile"],
+            buildContextPath: flags["build-context"],
+            dependencies: flags["build-dependencies"],
+          },
+          { onLog: (chunk) => process.stdout.write(chunk) },
+        );
+
+        if (!build.imageUrl || !build.imageDigest) {
+          this.error("Build completed but did not return imageUrl/imageDigest; cannot upgrade verifiable build");
+        }
+
+        verifiableImageUrl = build.imageUrl;
+        verifiableImageDigest = build.imageDigest;
+
+        for (const line of formatVerifiableBuildSummary({
+          imageUrl: build.imageUrl,
+          imageDigest: build.imageDigest,
+          repoUrl: build.repoUrl,
+          gitRef: build.gitRef,
+          dependencies: build.dependencies,
+          provenanceSignature: verified.provenanceSignature,
+        })) {
+          this.log(line);
+        }
+      }
+
+      // 2. Get dockerfile path interactively (skip when using verifiable image)
+      const dockerfilePath = verifiableImageUrl ? "" : await getDockerfileInteractive(flags.dockerfile);
       const buildFromDockerfile = dockerfilePath !== "";
 
       // 3. Get image reference interactively (context-aware)
-      const imageRef = await getImageReferenceInteractive(flags["image-ref"], buildFromDockerfile);
+      const imageRef = verifiableImageUrl
+        ? verifiableImageUrl
+        : await getImageReferenceInteractive(flags["image-ref"], buildFromDockerfile);
 
       // 4. Get env file path interactively
       const envFilePath = await getEnvFileInteractive(flags["env-file"]);
@@ -157,22 +242,39 @@ export default class AppUpgrade extends Command {
           ? "private"
           : "off";
 
-      const { prepared, gasEstimate } = await prepareUpgrade(
-        {
-          appId: appID,
-          privateKey,
-          rpcUrl,
-          environment,
-          dockerfilePath,
-          imageRef,
-          envFilePath,
-          instanceType,
-          logVisibility,
-          resourceUsageMonitoring,
-          skipTelemetry: true,
-        },
-        logger,
-      );
+      const { prepared, gasEstimate } = flags.verifiable
+        ? await prepareUpgradeFromVerifiableBuild(
+            {
+              appId: appID,
+              privateKey,
+              rpcUrl,
+              environment,
+              imageRef,
+              imageDigest: verifiableImageDigest!,
+              envFilePath,
+              instanceType,
+              logVisibility,
+              resourceUsageMonitoring,
+              skipTelemetry: true,
+            },
+            logger,
+          )
+        : await prepareUpgrade(
+            {
+              appId: appID,
+              privateKey,
+              rpcUrl,
+              environment,
+              dockerfilePath,
+              imageRef,
+              envFilePath,
+              instanceType,
+              logVisibility,
+              resourceUsageMonitoring,
+              skipTelemetry: true,
+            },
+            logger,
+          );
 
       // 10. Show gas estimate and prompt for confirmation on mainnet
       this.log(`\nEstimated transaction cost: ${chalk.cyan(gasEstimate.maxCostEth)} ETH`);

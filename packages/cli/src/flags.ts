@@ -33,14 +33,19 @@ export const commonFlags = {
 };
 
 // Validate or prompt for required common flags
-export async function validateCommonFlags(flags: CommonFlags) {
+export async function validateCommonFlags(
+  flags: CommonFlags,
+  options?: { requirePrivateKey?: boolean },
+) {
   // If no environment is selected, default to the global config env
   if (!flags["environment"]) {
     flags["environment"] = getDefaultEnvironment();
   }
   // If the provided env is invalid, proceed to prompt
   flags["environment"] = await getEnvironmentInteractive(flags["environment"]);
-  flags["private-key"] = await getPrivateKeyInteractive(flags["private-key"]);
+  if (options?.requirePrivateKey !== false) {
+    flags["private-key"] = await getPrivateKeyInteractive(flags["private-key"]);
+  }
 
   return flags;
 }

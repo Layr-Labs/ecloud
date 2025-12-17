@@ -63,6 +63,9 @@
       "compute:environment": {
         "description": "Manage deployment environment [alias: env]"
       },
+      "compute:build": {
+        "description": "Verifiable builds (build from git source + provenance verification)"
+      },
       "compute:env": {
         "hidden": true,
         "description": "Manage deployment environment [alias: env]"

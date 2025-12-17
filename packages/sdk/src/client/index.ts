@@ -9,6 +9,7 @@ import {
   getAvailableEnvironments,
 } from "./common/config/environment";
 import { createBillingModule, type BillingModule } from "./modules/billing";
+import { createBuildModule, type BuildModule, type BuildModuleConfig } from "./modules/build";
 import { addHexPrefix } from "./common/utils";
 
 // Export all types
@@ -29,6 +30,7 @@ export { logs, LogsOptions, SDKLogsOptions } from "./modules/compute/app/logs";
 export {
   SDKDeployOptions,
   prepareDeploy,
+  prepareDeployFromVerifiableBuild,
   executeDeploy,
   watchDeployment,
   type PreparedDeploy,
@@ -37,6 +39,7 @@ export {
 export {
   SDKUpgradeOptions,
   prepareUpgrade,
+  prepareUpgradeFromVerifiableBuild,
   executeUpgrade,
   watchUpgrade,
   type PreparedUpgrade,
@@ -163,3 +166,9 @@ export function createECloudClient(cfg: ClientConfig): ECloudClient {
     }),
   };
 }
+
+// ============ Build module exports ============
+export { createBuildModule };
+export type { BuildModule, BuildModuleConfig };
+export * from "./modules/build/types";
+export * from "./modules/build/errors";
