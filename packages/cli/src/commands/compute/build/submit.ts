@@ -8,6 +8,7 @@ import { BUILD_STATUS } from "@layr-labs/ecloud-sdk";
 import { formatVerifiableBuildSummary } from "../../../utils/build";
 import type { VerifyProvenanceResult } from "@layr-labs/ecloud-sdk";
 import { assertCommitSha40, runVerifiableBuildAndVerify } from "../../../utils/verifiableBuild";
+import { promptVerifiableGitSourceInputs } from "../../../utils/prompts";
 
 export default class BuildSubmit extends Command {
   static description = "Submit a new verifiable build";
@@ -15,6 +16,7 @@ export default class BuildSubmit extends Command {
   static examples = [
     `$ ecloud compute build submit --repo https://github.com/myorg/myapp --commit abc123...`,
     `$ ecloud compute build submit --repo https://github.com/myorg/myapp --commit abc123... --dependencies sha256:def456...`,
+    `$ ecloud compute build submit --repo https://github.com/myorg/myapp --commit abc123... --build-caddyfile Caddyfile`,
     `$ ecloud compute build submit --repo https://github.com/myorg/myapp --commit abc123... --no-follow`,
   ];
 
@@ -22,18 +24,24 @@ export default class BuildSubmit extends Command {
     ...commonFlags,
     repo: Flags.string({
       description: "Git repository URL",
-      required: true,
+      required: false,
       env: "ECLOUD_BUILD_REPO",
     }),
     commit: Flags.string({
       description: "Git commit SHA (40 hex characters)",
-      required: true,
+      required: false,
       env: "ECLOUD_BUILD_COMMIT",
     }),
     dockerfile: Flags.string({
       description: "Path to Dockerfile",
       default: "Dockerfile",
       env: "ECLOUD_BUILD_DOCKERFILE",
+    }),
+    "build-caddyfile": Flags.string({
+      description:
+        "Optional path to Caddyfile inside the repo (relative to build context). If omitted, no Caddyfile is copied into the image",
+      required: false,
+      env: "ECLOUD_BUILD_CADDYFILE",
     }),
     context: Flags.string({
       description: "Build context path",
@@ -59,8 +67,24 @@ export default class BuildSubmit extends Command {
       const { flags } = await this.parse(BuildSubmit);
       const validatedFlags = await validateCommonFlags(flags);
 
+      const interactiveInputs =
+        flags.repo && flags.commit
+          ? undefined
+          : await promptVerifiableGitSourceInputs();
+
+      const repoUrl = flags.repo ?? interactiveInputs!.repoUrl;
+      const gitRef = flags.commit ?? interactiveInputs!.gitRef;
+      const dockerfilePath = flags.dockerfile ?? interactiveInputs!.dockerfilePath;
+      const buildContextPath = flags.context ?? interactiveInputs!.buildContextPath;
+      const dependencies =
+        flags.dependencies && flags.dependencies.length > 0
+          ? flags.dependencies
+          : interactiveInputs?.dependencies;
+      const caddyfilePath =
+        flags["build-caddyfile"] ?? interactiveInputs?.caddyfilePath;
+
       try {
-        assertCommitSha40(flags.commit);
+        assertCommitSha40(gitRef);
       } catch (e: any) {
         this.error(e?.message || String(e));
       }
@@ -72,11 +96,12 @@ export default class BuildSubmit extends Command {
       try {
         if (flags["no-follow"]) {
           const { buildId } = await client.submit({
-            repoUrl: flags.repo,
-            gitRef: flags.commit,
-            dockerfilePath: flags.dockerfile,
-            buildContextPath: flags.context,
-            dependencies: flags.dependencies,
+            repoUrl,
+            gitRef,
+            dockerfilePath,
+            caddyfilePath,
+            buildContextPath,
+            dependencies,
           });
 
           this.log(chalk.green(`Build submitted: ${buildId}`));
@@ -96,11 +121,12 @@ export default class BuildSubmit extends Command {
         const { build, verified } = await runVerifiableBuildAndVerify(
           client,
           {
-            repoUrl: flags.repo,
-            gitRef: flags.commit,
-            dockerfilePath: flags.dockerfile,
-            buildContextPath: flags.context,
-            dependencies: flags.dependencies,
+            repoUrl,
+            gitRef,
+            dockerfilePath,
+            caddyfilePath,
+            buildContextPath,
+            dependencies,
           },
           {
             onLog: (chunk) => process.stdout.write(chunk),

@@ -38,6 +38,8 @@ import {
   assertEigencloudContainersImageRef,
   resolveDockerHubImageDigest,
 } from "../../../utils/dockerhub";
+import { isTlsEnabledFromEnvFile } from "../../../utils/tls";
+import type { SubmitBuildRequest } from "@layr-labs/ecloud-sdk";
 
 export default class AppDeploy extends Command {
   static description = "Deploy new app";
@@ -169,6 +171,7 @@ export default class AppDeploy extends Command {
       let verifiableImageUrl: string | undefined;
       let verifiableImageDigest: string | undefined;
       let verifiableMode: VerifiableMode = "none";
+      let envFilePath: string | undefined;
 
       if (flags.verifiable) {
         // Explicit verifiable mode via flag: infer source based on provided flags.
@@ -208,15 +211,24 @@ export default class AppDeploy extends Command {
       }
 
       if (verifiableMode === "git") {
-        const inputs = flags.verifiable
+        const inputs: SubmitBuildRequest = flags.verifiable
           ? {
               repoUrl: flags.repo!,
               gitRef: flags.commit!,
               dockerfilePath: flags["build-dockerfile"],
+              caddyfilePath: undefined,
               buildContextPath: flags["build-context"],
               dependencies: flags["build-dependencies"],
             }
           : await promptVerifiableGitSourceInputs();
+
+        // Prompt for env file after git inputs
+        envFilePath = await getEnvFileInteractive(flags["env-file"]);
+
+        const includeTlsCaddyfile = isTlsEnabledFromEnvFile(envFilePath);
+        if (includeTlsCaddyfile && !inputs.caddyfilePath) {
+          inputs.caddyfilePath = "Caddyfile";
+        }
 
         this.log(chalk.blue("Building from source with verifiable build..."));
         this.log("");
@@ -297,7 +309,7 @@ export default class AppDeploy extends Command {
       const appName = await getOrPromptAppName(flags.name, environment, imageRef);
 
       // 4. Get env file path interactively
-      const envFilePath = await getEnvFileInteractive(flags["env-file"]);
+      envFilePath = envFilePath ?? (await getEnvFileInteractive(flags["env-file"]));
 
       // 5. Get instance type interactively
       // First, fetch available instance types from backend

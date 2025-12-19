@@ -90,6 +90,7 @@ export function createBuildModule(config: BuildModuleConfig): BuildModule {
             repo_url: request.repoUrl,
             git_ref: request.gitRef,
             dockerfile_path: request.dockerfilePath ?? "Dockerfile",
+            caddyfile_path: request.caddyfilePath,
             build_context_path: request.buildContextPath ?? ".",
             dependencies: request.dependencies ?? [],
           });

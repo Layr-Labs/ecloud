@@ -4,6 +4,11 @@ export interface SubmitBuildRequest {
   repoUrl: string;
   gitRef: string;
   dockerfilePath?: string;
+  /**
+   * Path to a Caddyfile within the repository (relative to buildContextPath).
+   * If omitted, the build service will not copy a Caddyfile into the image.
+   */
+  caddyfilePath?: string;
   buildContextPath?: string;
   dependencies?: string[];
 }

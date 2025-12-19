@@ -36,6 +36,8 @@ import {
   assertEigencloudContainersImageRef,
   resolveDockerHubImageDigest,
 } from "../../../utils/dockerhub";
+import { isTlsEnabledFromEnvFile } from "../../../utils/tls";
+import type { SubmitBuildRequest } from "@layr-labs/ecloud-sdk";
 
 export default class AppUpgrade extends Command {
   static description = "Upgrade existing deployment";
@@ -157,6 +159,7 @@ export default class AppUpgrade extends Command {
       let verifiableImageUrl: string | undefined;
       let verifiableImageDigest: string | undefined;
       let verifiableMode: VerifiableMode = "none";
+      let envFilePath: string | undefined;
 
       if (flags.verifiable) {
         if (flags.repo || flags.commit) {
@@ -195,15 +198,23 @@ export default class AppUpgrade extends Command {
       }
 
       if (verifiableMode === "git") {
-        const inputs = flags.verifiable
+        const inputs: SubmitBuildRequest = flags.verifiable
           ? {
               repoUrl: flags.repo!,
               gitRef: flags.commit!,
               dockerfilePath: flags["build-dockerfile"],
+              caddyfilePath: undefined,
               buildContextPath: flags["build-context"],
               dependencies: flags["build-dependencies"],
             }
           : await promptVerifiableGitSourceInputs();
+
+        // Prompt for env file after git inputs
+        envFilePath = await getEnvFileInteractive(flags["env-file"]);
+        const includeTlsCaddyfile = isTlsEnabledFromEnvFile(envFilePath);
+        if (includeTlsCaddyfile && !inputs.caddyfilePath) {
+          inputs.caddyfilePath = "Caddyfile";
+        }
 
         this.log(chalk.blue("Building from source with verifiable build..."));
         this.log("");
@@ -280,7 +291,7 @@ export default class AppUpgrade extends Command {
         : await getImageReferenceInteractive(flags["image-ref"], buildFromDockerfile);
 
       // 4. Get env file path interactively
-      const envFilePath = await getEnvFileInteractive(flags["env-file"]);
+      envFilePath = envFilePath ?? (await getEnvFileInteractive(flags["env-file"]));
 
       // 5. Get current instance type (best-effort, used as default)
       let currentInstanceType = "";

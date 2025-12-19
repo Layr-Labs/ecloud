@@ -28,6 +28,7 @@ export class BuildApiClient {
     repo_url: string;
     git_ref: string;
     dockerfile_path: string;
+    caddyfile_path?: string;
     build_context_path: string;
     dependencies: string[];
   }): Promise<{ build_id: string }> {

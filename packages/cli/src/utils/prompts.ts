@@ -91,6 +91,7 @@ export interface VerifiableGitSourceInputs {
   repoUrl: string;
   gitRef: string;
   dockerfilePath: string;
+  caddyfilePath?: string;
   buildContextPath: string;
   dependencies: string[];
 }
@@ -126,10 +127,26 @@ export async function promptVerifiableGitSourceInputs(): Promise<VerifiableGitSo
       validate: (value) => {
         if (!value.trim()) return "Repository URL is required";
         try {
-          // Basic URL validation. We intentionally do not restrict to GitHub.
-          // Backend ultimately enforces what it supports.
-          // eslint-disable-next-line no-new
-          new URL(value.trim());
+          // Restrict to GitHub HTTPS URLs since verifiable builds require a public repo.
+          const url = new URL(value.trim());
+          if (url.protocol !== "https:") return "Repository URL must start with https://";
+          if (url.hostname.toLowerCase() !== "github.com")
+            return "Repository URL must be a public GitHub HTTPS URL (github.com)";
+
+          // Require at least /owner/repo
+          const parts = url.pathname.replace(/\/+$/, "").split("/").filter(Boolean);
+          if (parts.length < 2) return "Repository URL must be https://github.com/<owner>/<repo>";
+
+          // Disallow obvious non-repo paths
+          const [owner, repo] = parts;
+          if (!owner || !repo) return "Repository URL must be https://github.com/<owner>/<repo>";
+          if (repo.toLowerCase() === "settings") return "Repository URL looks invalid";
+
+          // Disallow fragments/query
+          if (url.search || url.hash)
+            return "Repository URL must not include query params or fragments";
+
+          // Allow optional .git suffix; otherwise accept as-is.
         } catch {
           return "Invalid URL format";
         }
@@ -145,7 +162,8 @@ export async function promptVerifiableGitSourceInputs(): Promise<VerifiableGitSo
       validate: (value) => {
         const trimmed = value.trim();
         if (!trimmed) return "Commit SHA is required";
-        if (!/^[0-9a-f]{40}$/i.test(trimmed)) return "Commit must be a 40-character hexadecimal SHA";
+        if (!/^[0-9a-f]{40}$/i.test(trimmed))
+          return "Commit must be a 40-character hexadecimal SHA";
         return true;
       },
     })
@@ -164,6 +182,19 @@ export async function promptVerifiableGitSourceInputs(): Promise<VerifiableGitSo
       message: "Enter Dockerfile path (relative to build context):",
       default: "Dockerfile",
       validate: (value) => (value.trim() ? true : "Dockerfile path cannot be empty"),
+    })
+  ).trim();
+
+  const caddyfileRaw = (
+    await input({
+      message: "Enter Caddyfile path (relative to build context, optional):",
+      default: "",
+      validate: (value) => {
+        const trimmed = value.trim();
+        if (!trimmed) return true;
+        if (trimmed.includes("..")) return "Caddyfile path must not contain '..'";
+        return true;
+      },
     })
   ).trim();
 
@@ -196,7 +227,14 @@ export async function promptVerifiableGitSourceInputs(): Promise<VerifiableGitSo
           .map((p) => p.trim())
           .filter(Boolean);
 
-  return { repoUrl, gitRef, dockerfilePath, buildContextPath, dependencies };
+  return {
+    repoUrl,
+    gitRef,
+    dockerfilePath,
+    caddyfilePath: caddyfileRaw === "" ? undefined : caddyfileRaw,
+    buildContextPath,
+    dependencies,
+  };
 }
 
 /**
