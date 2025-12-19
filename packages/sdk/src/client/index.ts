@@ -111,6 +111,9 @@ export {
   type AppInfo,
   type AppProfileInfo,
   type AppMetrics,
+  type AppRelease,
+  type AppReleaseBuild,
+  type AppResponse,
 } from "./common/utils/userapi";
 
 export type Environment = "sepolia" | "sepolia-dev" | "mainnet-alpha";

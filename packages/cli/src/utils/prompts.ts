@@ -83,6 +83,143 @@ export async function getDockerfileInteractive(dockerfilePath?: string): Promise
   }
 }
 
+// ==================== Verifiable Build (Interactive) ====================
+
+export type VerifiableSourceType = "git" | "prebuilt";
+
+export interface VerifiableGitSourceInputs {
+  repoUrl: string;
+  gitRef: string;
+  dockerfilePath: string;
+  buildContextPath: string;
+  dependencies: string[];
+}
+
+/**
+ * Prompt: "Build from verifiable source?" (only used when --verifiable is not set)
+ */
+export async function promptUseVerifiableBuild(): Promise<boolean> {
+  return confirmWithDefault("Build from verifiable source?", false);
+}
+
+/**
+ * Prompt: select verifiable build source type
+ */
+export async function promptVerifiableSourceType(): Promise<VerifiableSourceType> {
+  return select({
+    message: "Choose verifiable source type:",
+    choices: [
+      { name: "Build from git source (public repo required)", value: "git" },
+      { name: "Use a prebuilt verifiable image (eigencloud-containers)", value: "prebuilt" },
+    ],
+  });
+}
+
+/**
+ * Prompt for Git-source verifiable build inputs.
+ */
+export async function promptVerifiableGitSourceInputs(): Promise<VerifiableGitSourceInputs> {
+  const repoUrl = (
+    await input({
+      message: "Enter public git repository URL:",
+      default: "",
+      validate: (value) => {
+        if (!value.trim()) return "Repository URL is required";
+        try {
+          // Basic URL validation. We intentionally do not restrict to GitHub.
+          // Backend ultimately enforces what it supports.
+          // eslint-disable-next-line no-new
+          new URL(value.trim());
+        } catch {
+          return "Invalid URL format";
+        }
+        return true;
+      },
+    })
+  ).trim();
+
+  const gitRef = (
+    await input({
+      message: "Enter git commit SHA (40 hex chars):",
+      default: "",
+      validate: (value) => {
+        const trimmed = value.trim();
+        if (!trimmed) return "Commit SHA is required";
+        if (!/^[0-9a-f]{40}$/i.test(trimmed)) return "Commit must be a 40-character hexadecimal SHA";
+        return true;
+      },
+    })
+  ).trim();
+
+  const buildContextPath = (
+    await input({
+      message: "Enter build context path (relative to repo):",
+      default: ".",
+      validate: (value) => (value.trim() ? true : "Build context path cannot be empty"),
+    })
+  ).trim();
+
+  const dockerfilePath = (
+    await input({
+      message: "Enter Dockerfile path (relative to build context):",
+      default: "Dockerfile",
+      validate: (value) => (value.trim() ? true : "Dockerfile path cannot be empty"),
+    })
+  ).trim();
+
+  const depsRaw = (
+    await input({
+      message: "Enter dependency digests (comma-separated sha256:..., optional):",
+      default: "",
+      validate: (value) => {
+        const trimmed = value.trim();
+        if (!trimmed) return true;
+        const parts = trimmed
+          .split(",")
+          .map((p) => p.trim())
+          .filter(Boolean);
+        for (const p of parts) {
+          if (!/^sha256:[0-9a-f]{64}$/i.test(p)) {
+            return `Invalid dependency digest: ${p} (expected sha256:<64 hex>)`;
+          }
+        }
+        return true;
+      },
+    })
+  ).trim();
+
+  const dependencies =
+    depsRaw === ""
+      ? []
+      : depsRaw
+          .split(",")
+          .map((p) => p.trim())
+          .filter(Boolean);
+
+  return { repoUrl, gitRef, dockerfilePath, buildContextPath, dependencies };
+}
+
+/**
+ * Prompt for prebuilt verifiable image reference.
+ *
+ * Required format: docker.io/eigenlayer/eigencloud-containers:<tag>
+ */
+export async function promptVerifiablePrebuiltImageRef(): Promise<string> {
+  const ref = await input({
+    message: "Enter prebuilt verifiable image ref:",
+    default: "docker.io/eigenlayer/eigencloud-containers:",
+    validate: (value) => {
+      const trimmed = value.trim();
+      if (!trimmed) return "Image reference is required";
+      if (!/^docker\.io\/eigenlayer\/eigencloud-containers:[^@\s]+$/i.test(trimmed)) {
+        return "Image ref must match docker.io/eigenlayer/eigencloud-containers:<tag>";
+      }
+      return true;
+    },
+  });
+  return ref.trim();
+}
+
 // ==================== Image Reference Selection ====================
 
 interface RegistryInfo {

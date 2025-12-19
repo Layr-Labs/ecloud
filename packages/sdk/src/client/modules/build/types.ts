@@ -26,6 +26,8 @@ export interface Build {
   repoUrl: string;
   gitRef: string;
   status: BuildStatus;
+  /** 'application' | 'dependency' (as returned by the API) */
+  buildType: string;
   imageName: string;
   imageUrl?: string;
   imageDigest?: string;

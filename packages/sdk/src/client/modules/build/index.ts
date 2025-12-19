@@ -216,6 +216,7 @@ function transformBuild(raw: any): Build {
     repoUrl: raw.repo_url,
     gitRef: raw.git_ref,
     status: raw.status as BuildStatus,
+    buildType: raw.build_type,
     imageName: raw.image_name,
     imageUrl: raw.image_url,
     imageDigest: raw.image_digest,

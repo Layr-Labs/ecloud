@@ -44,7 +44,7 @@ export async function validateCommonFlags(
   // If the provided env is invalid, proceed to prompt
   flags["environment"] = await getEnvironmentInteractive(flags["environment"]);
   if (options?.requirePrivateKey !== false) {
-    flags["private-key"] = await getPrivateKeyInteractive(flags["private-key"]);
+  flags["private-key"] = await getPrivateKeyInteractive(flags["private-key"]);
   }
 
   return flags;

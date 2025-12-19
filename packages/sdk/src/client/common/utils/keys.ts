@@ -10,16 +10,10 @@ import sepoliaDevSigning from "../../../../keys/sepolia/dev/kms-signing-public-k
 import sepoliaProdEncryption from "../../../../keys/sepolia/prod/kms-encryption-public-key.pem";
 import sepoliaProdSigning from "../../../../keys/sepolia/prod/kms-signing-public-key.pem";
 
-type KeyMap = {
-  [environment: string]: {
-    [build: string]: {
-      encryption: string;
-      signing: string;
-    };
-  };
-};
+type BuildType = "dev" | "prod";
+type KeyPair = { encryption: string; signing: string };
 
-const KEYS: KeyMap = {
+const KEYS = {
   "mainnet-alpha": {
     prod: {
       encryption: mainnetAlphaProdEncryption,
@@ -36,16 +30,16 @@ const KEYS: KeyMap = {
       signing: sepoliaProdSigning,
     },
   },
-};
+} as const satisfies Record<string, Partial<Record<BuildType, KeyPair>>>;
 
 /**
  * Get KMS keys for environment
  */
 export function getKMSKeysForEnvironment(
   environment: string,
-  build: "dev" | "prod" = "prod",
+  build: BuildType = "prod",
 ): { encryptionKey: Buffer; signingKey: Buffer } {
-  const envKeys = KEYS[environment];
+  const envKeys = (KEYS as Record<string, Partial<Record<BuildType, KeyPair>>>)[environment];
   if (!envKeys) {
     throw new Error(`No keys found for environment: ${environment}`);
   }
@@ -64,9 +58,8 @@ export function getKMSKeysForEnvironment(
 /**
  * Check if keys exist for environment
  */
-export function keysExistForEnvironment(
-  environment: string,
-  build: "dev" | "prod" = "prod",
-): boolean {
-  return !!KEYS[environment]?.[build];
+export function keysExistForEnvironment(environment: string, build: BuildType = "prod"): boolean {
+  const envKeys = (KEYS as Record<string, Partial<Record<BuildType, KeyPair>>>)[environment];
+  if (!envKeys) return false;
+  return !!envKeys[build];
 }
