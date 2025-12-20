@@ -20,7 +20,7 @@ function indentLines(lines: string[], indent: string): string[] {
   return lines.map((l) => (l === "" ? "" : `${indent}${l}`));
 }
 
-function formatStatus(status: Build["status"]): string {
+export function formatBuildStatus(status: Build["status"]): string {
   const s = status as (typeof BUILD_STATUS)[keyof typeof BUILD_STATUS];
   const color = {
     [BUILD_STATUS.BUILDING]: chalk.yellow,
@@ -38,11 +38,7 @@ function kv(label: string, value: unknown): string | undefined {
 }
 
 export function formatBuildInfo(build: Build, opts: FormatBuildInfoOptions = {}): string[] {
-  const {
-    indent = "",
-    includeDependencies = true,
-    maxProvenanceJsonChars = 200,
-  } = opts;
+  const { indent = "", includeDependencies = true, maxProvenanceJsonChars = 200 } = opts;
 
   const lines: string[] = [];
 
@@ -50,7 +46,7 @@ export function formatBuildInfo(build: Build, opts: FormatBuildInfoOptions = {})
   lines.push(`${indent}${chalk.cyan("repo_url")}: ${build.repoUrl}`);
   lines.push(`${indent}${chalk.cyan("git_ref")}: ${build.gitRef}`);
   lines.push(`${indent}${chalk.cyan("source")}: ${formatSourceLink(build.repoUrl, build.gitRef)}`);
-  lines.push(`${indent}${chalk.cyan("status")}: ${formatStatus(build.status)}`);
+  lines.push(`${indent}${chalk.cyan("status")}: ${formatBuildStatus(build.status)}`);
   lines.push(`${indent}${chalk.cyan("build_type")}: ${build.buildType}`);
 
   const optionalLines = [
@@ -70,7 +66,9 @@ export function formatBuildInfo(build: Build, opts: FormatBuildInfoOptions = {})
     kv("provenance_signature", build.provenanceSignature),
     kv("created_at", build.createdAt),
     kv("updated_at", build.updatedAt),
-    build.errorMessage ? `${chalk.cyan("error_message")}: ${chalk.red(build.errorMessage)}` : undefined,
+    build.errorMessage
+      ? `${chalk.cyan("error_message")}: ${chalk.red(build.errorMessage)}`
+      : undefined,
   ].filter(Boolean) as string[];
 
   for (const l of optionalLines) lines.push(`${indent}${l}`);
@@ -93,5 +91,3 @@ export function formatBuildInfo(build: Build, opts: FormatBuildInfoOptions = {})
 
   return lines;
 }
-
-

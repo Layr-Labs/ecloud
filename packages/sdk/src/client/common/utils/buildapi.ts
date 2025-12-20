@@ -51,6 +51,23 @@ export class BuildApiClient {
     return this.authenticatedTextRequest(`/builds/${encodeURIComponent(buildId)}/logs`);
   }
 
+  async listBuilds(params: {
+    billing_address: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<any[]> {
+    const res: AxiosResponse = await axios({
+      url: `${this.baseUrl}/builds`,
+      method: "GET",
+      params,
+      headers: this.clientId ? { "x-client-id": this.clientId } : undefined,
+      timeout: 60_000,
+      validateStatus: () => true,
+    });
+    if (res.status < 200 || res.status >= 300) throw buildApiHttpError(res);
+    return res.data as any[];
+  }
+
   private async publicJsonRequest(path: string): Promise<any> {
     const res: AxiosResponse = await axios({
       url: `${this.baseUrl}${path}`,

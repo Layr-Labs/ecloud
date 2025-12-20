@@ -170,8 +170,33 @@ export default class AppDeploy extends Command {
       // Optional: verifiable build mode (git source build OR prebuilt verifiable image)
       let verifiableImageUrl: string | undefined;
       let verifiableImageDigest: string | undefined;
+      let suggestedAppBaseName: string | undefined;
       let verifiableMode: VerifiableMode = "none";
       let envFilePath: string | undefined;
+
+      const suggestAppBaseNameFromRepoUrl = (repoUrl: string): string | undefined => {
+        const normalized = String(repoUrl || "")
+          .trim()
+          .replace(/\.git$/i, "")
+          .replace(/\/+$/, "");
+        if (!normalized) return undefined;
+
+        // Best-effort: take the last path segment (works for https://.../owner/repo and git@...:owner/repo)
+        const lastSlash = normalized.lastIndexOf("/");
+        const lastColon = normalized.lastIndexOf(":");
+        const idx = Math.max(lastSlash, lastColon);
+        const raw = (idx >= 0 ? normalized.slice(idx + 1) : normalized).trim();
+        if (!raw) return undefined;
+
+        // Make it app-name-ish (validateAppName will still be enforced in the prompt)
+        const cleaned = raw
+          .toLowerCase()
+          .replace(/_/g, "-")
+          .replace(/[^a-z0-9-]/g, "-")
+          .replace(/-+/g, "-")
+          .replace(/^-+|-+$/g, "");
+        return cleaned || undefined;
+      };
 
       if (flags.verifiable) {
         // Explicit verifiable mode via flag: infer source based on provided flags.
@@ -246,8 +271,10 @@ export default class AppDeploy extends Command {
 
         verifiableImageUrl = build.imageUrl;
         verifiableImageDigest = build.imageDigest;
+        suggestedAppBaseName = suggestAppBaseNameFromRepoUrl(build.repoUrl);
 
         for (const line of formatVerifiableBuildSummary({
+          buildId: build.buildId,
           imageUrl: build.imageUrl,
           imageDigest: build.imageDigest,
           repoUrl: build.repoUrl,
@@ -281,8 +308,10 @@ export default class AppDeploy extends Command {
 
         verifiableImageUrl = imageRef;
         verifiableImageDigest = digest;
+        suggestedAppBaseName = suggestAppBaseNameFromRepoUrl(verify.repoUrl);
 
         for (const line of formatVerifiableBuildSummary({
+          buildId: verify.buildId,
           imageUrl: imageRef,
           imageDigest: digest,
           repoUrl: verify.repoUrl,
@@ -306,7 +335,12 @@ export default class AppDeploy extends Command {
         : await getImageReferenceInteractive(flags["image-ref"], buildFromDockerfile);
 
       // 3. Get app name interactively
-      const appName = await getOrPromptAppName(flags.name, environment, imageRef);
+      const appName = await getOrPromptAppName(
+        flags.name,
+        environment,
+        imageRef,
+        suggestedAppBaseName,
+      );
 
       // 4. Get env file path interactively
       envFilePath = envFilePath ?? (await getEnvFileInteractive(flags["env-file"]));

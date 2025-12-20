@@ -234,6 +234,7 @@ export default class AppUpgrade extends Command {
         verifiableImageDigest = build.imageDigest;
 
         for (const line of formatVerifiableBuildSummary({
+          buildId: build.buildId,
           imageUrl: build.imageUrl,
           imageDigest: build.imageDigest,
           repoUrl: build.repoUrl,
@@ -269,6 +270,7 @@ export default class AppUpgrade extends Command {
         verifiableImageDigest = digest;
 
         for (const line of formatVerifiableBuildSummary({
+          buildId: verify.buildId,
           imageUrl: imageRef,
           imageDigest: digest,
           repoUrl: verify.repoUrl,

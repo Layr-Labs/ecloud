@@ -68,9 +68,7 @@ export default class BuildSubmit extends Command {
       const validatedFlags = await validateCommonFlags(flags);
 
       const interactiveInputs =
-        flags.repo && flags.commit
-          ? undefined
-          : await promptVerifiableGitSourceInputs();
+        flags.repo && flags.commit ? undefined : await promptVerifiableGitSourceInputs();
 
       const repoUrl = flags.repo ?? interactiveInputs!.repoUrl;
       const gitRef = flags.commit ?? interactiveInputs!.gitRef;
@@ -80,8 +78,7 @@ export default class BuildSubmit extends Command {
         flags.dependencies && flags.dependencies.length > 0
           ? flags.dependencies
           : interactiveInputs?.dependencies;
-      const caddyfilePath =
-        flags["build-caddyfile"] ?? interactiveInputs?.caddyfilePath;
+      const caddyfilePath = flags["build-caddyfile"] ?? interactiveInputs?.caddyfilePath;
 
       try {
         assertCommitSha40(gitRef);
@@ -157,6 +154,7 @@ export default class BuildSubmit extends Command {
 
     if (build.status === BUILD_STATUS.SUCCESS && verify?.status === "verified") {
       for (const line of formatVerifiableBuildSummary({
+        buildId: build.buildId,
         imageUrl: build.imageUrl || "",
         imageDigest: build.imageDigest || "",
         repoUrl: build.repoUrl,

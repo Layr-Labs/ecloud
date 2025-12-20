@@ -18,6 +18,9 @@ export * from "./common/types";
 // Export validation utilities (non-interactive)
 export * from "./common/utils/validation";
 
+// Export common hex helpers (used by CLI as well)
+export { addHexPrefix, stripHexPrefix } from "./common/utils";
+
 // Special case on createApp - we don't need the client to run it
 export {
   createApp,

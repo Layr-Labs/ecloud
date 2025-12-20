@@ -25,6 +25,8 @@ import {
   validateFilePath,
   validatePrivateKeyFormat,
   extractAppNameFromImage,
+  type Build,
+  type BuildModule,
   UserApiClient,
 } from "@layr-labs/ecloud-sdk";
 import { getAppInfosChunked } from "./appResolver";
@@ -611,8 +613,9 @@ export async function getImageReferenceInteractive(
 async function getAvailableAppNameInteractive(
   environment: string,
   imageRef: string,
+  suggestedBaseName?: string,
 ): Promise<string> {
-  const baseName = extractAppNameFromImage(imageRef);
+  const baseName = suggestedBaseName || extractAppNameFromImage(imageRef);
   const suggestedName = findAvailableName(environment, baseName);
 
   while (true) {
@@ -647,6 +650,7 @@ export async function getOrPromptAppName(
   appName: string | undefined,
   environment: string,
   imageRef: string,
+  suggestedBaseName?: string,
 ): Promise<string> {
   if (appName) {
     validateAppName(appName);
@@ -654,10 +658,61 @@ export async function getOrPromptAppName(
       return appName;
     }
     console.log(`Warning: App name '${appName}' is already taken.`);
-    return getAvailableAppNameInteractive(environment, imageRef);
+    return getAvailableAppNameInteractive(environment, imageRef, suggestedBaseName);
   }
 
-  return getAvailableAppNameInteractive(environment, imageRef);
+  return getAvailableAppNameInteractive(environment, imageRef, suggestedBaseName);
+}
+
+// ==================== Build ID Selection ====================
+
+function formatBuildChoice(build: Build): string {
+  const repoUrl = String(build.repoUrl || "")
+    .replace(/\.git$/i, "")
+    .replace(/\/+$/, "");
+  const repoName = (() => {
+    try {
+      const url = new URL(repoUrl);
+      const parts = url.pathname.split("/").filter(Boolean);
+      return parts.length ? parts[parts.length - 1] : repoUrl;
+    } catch {
+      const m = repoUrl.match(/[:/]+([^/:]+)$/);
+      return m?.[1] || repoUrl || "unknown";
+    }
+  })();
+
+  const shortSha = build.gitRef ? String(build.gitRef).slice(0, 10) : "unknown";
+  const shortId = build.buildId ? String(build.buildId).slice(0, 8) : "unknown";
+  const created = build.createdAt ? new Date(build.createdAt).toLocaleString() : "";
+  const status = String(build.status || "unknown");
+  return `${status}  ${repoName}@${shortSha}  ${shortId}  ${created}`;
+}
+
+export async function promptBuildIdFromRecentBuilds(options: {
+  client: BuildModule;
+  billingAddress: string;
+  limit?: number;
+}): Promise<string> {
+  const limit = Math.max(1, Math.min(100, options.limit ?? 20));
+  const builds = await options.client.list({
+    billingAddress: options.billingAddress,
+    limit,
+    offset: 0,
+  });
+
+  if (!builds || builds.length === 0) {
+    throw new Error(`No builds found for billing address ${options.billingAddress}`);
+  }
+
+  const choice = await select({
+    message: "Select a build:",
+    choices: builds.map((b) => ({
+      name: formatBuildChoice(b),
+      value: b.buildId,
+    })),
+  });
+
+  return choice;
 }
 
 // ==================== Environment File Selection ====================

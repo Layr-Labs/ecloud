@@ -31,6 +31,7 @@ export interface BuildModule {
   submit(request: SubmitBuildRequest): Promise<SubmitBuildResponse>;
   getLogs(buildId: string): Promise<string>;
 
+  list(options: { billingAddress: string; limit?: number; offset?: number }): Promise<Build[]>;
   get(buildId: string): Promise<Build>;
   getByDigest(digest: string): Promise<Build>;
   verify(identifier: string): Promise<VerifyProvenanceResult>;
@@ -97,6 +98,30 @@ export function createBuildModule(config: BuildModuleConfig): BuildModule {
 
           logger.debug(`Submitted build: ${data.build_id}`);
           return { buildId: data.build_id };
+        },
+      );
+    },
+
+    async list(options): Promise<Build[]> {
+      const { billingAddress, limit, offset } = options;
+      return withSDKTelemetry(
+        {
+          functionName: "build.list",
+          skipTelemetry,
+          properties: {
+            environment,
+            billingAddress,
+            ...(limit !== undefined ? { limit: String(limit) } : {}),
+            ...(offset !== undefined ? { offset: String(offset) } : {}),
+          },
+        },
+        async () => {
+          const data = await api.listBuilds({
+            billing_address: billingAddress,
+            limit,
+            offset,
+          });
+          return Array.isArray(data) ? data.map(transformBuild) : [];
         },
       );
     },

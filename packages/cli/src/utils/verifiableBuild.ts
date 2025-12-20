@@ -24,6 +24,21 @@ export function assertCommitSha40(commit: string): void {
 }
 
 /**
+ * Build IDs are UUIDs (returned by the Build API).
+ *
+ * Validate client-side so common typos produce a clear "Invalid build ID"
+ * instead of a misleading "not found" response from the API.
+ */
+export function assertBuildId(buildId: string): void {
+  const trimmed = String(buildId ?? "").trim();
+  // UUID v1-v5 (canonical 8-4-4-4-12), case-insensitive.
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(trimmed)) {
+    throw new Error(`Invalid build ID: '${buildId}' (expected a UUID)`);
+  }
+}
+
+/**
  * Run a verifiable build to completion and verify provenance.
  *
  * - Uses `submit()` + `waitForBuild()` to stream logs.
@@ -53,4 +68,3 @@ export async function runVerifiableBuildAndVerify(
 
   return { build, verified: verify };
 }
-

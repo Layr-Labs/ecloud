@@ -3,6 +3,10 @@ import { commonFlags, validateCommonFlags } from "../../../flags";
 import { createBuildClient } from "../../../client";
 import { withTelemetry } from "../../../telemetry";
 import { formatBuildInfo } from "../../../utils/buildInfo";
+import { assertBuildId } from "../../../utils/verifiableBuild";
+import { promptBuildIdFromRecentBuilds } from "../../../utils/prompts";
+import { privateKeyToAccount } from "viem/accounts";
+import { addHexPrefix } from "@layr-labs/ecloud-sdk";
 
 export default class BuildInfo extends Command {
   static description = "Show full build details (including dependency builds)";
@@ -12,7 +16,7 @@ export default class BuildInfo extends Command {
   static args = {
     buildId: Args.string({
       description: "Build ID",
-      required: true,
+      required: false,
     }),
   };
 
@@ -27,10 +31,26 @@ export default class BuildInfo extends Command {
   async run(): Promise<void> {
     return withTelemetry(this, async () => {
       const { args, flags } = await this.parse(BuildInfo);
-      const validatedFlags = await validateCommonFlags(flags, { requirePrivateKey: false });
+      const validatedFlags = await validateCommonFlags(flags, {
+        requirePrivateKey: !args.buildId,
+      });
       const client = await createBuildClient(validatedFlags);
 
-      const build = await client.get(args.buildId);
+      let buildId = args.buildId;
+      if (!buildId) {
+        const billingAddress = privateKeyToAccount(
+          addHexPrefix(validatedFlags["private-key"]!),
+        ).address;
+        buildId = await promptBuildIdFromRecentBuilds({ client, billingAddress, limit: 20 });
+      } else {
+        try {
+          assertBuildId(buildId);
+        } catch (e: any) {
+          this.error(e?.message || String(e));
+        }
+      }
+
+      const build = await client.get(buildId);
 
       if (flags.json) {
         this.log(JSON.stringify(build, null, 2));

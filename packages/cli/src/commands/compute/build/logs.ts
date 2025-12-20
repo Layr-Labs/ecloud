@@ -4,6 +4,10 @@ import { createBuildClient } from "../../../client";
 import { withTelemetry } from "../../../telemetry";
 import chalk from "chalk";
 import { BUILD_STATUS } from "@layr-labs/ecloud-sdk";
+import { assertBuildId } from "../../../utils/verifiableBuild";
+import { promptBuildIdFromRecentBuilds } from "../../../utils/prompts";
+import { privateKeyToAccount } from "viem/accounts";
+import { addHexPrefix } from "@layr-labs/ecloud-sdk";
 
 export default class BuildLogs extends Command {
   static description = "Get or stream build logs";
@@ -17,7 +21,7 @@ export default class BuildLogs extends Command {
   static args = {
     buildId: Args.string({
       description: "Build ID",
-      required: true,
+      required: false,
     }),
   };
 
@@ -36,21 +40,34 @@ export default class BuildLogs extends Command {
   async run(): Promise<void> {
     return withTelemetry(this, async () => {
       const { args, flags } = await this.parse(BuildLogs);
-
       // Logs are owner-only, so require private key
       const validatedFlags = await validateCommonFlags(flags);
       const client = await createBuildClient(validatedFlags);
+
+      let buildId = args.buildId;
+      if (!buildId) {
+        const billingAddress = privateKeyToAccount(
+          addHexPrefix(validatedFlags["private-key"]!),
+        ).address;
+        buildId = await promptBuildIdFromRecentBuilds({ client, billingAddress, limit: 20 });
+      } else {
+        try {
+          assertBuildId(buildId);
+        } catch (e: any) {
+          this.error(e?.message || String(e));
+        }
+      }
 
       if (flags.follow) {
         const pollIntervalMs = 2000;
         let lastLogLength = 0;
 
         while (true) {
-          const build = await client.get(args.buildId);
+          const build = await client.get(buildId);
 
           let logs = "";
           try {
-            logs = await client.getLogs(args.buildId);
+            logs = await client.getLogs(buildId);
           } catch {
             // Logs may not be available yet
           }
@@ -70,7 +87,7 @@ export default class BuildLogs extends Command {
         return;
       }
 
-      const logs = await client.getLogs(args.buildId);
+      const logs = await client.getLogs(buildId);
       if (flags.tail !== undefined) {
         const lines = logs.split("\n");
         const tailedLines = lines.slice(-flags.tail);

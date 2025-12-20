@@ -51,6 +51,7 @@ export function formatDependencyLines(
 }
 
 export function formatVerifiableBuildSummary(options: {
+  buildId?: string;
   imageUrl: string;
   imageDigest: string;
   repoUrl: string;
@@ -75,6 +76,10 @@ export function formatVerifiableBuildSummary(options: {
   lines.push("");
   lines.push("Provenance signature verified ✓");
   lines.push(`provenance_signature: ${options.provenanceSignature}`);
+  if (options.buildId) {
+    lines.push("");
+    lines.push(`Build ID: ${options.buildId}`);
+  }
 
   return lines;
 }
