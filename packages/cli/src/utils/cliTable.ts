@@ -105,3 +105,4 @@ export function provenanceSummary(options: {
   if (depCount > 0) parts.push(`deps:${depCount}`);
   return parts.length ? parts.join(" ") : "-";
 }
+
