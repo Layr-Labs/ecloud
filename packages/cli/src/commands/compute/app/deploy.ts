@@ -23,7 +23,7 @@ import {
   confirm,
   getPrivateKeyInteractive,
 } from "../../../utils/prompts";
-import { invalidateProfileCache } from "../../../utils/globalConfig";
+import { invalidateProfileCache, setLinkedAppForFolder } from "../../../utils/globalConfig";
 import { getClientId } from "../../../utils/version";
 import chalk from "chalk";
 
@@ -273,6 +273,13 @@ export default class AppDeploy extends Command {
         getClientId(),
         true, // skipTelemetry - CLI already has telemetry
       );
+
+      try {
+        const cwd = process.env.INIT_CWD || process.cwd();
+        setLinkedAppForFolder(environment, cwd, String(res.appId));
+      } catch (err: any) {
+        logger.debug(`Failed to link folder to app: ${err.message}`);
+      }
 
       this.log(
         `\n✅ ${chalk.green(`App deployed successfully ${chalk.bold(`(id: ${res.appId}, ip: ${ipAddress})`)}`)}`,

@@ -33,6 +33,11 @@ export interface GlobalConfig {
   profile_cache?: {
     [environment: string]: ProfileCacheEntry;
   };
+  folder_links?: {
+    [environment: string]: {
+      [folderPath: string]: string;
+    };
+  };
 }
 
 // Profile cache TTL: 24 hours in milliseconds
@@ -106,6 +111,59 @@ export function saveGlobalConfig(config: GlobalConfig): void {
   // Write config file
   const content = dumpYaml(config, { lineWidth: -1 });
   fs.writeFileSync(configPath, content, { mode: 0o644 });
+}
+
+function normalizeFolderPath(folderPath: string): string {
+  const resolved = path.resolve(folderPath);
+  try {
+    return fs.realpathSync(resolved);
+  } catch {
+    return resolved;
+  }
+}
+
+/**
+ * Get linked app ID for a folder in an environment
+ */
+export function getLinkedAppForFolder(environment: string, folderPath: string): string | null {
+  if (!folderPath) {
+    return null;
+  }
+
+  const config = loadGlobalConfig();
+  const links = config.folder_links?.[environment];
+  if (!links) {
+    return null;
+  }
+
+  const normalizedPath = normalizeFolderPath(folderPath);
+  const appId = links[normalizedPath];
+  return appId || null;
+}
+
+/**
+ * Link a folder to an app ID in an environment
+ */
+export function setLinkedAppForFolder(
+  environment: string,
+  folderPath: string,
+  appId: string,
+): void {
+  if (!folderPath) {
+    return;
+  }
+
+  const config = loadGlobalConfig();
+  if (!config.folder_links) {
+    config.folder_links = {};
+  }
+  if (!config.folder_links[environment]) {
+    config.folder_links[environment] = {};
+  }
+
+  const normalizedPath = normalizeFolderPath(folderPath);
+  config.folder_links[environment][normalizedPath] = appId;
+  saveGlobalConfig(config);
 }
 
 /**
