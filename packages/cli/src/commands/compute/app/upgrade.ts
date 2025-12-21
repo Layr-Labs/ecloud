@@ -202,7 +202,7 @@ export default class AppUpgrade extends Command {
 
       try {
         const cwd = process.env.INIT_CWD || process.cwd();
-        setLinkedAppForFolder(environment, cwd, String(res.appId));
+        setLinkedAppForFolder(environment, cwd, res.appId);
       } catch (err: any) {
         logger.debug(`Failed to link folder to app: ${err.message}`);
       }

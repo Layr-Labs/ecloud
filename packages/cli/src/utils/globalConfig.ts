@@ -149,7 +149,7 @@ export function setLinkedAppForFolder(
   folderPath: string,
   appId: string,
 ): void {
-  if (!folderPath) {
+  if (!folderPath || !environment) {
     return;
   }
 
@@ -162,7 +162,8 @@ export function setLinkedAppForFolder(
   }
 
   const normalizedPath = normalizeFolderPath(folderPath);
-  config.folder_links[environment][normalizedPath] = appId;
+  // Normalize appId to lowercase for consistent lookups
+  config.folder_links[environment][normalizedPath] = appId.toLowerCase();
   saveGlobalConfig(config);
 }
 
