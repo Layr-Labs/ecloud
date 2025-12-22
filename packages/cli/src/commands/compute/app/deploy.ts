@@ -168,6 +168,7 @@ export default class AppDeploy extends Command {
 
       // 11. Collect app profile while deployment is in progress (optional)
       if (!flags["skip-profile"]) {
+        // Check if any profile flags were provided
         const hasProfileFlags = flags.website || flags.description || flags["x-url"] || flags.image;
 
         let profile: {
@@ -179,6 +180,7 @@ export default class AppDeploy extends Command {
         } | null = null;
 
         if (hasProfileFlags) {
+          // Use flags directly if any were provided
           profile = {
             name: appName,
             website: flags.website,
@@ -187,6 +189,7 @@ export default class AppDeploy extends Command {
             imagePath: flags.image,
           };
         } else {
+          // Otherwise prompt interactively
           this.log(
             "\nDeployment confirmed onchain. While your instance provisions, set up a public profile:",
           );
@@ -202,9 +205,10 @@ export default class AppDeploy extends Command {
         }
 
         if (profile) {
+          // Upload profile if provided (non-blocking - warn on failure but don't fail deployment)
           this.log("Uploading app profile...");
           try {
-            await compute.app.setProfile(res.appId as `0x${string}`, profile);
+            await compute.app.setProfile(res.appId, profile);
             this.log("✓ Profile uploaded successfully");
 
             try {
@@ -221,7 +225,7 @@ export default class AppDeploy extends Command {
       }
 
       // 12. Watch until app is running
-      const ipAddress = await compute.app.watchDeployment(res.appId as `0x${string}`);
+      const ipAddress = await compute.app.watchDeployment(res.appId);
 
       this.log(
         `\n✅ ${chalk.green(`App deployed successfully ${chalk.bold(`(id: ${res.appId}, ip: ${ipAddress})`)}`)}`,

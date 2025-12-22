@@ -192,7 +192,7 @@ export async function calculateAppID(
     typeof account.address === "string" ? account.address : (account.address as Buffer).toString();
 
   const appID = await publicClient.readContract({
-    address: environmentConfig.appControllerAddress as Address,
+    address: environmentConfig.appControllerAddress,
     abi: AppControllerABI,
     functionName: "calculateAppId",
     args: [accountAddress as Address, saltHex],
@@ -287,7 +287,7 @@ export async function prepareDeployBatch(
     callData: Hex;
   }> = [
     {
-      target: environmentConfig.appControllerAddress as Address,
+      target: environmentConfig.appControllerAddress,
       value: 0n,
       callData: createData,
     },
@@ -463,7 +463,7 @@ export async function prepareUpgradeBatch(
     callData: Hex;
   }> = [
     {
-      target: environmentConfig.appControllerAddress as Address,
+      target: environmentConfig.appControllerAddress,
       value: 0n,
       callData: upgradeData,
     },
@@ -717,7 +717,7 @@ export async function getActiveAppCount(
   });
 
   const count = await publicClient.readContract({
-    address: environmentConfig.appControllerAddress as Address,
+    address: environmentConfig.appControllerAddress,
     abi: AppControllerABI,
     functionName: "getActiveAppCount",
     args: [user],
@@ -742,7 +742,7 @@ export async function getMaxActiveAppsPerUser(
   });
 
   const quota = await publicClient.readContract({
-    address: environmentConfig.appControllerAddress as Address,
+    address: environmentConfig.appControllerAddress,
     abi: AppControllerABI,
     functionName: "getMaxActiveAppsPerUser",
     args: [user],
@@ -774,7 +774,7 @@ export async function getAppsByCreator(
   });
 
   const result = (await publicClient.readContract({
-    address: environmentConfig.appControllerAddress as Address,
+    address: environmentConfig.appControllerAddress,
     abi: AppControllerABI,
     functionName: "getAppsByCreator",
     args: [creator, offset, limit],
@@ -805,7 +805,7 @@ export async function getAppsByDeveloper(
   });
 
   const result = (await publicClient.readContract({
-    address: environmentConfig.appControllerAddress as Address,
+    address: environmentConfig.appControllerAddress,
     abi: AppControllerABI,
     functionName: "getAppsByDeveloper",
     args: [developer, offset, limit],
@@ -870,7 +870,7 @@ export async function getAppLatestReleaseBlockNumbers(
     appIDs.map((appID) =>
       publicClient
         .readContract({
-          address: environmentConfig.appControllerAddress as Address,
+          address: environmentConfig.appControllerAddress,
           abi: AppControllerABI,
           functionName: "getAppLatestReleaseBlockNumber",
           args: [appID],
@@ -955,7 +955,7 @@ export async function suspend(
       privateKey,
       rpcUrl,
       environmentConfig,
-      to: environmentConfig.appControllerAddress as Address,
+      to: environmentConfig.appControllerAddress,
       data: suspendData,
       pendingMessage,
       txDescription: "Suspend",

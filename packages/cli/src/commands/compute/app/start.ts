@@ -51,12 +51,12 @@ export default class AppLifecycleStart extends Command {
       });
 
       // Estimate gas cost
-      const callData = encodeStartAppData(appId as `0x${string}`);
+      const callData = encodeStartAppData(appId);
       const estimate = await estimateTransactionGas({
         privateKey,
         rpcUrl,
         environmentConfig,
-        to: environmentConfig.appControllerAddress as `0x${string}`,
+        to: environmentConfig.appControllerAddress,
         data: callData,
       });
 

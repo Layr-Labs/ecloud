@@ -8,8 +8,8 @@
  * provided explicitly. Use the CLI for interactive parameter collection.
  */
 
-import { Address } from "viem";
-import { Logger, EnvironmentConfig } from "../../../common/types";
+import { Address, Hex } from "viem";
+import { Logger, EnvironmentConfig, AppId } from "../../../common/types";
 import { getEnvironmentConfig } from "../../../common/config/environment";
 import { ensureDockerIsRunning } from "../../../common/docker/build";
 import { prepareRelease } from "../../../common/release/prepare";
@@ -71,11 +71,11 @@ export interface SDKUpgradeOptions {
 
 export interface UpgradeResult {
   /** App ID (contract address) */
-  appId: string;
+  appId: AppId;
   /** Final image reference */
   imageRef: string;
   /** Transaction hash */
-  txHash: `0x${string}`;
+  txHash: Hex;
 }
 
 /**
@@ -85,7 +85,7 @@ export interface PreparedUpgrade {
   /** The prepared batch (executions, clients, etc.) */
   batch: PreparedUpgradeBatch;
   /** App ID being upgraded */
-  appId: string;
+  appId: AppId;
   /** Final image reference */
   imageRef: string;
   /** Preflight context for post-upgrade operations */
@@ -225,7 +225,7 @@ export async function upgrade(
           resourceUsageAllow,
           instanceType,
           environmentConfig: preflightCtx.environmentConfig,
-          appId: appID as string,
+          appId: appID,
         },
         logger,
       );
@@ -265,7 +265,7 @@ export async function upgrade(
       );
 
       return {
-        appId: appID as string,
+        appId: appID,
         imageRef: finalImageRef,
         txHash,
       };
@@ -335,7 +335,7 @@ export async function prepareUpgrade(
           resourceUsageAllow,
           instanceType,
           environmentConfig: preflightCtx.environmentConfig,
-          appId: appID as string,
+          appId: appID,
         },
         logger,
       );
@@ -368,7 +368,7 @@ export async function prepareUpgrade(
       return {
         prepared: {
           batch,
-          appId: appID as string,
+          appId: appID,
           imageRef: finalImageRef,
           preflightCtx: {
             privateKey: preflightCtx.privateKey,

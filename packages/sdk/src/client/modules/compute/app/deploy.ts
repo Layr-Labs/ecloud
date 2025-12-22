@@ -8,7 +8,7 @@
  * provided explicitly. Use the CLI for interactive parameter collection.
  */
 
-import { DeployResult, Logger, EnvironmentConfig } from "../../../common/types";
+import { DeployResult, Logger, EnvironmentConfig, AppId } from "../../../common/types";
 import { getEnvironmentConfig } from "../../../common/config/environment";
 import { ensureDockerIsRunning } from "../../../common/docker/build";
 import { prepareRelease } from "../../../common/release/prepare";
@@ -521,7 +521,7 @@ export async function watchDeployment(
           privateKey,
           rpcUrl,
           environmentConfig,
-          appId: appId as `0x${string}`,
+          appId: appId as AppId,
           clientId,
         },
         logger,

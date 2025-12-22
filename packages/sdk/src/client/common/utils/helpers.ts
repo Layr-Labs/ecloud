@@ -3,7 +3,7 @@
  */
 
 import { extractChain } from "viem";
-import type { Chain } from "viem";
+import type { Chain, Hex } from "viem";
 import { sepolia } from "viem/chains";
 import { SUPPORTED_CHAINS } from "../constants";
 
@@ -19,8 +19,8 @@ export function getChainFromID(chainID: bigint, fallback: Chain = sepolia): Chai
 /**
  * Ensure hex string has 0x prefix
  */
-export function addHexPrefix(value: string): `0x${string}` {
-  return (value.startsWith("0x") ? value : `0x${value}`) as `0x${string}`;
+export function addHexPrefix(value: string): Hex {
+  return (value.startsWith("0x") ? value : `0x${value}`) as Hex;
 }
 
 /**

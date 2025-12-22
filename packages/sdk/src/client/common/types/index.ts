@@ -2,7 +2,7 @@
  * Core types for ECloud SDK
  */
 
-import { Address } from "viem";
+import { Address, Hex } from "viem";
 
 export type AppId = Address;
 
@@ -81,16 +81,16 @@ export interface GasOpts {
 
 /** Result from executeDeploy */
 export interface ExecuteDeployResult {
-  appId: string;
-  txHash: `0x${string}`;
+  appId: AppId;
+  txHash: Hex;
   appName: string;
   imageRef: string;
 }
 
 /** Result from executeUpgrade */
 export interface ExecuteUpgradeResult {
-  appId: string;
-  txHash: `0x${string}`;
+  appId: AppId;
+  txHash: Hex;
   imageRef: string;
 }
 
@@ -100,7 +100,7 @@ export interface LifecycleOpts {
 
 export interface AppRecord {
   id: AppId;
-  owner: `0x${string}`;
+  owner: Address;
   image: string;
   status: "starting" | "running" | "stopped" | "terminated";
   createdAt: number; // epoch ms
@@ -130,7 +130,7 @@ export interface DeployOptions {
 
 export interface DeployResult {
   /** App ID (contract address) */
-  appId: string;
+  appId: AppId;
   /** App name */
   appName: string;
   /** Final image reference */
@@ -138,7 +138,7 @@ export interface DeployResult {
   /** IP address (if available) */
   ipAddress?: string;
   /** Transaction hash */
-  txHash: `0x${string}`;
+  txHash: Hex;
 }
 
 export interface BillingEnvironmentConfig {
@@ -149,7 +149,7 @@ export interface EnvironmentConfig {
   name: string;
   build: "dev" | "prod";
   chainID: bigint;
-  appControllerAddress: string;
+  appControllerAddress: Address;
   permissionControllerAddress: string;
   erc7702DelegatorAddress: string;
   kmsServerURL: string;

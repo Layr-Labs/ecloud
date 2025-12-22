@@ -168,7 +168,7 @@ export default class AppUpgrade extends Command {
       });
 
       // 12. Watch until upgrade completes
-      await compute.app.watchUpgrade(res.appId as `0x${string}`);
+      await compute.app.watchUpgrade(res.appId);
 
       this.log(
         `\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${res.appId}, image: ${res.imageRef})`)}`)}`,

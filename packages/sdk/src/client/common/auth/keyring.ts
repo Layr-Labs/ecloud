@@ -10,6 +10,7 @@
  */
 
 import { AsyncEntry, findCredentials } from "@napi-rs/keyring";
+import { Hex } from "viem";
 import { privateKeyToAddress } from "viem/accounts";
 
 // ecloud keyring identifiers
@@ -68,12 +69,12 @@ export async function storePrivateKey(privateKey: string): Promise<void> {
  * Note: Returns the single stored key for all environments.
  * The environment parameter is kept for API compatibility but is ignored.
  */
-export async function getPrivateKey(): Promise<`0x${string}` | null> {
+export async function getPrivateKey(): Promise<Hex | null> {
   const entry = new AsyncEntry(SERVICE_NAME, ACCOUNT_NAME);
   try {
     const key = await entry.getPassword();
     if (key && validatePrivateKey(key)) {
-      return key as `0x${string}`;
+      return key as Hex;
     }
   } catch {
     // Key not found
@@ -111,7 +112,7 @@ export async function listStoredKeys(): Promise<StoredKey[]> {
   for (const cred of creds) {
     if (cred.account === ACCOUNT_NAME) {
       try {
-        const address = getAddressFromPrivateKey(cred.password as `0x${string}`);
+        const address = getAddressFromPrivateKey(cred.password as Hex);
         keys.push({ address });
       } catch (err) {
         console.warn(`Warning: Invalid key found, skipping: ${err}`);
@@ -155,7 +156,7 @@ export async function getLegacyKeys(): Promise<LegacyKey[]> {
       try {
         // Decode go-keyring encoding (used on macOS)
         const decodedKey = decodeGoKeyringValue(cred.password);
-        const address = getAddressFromPrivateKey(decodedKey as `0x${string}`);
+        const address = getAddressFromPrivateKey(decodedKey as Hex);
         keys.push({ environment, address, source: "eigenx" });
       } catch (err) {
         console.warn(
@@ -182,7 +183,7 @@ export async function getLegacyKeys(): Promise<LegacyKey[]> {
       try {
         // Decode go-keyring encoding (used on macOS)
         const decodedKey = decodeGoKeyringValue(cred.password);
-        const address = getAddressFromPrivateKey(decodedKey as `0x${string}`);
+        const address = getAddressFromPrivateKey(decodedKey as Hex);
         keys.push({ environment, address, source: "eigenx-dev" });
       } catch (err) {
         console.warn(
@@ -312,9 +313,9 @@ function decodeGoKeyringValue(rawValue: string): string {
 /**
  * Normalize private key (ensure 0x prefix)
  */
-function normalizePrivateKey(privateKey: string): `0x${string}` {
+function normalizePrivateKey(privateKey: string): Hex {
   if (!privateKey.startsWith("0x")) {
-    return `0x${privateKey}` as `0x${string}`;
+    return `0x${privateKey}`;
   }
-  return privateKey as `0x${string}`;
+  return privateKey as Hex;
 }

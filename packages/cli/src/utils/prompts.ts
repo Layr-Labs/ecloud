@@ -9,7 +9,7 @@ import { input, select, password, confirm as inquirerConfirm } from "@inquirer/p
 import fs from "fs";
 import path from "path";
 import os from "os";
-import { Address, isAddress } from "viem";
+import { Address, Hex, isAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import {
   getEnvironmentConfig,
@@ -33,11 +33,11 @@ import { listApps, isAppNameAvailable, findAvailableName } from "./appNames";
 import { getClientId } from "./version";
 
 // Helper to add hex prefix
-function addHexPrefix(value: string): `0x${string}` {
+function addHexPrefix(value: string): Hex {
   if (value.startsWith("0x")) {
-    return value as `0x${string}`;
+    return value as Hex;
   }
-  return `0x${value}` as `0x${string}`;
+  return `0x${value}`;
 }
 
 // ==================== Dockerfile Selection ====================

@@ -8,7 +8,7 @@ import {
 } from "@layr-labs/ecloud-sdk";
 import { commonFlags, validateCommonFlags } from "../../../flags";
 import { privateKeyToAccount } from "viem/accounts";
-import { Address } from "viem";
+import { Address, Hex } from "viem";
 import { getAppName } from "../../../utils/appNames";
 import {
   ContractAppStatusTerminated,
@@ -50,7 +50,7 @@ export default class AppList extends Command {
       const privateKey = validatedFlags["private-key"]!;
 
       // Get developer address from private key
-      const account = privateKeyToAccount(privateKey as `0x${string}`);
+      const account = privateKeyToAccount(privateKey as Hex);
       const developerAddr = account.address;
 
       if (flags.verbose) {

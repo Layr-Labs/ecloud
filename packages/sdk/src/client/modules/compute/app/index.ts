@@ -2,7 +2,7 @@
  * Main App namespace entry point
  */
 
-import { parseAbi, encodeFunctionData } from "viem";
+import { parseAbi, encodeFunctionData, Hex } from "viem";
 import {
   deploy as deployApp,
   prepareDeploy as prepareDeployFn,
@@ -55,7 +55,7 @@ const CONTROLLER_ABI = parseAbi([
 /**
  * Encode start app call data for gas estimation
  */
-export function encodeStartAppData(appId: AppId): `0x${string}` {
+export function encodeStartAppData(appId: AppId): Hex {
   return encodeFunctionData({
     abi: CONTROLLER_ABI,
     functionName: "startApp",
@@ -66,7 +66,7 @@ export function encodeStartAppData(appId: AppId): `0x${string}` {
 /**
  * Encode stop app call data for gas estimation
  */
-export function encodeStopAppData(appId: AppId): `0x${string}` {
+export function encodeStopAppData(appId: AppId): Hex {
   return encodeFunctionData({
     abi: CONTROLLER_ABI,
     functionName: "stopApp",
@@ -77,7 +77,7 @@ export function encodeStopAppData(appId: AppId): `0x${string}` {
 /**
  * Encode terminate app call data for gas estimation
  */
-export function encodeTerminateAppData(appId: AppId): `0x${string}` {
+export function encodeTerminateAppData(appId: AppId): Hex {
   return encodeFunctionData({
     abi: CONTROLLER_ABI,
     functionName: "terminateApp",
@@ -92,7 +92,7 @@ export interface AppModule {
   // Full deploy/upgrade
   deploy: (opts: DeployAppOpts) => Promise<{
     appId: AppId;
-    tx: `0x${string}`;
+    tx: Hex;
     appName: string;
     imageRef: string;
     ipAddress?: string;
@@ -100,7 +100,7 @@ export interface AppModule {
   upgrade: (
     appId: AppId,
     opts: UpgradeAppOpts,
-  ) => Promise<{ tx: `0x${string}`; appId: string; imageRef: string }>;
+  ) => Promise<{ tx: Hex; appId: AppId; imageRef: string }>;
 
   // Granular deploy control
   prepareDeploy: (opts: PrepareDeployOpts) => Promise<{
@@ -128,18 +128,18 @@ export interface AppModule {
   logs: (opts: LogsOptions) => Promise<void>;
 
   // Lifecycle
-  start: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: `0x${string}` | false }>;
-  stop: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: `0x${string}` | false }>;
-  terminate: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: `0x${string}` | false }>;
+  start: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: Hex | false }>;
+  stop: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: Hex | false }>;
+  terminate: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: Hex | false }>;
 
   // Delegation
   isDelegated: () => Promise<boolean>;
-  undelegate: () => Promise<{ tx: `0x${string}` | false }>;
+  undelegate: () => Promise<{ tx: Hex | false }>;
 }
 
 export interface AppModuleConfig {
   verbose?: boolean;
-  privateKey: `0x${string}`;
+  privateKey: Hex;
   rpcUrl: string;
   environment: string;
   clientId?: string;
@@ -358,7 +358,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
               privateKey,
               rpcUrl: ctx.rpcUrl,
               environmentConfig: environment,
-              to: environment.appControllerAddress as `0x${string}`,
+              to: environment.appControllerAddress,
               data,
               pendingMessage,
               txDescription: "StartApp",
@@ -392,7 +392,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
               privateKey,
               rpcUrl: ctx.rpcUrl,
               environmentConfig: environment,
-              to: environment.appControllerAddress as `0x${string}`,
+              to: environment.appControllerAddress,
               data,
               pendingMessage,
               txDescription: "StopApp",
@@ -426,7 +426,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
               privateKey,
               rpcUrl: ctx.rpcUrl,
               environmentConfig: environment,
-              to: environment.appControllerAddress as `0x${string}`,
+              to: environment.appControllerAddress,
               data,
               pendingMessage,
               txDescription: "TerminateApp",

@@ -10,6 +10,7 @@ import {
 } from "./common/config/environment";
 import { createBillingModule, type BillingModule } from "./modules/billing";
 import { addHexPrefix } from "./common/utils";
+import { Hex } from "viem";
 
 // Export all types
 export * from "./common/types";
@@ -114,7 +115,7 @@ export type Environment = "sepolia" | "sepolia-dev" | "mainnet-alpha";
 
 export interface ClientConfig {
   verbose: boolean;
-  privateKey: `0x${string}`;
+  privateKey: Hex;
   environment: Environment | string;
   rpcUrl?: string;
 }

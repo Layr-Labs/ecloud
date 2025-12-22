@@ -7,10 +7,11 @@
  * 3. OS keyring (stored via `ecloud auth login`)
  */
 
+import { Hex } from "viem";
 import { getPrivateKey, validatePrivateKey } from "./keyring";
 
 export interface PrivateKeySource {
-  key: `0x${string}`;
+  key: Hex;
   source: string;
 }
 
@@ -35,13 +36,13 @@ export async function getPrivateKeyWithSource(options: {
       );
     }
     return {
-      key: options.privateKey as `0x${string}`,
+      key: options.privateKey as Hex,
       source: "command flag",
     };
   }
 
   // 2. Check environment variable
-  const envKey = process.env.ECLOUD_PRIVATE_KEY as `0x${string}`;
+  const envKey = process.env.ECLOUD_PRIVATE_KEY as Hex;
   if (envKey) {
     if (!validatePrivateKey(envKey)) {
       throw new Error(
