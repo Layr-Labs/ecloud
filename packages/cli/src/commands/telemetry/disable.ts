@@ -1,5 +1,8 @@
 import { Command } from "@oclif/core";
-import { setGlobalTelemetryPreference, getGlobalTelemetryPreference } from "../../utils/globalConfig";
+import {
+  setGlobalTelemetryPreference,
+  getGlobalTelemetryPreference,
+} from "../../utils/globalConfig";
 import { withTelemetry } from "../../telemetry";
 
 export default class TelemetryDisable extends Command {

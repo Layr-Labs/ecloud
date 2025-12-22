@@ -37,7 +37,9 @@ export default class BillingSubscribe extends Command {
 
       // Handle already active subscription
       if (result.type === "already_active") {
-        this.log(`\n${chalk.green("✓")} Wallet ${chalk.bold(billing.address)} is already subscribed to ${flags.product}.`);
+        this.log(
+          `\n${chalk.green("✓")} Wallet ${chalk.bold(billing.address)} is already subscribed to ${flags.product}.`,
+        );
         this.log(chalk.gray("Run 'ecloud billing status' for details."));
         return;
       }

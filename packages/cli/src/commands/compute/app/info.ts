@@ -41,8 +41,8 @@ export default class AppInfo extends Command {
     // Validate flags and prompt for missing values
     const validatedFlags = await validateCommonFlags(flags);
 
-    // Get environment config
-    const environment = validatedFlags.environment || "sepolia";
+    // Get validated values from flags
+    const environment = validatedFlags.environment;
     const environmentConfig = getEnvironmentConfig(environment);
     const rpcUrl = validatedFlags["rpc-url"] || environmentConfig.defaultRPCURL;
     const privateKey = validatedFlags["private-key"]!;

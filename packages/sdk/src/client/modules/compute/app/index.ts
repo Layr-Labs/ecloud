@@ -3,8 +3,20 @@
  */
 
 import { parseAbi, encodeFunctionData } from "viem";
-import { deploy as deployApp } from "./deploy";
-import { upgrade as upgradeApp } from "./upgrade";
+import {
+  deploy as deployApp,
+  prepareDeploy as prepareDeployFn,
+  executeDeploy as executeDeployFn,
+  watchDeployment as watchDeploymentFn,
+  type PreparedDeploy,
+} from "./deploy";
+import {
+  upgrade as upgradeApp,
+  prepareUpgrade as prepareUpgradeFn,
+  executeUpgrade as executeUpgradeFn,
+  watchUpgrade as watchUpgradeFn,
+  type PreparedUpgrade,
+} from "./upgrade";
 import { createApp, CreateAppOpts } from "./create";
 import { logs, LogsOptions } from "./logs";
 
@@ -13,10 +25,24 @@ import {
   sendAndWaitForTransaction,
   undelegate,
   isDelegated,
+  type GasEstimate,
 } from "../../../common/contract/caller";
 import { withSDKTelemetry } from "../../../common/telemetry/wrapper";
+import { UserApiClient } from "../../../common/utils/userapi";
 
-import type { AppId, DeployAppOpts, LifecycleOpts, UpgradeAppOpts } from "../../../common/types";
+import type {
+  AppId,
+  DeployAppOpts,
+  LifecycleOpts,
+  UpgradeAppOpts,
+  AppProfile,
+  AppProfileResponse,
+  ExecuteDeployResult,
+  ExecuteUpgradeResult,
+  GasOpts,
+  PrepareDeployOpts,
+  PrepareUpgradeOpts,
+} from "../../../common/types";
 import { getLogger, addHexPrefix } from "../../../common/utils";
 
 // Minimal ABI
@@ -60,7 +86,10 @@ export function encodeTerminateAppData(appId: AppId): `0x${string}` {
 }
 
 export interface AppModule {
+  // Project creation
   create: (opts: CreateAppOpts) => Promise<void>;
+
+  // Full deploy/upgrade
   deploy: (opts: DeployAppOpts) => Promise<{
     appId: AppId;
     tx: `0x${string}`;
@@ -72,10 +101,38 @@ export interface AppModule {
     appId: AppId,
     opts: UpgradeAppOpts,
   ) => Promise<{ tx: `0x${string}`; appId: string; imageRef: string }>;
+
+  // Granular deploy control
+  prepareDeploy: (opts: PrepareDeployOpts) => Promise<{
+    prepared: PreparedDeploy;
+    gasEstimate: GasEstimate;
+  }>;
+  executeDeploy: (prepared: PreparedDeploy, gas?: GasOpts) => Promise<ExecuteDeployResult>;
+  watchDeployment: (appId: AppId) => Promise<string | undefined>;
+
+  // Granular upgrade control
+  prepareUpgrade: (
+    appId: AppId,
+    opts: PrepareUpgradeOpts,
+  ) => Promise<{
+    prepared: PreparedUpgrade;
+    gasEstimate: GasEstimate;
+  }>;
+  executeUpgrade: (prepared: PreparedUpgrade, gas?: GasOpts) => Promise<ExecuteUpgradeResult>;
+  watchUpgrade: (appId: AppId) => Promise<void>;
+
+  // Profile management
+  setProfile: (appId: AppId, profile: AppProfile) => Promise<AppProfileResponse>;
+
+  // Logs
   logs: (opts: LogsOptions) => Promise<void>;
+
+  // Lifecycle
   start: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: `0x${string}` | false }>;
   stop: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: `0x${string}` | false }>;
   terminate: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: `0x${string}` | false }>;
+
+  // Delegation
   isDelegated: () => Promise<boolean>;
   undelegate: () => Promise<{ tx: `0x${string}` | false }>;
 }
@@ -154,6 +211,116 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
         appId: result.appId,
         imageRef: result.imageRef,
       };
+    },
+
+    // Granular deploy control
+    async prepareDeploy(opts) {
+      return prepareDeployFn(
+        {
+          privateKey,
+          rpcUrl: ctx.rpcUrl,
+          environment: ctx.environment,
+          appName: opts.name,
+          instanceType: opts.instanceType,
+          dockerfilePath: opts.dockerfile,
+          envFilePath: opts.envFile,
+          imageRef: opts.imageRef,
+          logVisibility: opts.logVisibility,
+          resourceUsageMonitoring: opts.resourceUsageMonitoring,
+          skipTelemetry,
+        },
+        logger,
+      );
+    },
+
+    async executeDeploy(prepared, gas) {
+      const result = await executeDeployFn(prepared, gas, logger, skipTelemetry);
+      return {
+        appId: result.appId,
+        txHash: result.txHash,
+        appName: result.appName,
+        imageRef: result.imageRef,
+      };
+    },
+
+    async watchDeployment(appId) {
+      return watchDeploymentFn(
+        appId,
+        privateKey,
+        ctx.rpcUrl,
+        ctx.environment,
+        logger,
+        ctx.clientId,
+        skipTelemetry,
+      );
+    },
+
+    // Granular upgrade control
+    async prepareUpgrade(appId, opts) {
+      return prepareUpgradeFn(
+        {
+          appId,
+          privateKey,
+          rpcUrl: ctx.rpcUrl,
+          environment: ctx.environment,
+          instanceType: opts.instanceType,
+          dockerfilePath: opts.dockerfile,
+          envFilePath: opts.envFile,
+          imageRef: opts.imageRef,
+          logVisibility: opts.logVisibility,
+          resourceUsageMonitoring: opts.resourceUsageMonitoring,
+          skipTelemetry,
+        },
+        logger,
+      );
+    },
+
+    async executeUpgrade(prepared, gas) {
+      const result = await executeUpgradeFn(prepared, gas, logger, skipTelemetry);
+      return {
+        appId: result.appId,
+        txHash: result.txHash,
+        imageRef: result.imageRef,
+      };
+    },
+
+    async watchUpgrade(appId) {
+      return watchUpgradeFn(
+        appId,
+        privateKey,
+        ctx.rpcUrl,
+        ctx.environment,
+        logger,
+        ctx.clientId,
+        skipTelemetry,
+      );
+    },
+
+    // Profile management
+    async setProfile(appId, profile) {
+      return withSDKTelemetry(
+        {
+          functionName: "setProfile",
+          skipTelemetry,
+          properties: { environment: ctx.environment },
+        },
+        async () => {
+          const userApiClient = new UserApiClient(
+            environment,
+            privateKey,
+            ctx.rpcUrl,
+            ctx.clientId,
+          );
+          return userApiClient.uploadAppProfile(
+            appId,
+            profile.name,
+            profile.website,
+            profile.description,
+            profile.xURL,
+            profile.imagePath,
+          );
+        },
+      );
     },
 
     async logs(opts) {

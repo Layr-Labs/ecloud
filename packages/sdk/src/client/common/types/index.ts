@@ -39,6 +39,61 @@ export interface UpgradeAppOpts {
   gas?: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint };
 }
 
+/** Options for prepareDeploy */
+export interface PrepareDeployOpts {
+  /** App name - required */
+  name: string;
+  /** Path to Dockerfile (if building from Dockerfile) */
+  dockerfile?: string;
+  /** Path to .env file - optional */
+  envFile?: string;
+  /** Image reference (registry/path:tag) */
+  imageRef?: string;
+  /** Instance type SKU - required */
+  instanceType: string;
+  /** Log visibility setting - required */
+  logVisibility: logVisibility;
+  /** Resource usage monitoring setting - optional */
+  resourceUsageMonitoring?: "enable" | "disable";
+}
+
+/** Options for prepareUpgrade */
+export interface PrepareUpgradeOpts {
+  /** Path to Dockerfile (if building from Dockerfile) */
+  dockerfile?: string;
+  /** Image reference (registry/path:tag) */
+  imageRef?: string;
+  /** Path to .env file - optional */
+  envFile?: string;
+  /** Instance type SKU - required */
+  instanceType: string;
+  /** Log visibility setting - required */
+  logVisibility: logVisibility;
+  /** Resource usage monitoring setting - optional */
+  resourceUsageMonitoring?: "enable" | "disable";
+}
+
+/** Gas options for execute functions */
+export interface GasOpts {
+  maxFeePerGas?: bigint;
+  maxPriorityFeePerGas?: bigint;
+}
+
+/** Result from executeDeploy */
+export interface ExecuteDeployResult {
+  appId: string;
+  txHash: `0x${string}`;
+  appName: string;
+  imageRef: string;
+}
+
+/** Result from executeUpgrade */
+export interface ExecuteUpgradeResult {
+  appId: string;
+  txHash: `0x${string}`;
+  imageRef: string;
+}
+
 export interface LifecycleOpts {
   gas?: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint };
 }

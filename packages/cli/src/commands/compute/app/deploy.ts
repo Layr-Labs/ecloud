@@ -1,14 +1,8 @@
 import { Command, Flags } from "@oclif/core";
-import {
-  getEnvironmentConfig,
-  UserApiClient,
-  isMainnet,
-  prepareDeploy,
-  executeDeploy,
-  watchDeployment,
-} from "@layr-labs/ecloud-sdk";
+import { getEnvironmentConfig, isMainnet, UserApiClient } from "@layr-labs/ecloud-sdk";
 import { withTelemetry } from "../../../telemetry";
 import { commonFlags } from "../../../flags";
+import { createComputeClient } from "../../../client";
 import {
   getDockerfileInteractive,
   getImageReferenceInteractive,
@@ -21,7 +15,6 @@ import {
   LogVisibility,
   ResourceUsageMonitoring,
   confirm,
-  getPrivateKeyInteractive,
 } from "../../../utils/prompts";
 import { invalidateProfileCache } from "../../../utils/globalConfig";
 import { getClientId } from "../../../utils/version";
@@ -96,22 +89,13 @@ export default class AppDeploy extends Command {
   async run() {
     return withTelemetry(this, async () => {
       const { flags } = await this.parse(AppDeploy);
+      const compute = await createComputeClient(flags);
 
-      // Create CLI logger
-      const logger = {
-        info: (msg: string) => this.log(msg),
-        warn: (msg: string) => this.warn(msg),
-        error: (msg: string) => this.error(msg),
-        debug: (msg: string) => flags.verbose && this.log(msg),
-      };
-
-      // Get environment config for fetching available instance types
-      const environment = flags.environment || "sepolia";
+      // Get validated values from flags (mutated by createComputeClient)
+      const environment = flags.environment;
       const environmentConfig = getEnvironmentConfig(environment);
       const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
-
-      // Get private key interactively if not provided
-      const privateKey = await getPrivateKeyInteractive(flags["private-key"]);
+      const privateKey = flags["private-key"]!;
 
       // 1. Get dockerfile path interactively
       const dockerfilePath = await getDockerfileInteractive(flags.dockerfile);
@@ -127,7 +111,6 @@ export default class AppDeploy extends Command {
       const envFilePath = await getEnvFileInteractive(flags["env-file"]);
 
       // 5. Get instance type interactively
-      // First, fetch available instance types from backend
       const availableTypes = await fetchAvailableInstanceTypes(
         environmentConfig,
         privateKey,
@@ -156,22 +139,15 @@ export default class AppDeploy extends Command {
           ? "private"
           : "off";
 
-      const { prepared, gasEstimate } = await prepareDeploy(
-        {
-          privateKey,
-          rpcUrl,
-          environment,
-          dockerfilePath,
-          imageRef,
-          envFilePath,
-          appName,
-          instanceType,
-          logVisibility,
-          resourceUsageMonitoring,
-          skipTelemetry: true,
-        },
-        logger,
-      );
+      const { prepared, gasEstimate } = await compute.app.prepareDeploy({
+        name: appName,
+        dockerfile: dockerfilePath,
+        imageRef,
+        envFile: envFilePath,
+        instanceType,
+        logVisibility,
+        resourceUsageMonitoring,
+      });
 
       // 9. Show gas estimate and prompt for confirmation on mainnet
       this.log(`\nEstimated transaction cost: ${chalk.cyan(gasEstimate.maxCostEth)} ETH`);
@@ -185,19 +161,13 @@ export default class AppDeploy extends Command {
       }
 
       // 10. Execute the deployment
-      const res = await executeDeploy(
-        prepared,
-        {
-          maxFeePerGas: gasEstimate.maxFeePerGas,
-          maxPriorityFeePerGas: gasEstimate.maxPriorityFeePerGas,
-        },
-        logger,
-        true, // skipTelemetry
-      );
+      const res = await compute.app.executeDeploy(prepared, {
+        maxFeePerGas: gasEstimate.maxFeePerGas,
+        maxPriorityFeePerGas: gasEstimate.maxPriorityFeePerGas,
+      });
 
       // 11. Collect app profile while deployment is in progress (optional)
       if (!flags["skip-profile"]) {
-        // Check if any profile flags were provided
         const hasProfileFlags = flags.website || flags.description || flags["x-url"] || flags.image;
 
         let profile: {
@@ -209,7 +179,6 @@ export default class AppDeploy extends Command {
         } | null = null;
 
         if (hasProfileFlags) {
-          // Use flags directly if any were provided
           profile = {
             name: appName,
             website: flags.website,
@@ -218,7 +187,6 @@ export default class AppDeploy extends Command {
             imagePath: flags.image,
           };
         } else {
-          // Otherwise prompt interactively
           this.log(
             "\nDeployment confirmed onchain. While your instance provisions, set up a public profile:",
           );
@@ -227,52 +195,33 @@ export default class AppDeploy extends Command {
             profile = (await getAppProfileInteractive(appName, true)) || null;
           } catch {
             // Profile collection cancelled or failed - continue without profile
-            logger.debug("Profile collection skipped or cancelled");
+            if (flags.verbose) {
+              this.log("Profile collection skipped or cancelled");
+            }
           }
         }
 
         if (profile) {
-          // Upload profile if provided (non-blocking - warn on failure but don't fail deployment)
-          logger.info("Uploading app profile...");
+          this.log("Uploading app profile...");
           try {
-            const userApiClient = new UserApiClient(
-              environmentConfig,
-              privateKey,
-              rpcUrl,
-              getClientId(),
-            );
-            await userApiClient.uploadAppProfile(
-              res.appId as `0x${string}`,
-              profile.name,
-              profile.website,
-              profile.description,
-              profile.xURL,
-              profile.imagePath,
-            );
-            logger.info("✓ Profile uploaded successfully");
+            await compute.app.setProfile(res.appId as `0x${string}`, profile);
+            this.log("✓ Profile uploaded successfully");
 
-            // Invalidate profile cache to ensure fresh data on next command
             try {
               invalidateProfileCache(environment);
             } catch (cacheErr: any) {
-              logger.debug(`Failed to invalidate profile cache: ${cacheErr.message}`);
+              if (flags.verbose) {
+                this.log(`Failed to invalidate profile cache: ${cacheErr.message}`);
+              }
             }
           } catch (uploadErr: any) {
-            logger.warn(`Failed to upload profile: ${uploadErr.message}`);
+            this.warn(`Failed to upload profile: ${uploadErr.message}`);
           }
         }
       }
 
       // 12. Watch until app is running
-      const ipAddress = await watchDeployment(
-        res.appId,
-        privateKey,
-        rpcUrl,
-        environment,
-        logger,
-        getClientId(),
-        true, // skipTelemetry - CLI already has telemetry
-      );
+      const ipAddress = await compute.app.watchDeployment(res.appId as `0x${string}`);
 
       this.log(
         `\n✅ ${chalk.green(`App deployed successfully ${chalk.bold(`(id: ${res.appId}, ip: ${ipAddress})`)}`)}`,
