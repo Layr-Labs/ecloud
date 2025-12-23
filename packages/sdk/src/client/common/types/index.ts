@@ -94,6 +94,44 @@ export interface ExecuteUpgradeResult {
   imageRef: string;
 }
 
+/** Data-only batch for deploy (clients provided by module) */
+export interface PreparedDeployData {
+  /** The app ID that will be deployed */
+  appId: AppId;
+  /** The salt used for deployment */
+  salt: Uint8Array;
+  /** Batch executions to be sent */
+  executions: Array<{ target: Address; value: bigint; callData: Hex }>;
+}
+
+/** Data-only batch for upgrade (clients provided by module) */
+export interface PreparedUpgradeData {
+  /** The app ID being upgraded */
+  appId: AppId;
+  /** Batch executions to be sent */
+  executions: Array<{ target: Address; value: bigint; callData: Hex }>;
+}
+
+/** Prepared deployment ready for execution */
+export interface PreparedDeploy {
+  /** The prepared data (executions, appId, etc.) */
+  data: PreparedDeployData;
+  /** App name */
+  appName: string;
+  /** Final image reference */
+  imageRef: string;
+}
+
+/** Prepared upgrade ready for execution */
+export interface PreparedUpgrade {
+  /** The prepared data (executions, appId, etc.) */
+  data: PreparedUpgradeData;
+  /** App ID being upgraded */
+  appId: AppId;
+  /** Final image reference */
+  imageRef: string;
+}
+
 export interface LifecycleOpts {
   gas?: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint };
 }

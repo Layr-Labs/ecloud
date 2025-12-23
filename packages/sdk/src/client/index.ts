@@ -32,7 +32,6 @@ export {
   prepareDeploy,
   executeDeploy,
   watchDeployment,
-  type PreparedDeploy,
   type PrepareDeployResult,
 } from "./modules/compute/app/deploy";
 export {
@@ -40,7 +39,6 @@ export {
   prepareUpgrade,
   executeUpgrade,
   watchUpgrade,
-  type PreparedUpgrade,
   type PrepareUpgradeResult,
 } from "./modules/compute/app/upgrade";
 

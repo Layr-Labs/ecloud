@@ -2,20 +2,26 @@
  * Main App namespace entry point
  */
 
-import { parseAbi, encodeFunctionData, Hex } from "viem";
+import {
+  parseAbi,
+  encodeFunctionData,
+  Hex,
+  createWalletClient,
+  createPublicClient,
+  http,
+} from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import {
   deploy as deployApp,
   prepareDeploy as prepareDeployFn,
   executeDeploy as executeDeployFn,
   watchDeployment as watchDeploymentFn,
-  type PreparedDeploy,
 } from "./deploy";
 import {
   upgrade as upgradeApp,
   prepareUpgrade as prepareUpgradeFn,
   executeUpgrade as executeUpgradeFn,
   watchUpgrade as watchUpgradeFn,
-  type PreparedUpgrade,
 } from "./upgrade";
 import { createApp, CreateAppOpts } from "./create";
 import { logs, LogsOptions } from "./logs";
@@ -42,8 +48,10 @@ import type {
   GasOpts,
   PrepareDeployOpts,
   PrepareUpgradeOpts,
+  PreparedDeploy,
+  PreparedUpgrade,
 } from "../../../common/types";
-import { getLogger, addHexPrefix } from "../../../common/utils";
+import { getLogger, addHexPrefix, getChainFromID } from "../../../common/utils";
 
 // Minimal ABI
 const CONTROLLER_ABI = parseAbi([
@@ -234,7 +242,30 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
     },
 
     async executeDeploy(prepared, gas) {
-      const result = await executeDeployFn(prepared, gas, logger, skipTelemetry);
+      // Create clients from module context
+      const account = privateKeyToAccount(privateKey);
+      const chain = getChainFromID(environment.chainID);
+      const publicClient = createPublicClient({
+        chain,
+        transport: http(ctx.rpcUrl),
+      });
+      const walletClient = createWalletClient({
+        account,
+        chain,
+        transport: http(ctx.rpcUrl),
+      });
+
+      const result = await executeDeployFn({
+        prepared,
+        context: {
+          walletClient,
+          publicClient,
+          environmentConfig: environment,
+        },
+        gas,
+        logger,
+        skipTelemetry,
+      });
       return {
         appId: result.appId,
         txHash: result.txHash,
@@ -276,7 +307,30 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
     },
 
     async executeUpgrade(prepared, gas) {
-      const result = await executeUpgradeFn(prepared, gas, logger, skipTelemetry);
+      // Create clients from module context
+      const account = privateKeyToAccount(privateKey);
+      const chain = getChainFromID(environment.chainID);
+      const publicClient = createPublicClient({
+        chain,
+        transport: http(ctx.rpcUrl),
+      });
+      const walletClient = createWalletClient({
+        account,
+        chain,
+        transport: http(ctx.rpcUrl),
+      });
+
+      const result = await executeUpgradeFn({
+        prepared,
+        context: {
+          walletClient,
+          publicClient,
+          environmentConfig: environment,
+        },
+        gas,
+        logger,
+        skipTelemetry,
+      });
       return {
         appId: result.appId,
         txHash: result.txHash,

@@ -21,7 +21,7 @@ import { sign } from "viem/accounts";
 
 import { addHexPrefix, getChainFromID } from "../utils";
 
-import { EnvironmentConfig, Logger } from "../types";
+import { EnvironmentConfig, Logger, PreparedDeployData, PreparedUpgradeData } from "../types";
 import { Release } from "../types";
 
 import AppControllerABI from "../abis/AppController.json";
@@ -331,7 +331,12 @@ export async function prepareDeployBatch(
  * Execute a prepared deploy batch
  */
 export async function executeDeployBatch(
-  prepared: PreparedDeployBatch,
+  data: PreparedDeployData,
+  context: {
+    walletClient: WalletClient;
+    publicClient: PublicClient;
+    environmentConfig: EnvironmentConfig;
+  },
   gas: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } | undefined,
   logger: Logger,
 ): Promise<{ appId: Address; txHash: Hex }> {
@@ -339,17 +344,17 @@ export async function executeDeployBatch(
 
   const txHash = await executeBatch(
     {
-      walletClient: prepared.walletClient,
-      publicClient: prepared.publicClient,
-      environmentConfig: prepared.environmentConfig,
-      executions: prepared.executions,
+      walletClient: context.walletClient,
+      publicClient: context.publicClient,
+      environmentConfig: context.environmentConfig,
+      executions: data.executions,
       pendingMessage,
       gas,
     },
     logger,
   );
 
-  return { appId: prepared.appId, txHash };
+  return { appId: data.appId, txHash };
 }
 
 /**
@@ -371,7 +376,19 @@ export async function deployApp(
     logger,
   );
 
-  return executeDeployBatch(prepared, options.gas, logger);
+  // Extract data and context from prepared batch
+  const data: PreparedDeployData = {
+    appId: prepared.appId,
+    salt: prepared.salt,
+    executions: prepared.executions,
+  };
+  const context = {
+    walletClient: prepared.walletClient,
+    publicClient: prepared.publicClient,
+    environmentConfig: prepared.environmentConfig,
+  };
+
+  return executeDeployBatch(data, context, options.gas, logger);
 }
 
 export interface UpgradeAppOptions {
@@ -521,18 +538,23 @@ export async function prepareUpgradeBatch(
  * Execute a prepared upgrade batch
  */
 export async function executeUpgradeBatch(
-  prepared: PreparedUpgradeBatch,
+  data: PreparedUpgradeData,
+  context: {
+    walletClient: WalletClient;
+    publicClient: PublicClient;
+    environmentConfig: EnvironmentConfig;
+  },
   gas: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } | undefined,
   logger: Logger,
 ): Promise<Hex> {
-  const pendingMessage = `Upgrading app ${prepared.appId}...`;
+  const pendingMessage = `Upgrading app ${data.appId}...`;
 
   const txHash = await executeBatch(
     {
-      walletClient: prepared.walletClient,
-      publicClient: prepared.publicClient,
-      environmentConfig: prepared.environmentConfig,
-      executions: prepared.executions,
+      walletClient: context.walletClient,
+      publicClient: context.publicClient,
+      environmentConfig: context.environmentConfig,
+      executions: data.executions,
       pendingMessage,
       gas,
     },
@@ -556,7 +578,18 @@ export async function upgradeApp(options: UpgradeAppOptions, logger: Logger): Pr
     needsPermissionChange: options.needsPermissionChange,
   });
 
-  return executeUpgradeBatch(prepared, options.gas, logger);
+  // Extract data and context from prepared batch
+  const data: PreparedUpgradeData = {
+    appId: prepared.appId,
+    executions: prepared.executions,
+  };
+  const context = {
+    walletClient: prepared.walletClient,
+    publicClient: prepared.publicClient,
+    environmentConfig: prepared.environmentConfig,
+  };
+
+  return executeUpgradeBatch(data, context, options.gas, logger);
 }
 
 /**
