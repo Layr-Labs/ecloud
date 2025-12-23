@@ -33,9 +33,9 @@ export interface GlobalConfig {
   profile_cache?: {
     [environment: string]: ProfileCacheEntry;
   };
-  folder_links?: {
+  directory_links?: {
     [environment: string]: {
-      [folderPath: string]: string;
+      [directoryPath: string]: string;
     };
   };
 }
@@ -113,8 +113,8 @@ export function saveGlobalConfig(config: GlobalConfig): void {
   fs.writeFileSync(configPath, content, { mode: 0o644 });
 }
 
-function normalizeFolderPath(folderPath: string): string {
-  const resolved = path.resolve(folderPath);
+function normalizeDirectoryPath(directoryPath: string): string {
+  const resolved = path.resolve(directoryPath);
   try {
     return fs.realpathSync(resolved);
   } catch {
@@ -123,47 +123,47 @@ function normalizeFolderPath(folderPath: string): string {
 }
 
 /**
- * Get linked app ID for a folder in an environment
+ * Get linked app ID for a directory in an environment
  */
-export function getLinkedAppForFolder(environment: string, folderPath: string): string | null {
-  if (!folderPath) {
+export function getLinkedAppForDirectory(environment: string, directoryPath: string): string | null {
+  if (!directoryPath) {
     return null;
   }
 
   const config = loadGlobalConfig();
-  const links = config.folder_links?.[environment];
+  const links = config.directory_links?.[environment];
   if (!links) {
     return null;
   }
 
-  const normalizedPath = normalizeFolderPath(folderPath);
+  const normalizedPath = normalizeDirectoryPath(directoryPath);
   const appId = links[normalizedPath];
   return appId || null;
 }
 
 /**
- * Link a folder to an app ID in an environment
+ * Link a directory to an app ID in an environment
  */
-export function setLinkedAppForFolder(
+export function setLinkedAppForDirectory(
   environment: string,
-  folderPath: string,
+  directoryPath: string,
   appId: string,
 ): void {
-  if (!folderPath || !environment) {
+  if (!directoryPath || !environment) {
     return;
   }
 
   const config = loadGlobalConfig();
-  if (!config.folder_links) {
-    config.folder_links = {};
+  if (!config.directory_links) {
+    config.directory_links = {};
   }
-  if (!config.folder_links[environment]) {
-    config.folder_links[environment] = {};
+  if (!config.directory_links[environment]) {
+    config.directory_links[environment] = {};
   }
 
-  const normalizedPath = normalizeFolderPath(folderPath);
+  const normalizedPath = normalizeDirectoryPath(directoryPath);
   // Normalize appId to lowercase for consistent lookups
-  config.folder_links[environment][normalizedPath] = appId.toLowerCase();
+  config.directory_links[environment][normalizedPath] = appId.toLowerCase();
   saveGlobalConfig(config);
 }
 

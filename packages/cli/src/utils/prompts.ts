@@ -32,7 +32,7 @@ import {
   getDefaultEnvironment,
   getProfileCache,
   setProfileCache,
-  getLinkedAppForFolder,
+  getLinkedAppForDirectory,
 } from "./globalConfig";
 import { listApps, isAppNameAvailable, findAvailableName } from "./appNames";
 import { getClientId } from "./version";
@@ -889,7 +889,7 @@ async function getAppIDInteractive(options: GetAppIDOptions): Promise<Address> {
     });
   }
 
-  const linkedAppId = getLinkedAppForFolder(environment, getCurrentProjectPath());
+  const linkedAppId = getLinkedAppForDirectory(environment, getCurrentProjectPath());
   const normalizedLinkedAppId = linkedAppId ? linkedAppId.toLowerCase() : "";
 
   appItems.sort((a, b) => {
@@ -989,7 +989,7 @@ async function getAppIDInteractiveFromRegistry(
   }
 
   const entries = Object.entries(allApps);
-  const linkedAppId = getLinkedAppForFolder(environment, getCurrentProjectPath());
+  const linkedAppId = getLinkedAppForDirectory(environment, getCurrentProjectPath());
   if (linkedAppId) {
     const linkedIndex = entries.findIndex(
       ([, appId]) => String(appId).toLowerCase() === linkedAppId.toLowerCase(),
