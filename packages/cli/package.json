@@ -29,6 +29,7 @@
   },
   "scripts": {
     "build": "tsup",
+    "build:dev": "BUILD_TYPE=dev tsup",
     "prepublishOnly": "cp ../../README.md .",
     "lint": "eslint .",
     "format": "prettier --check .",
