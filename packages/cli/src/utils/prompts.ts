@@ -1070,6 +1070,7 @@ async function getAppIDInteractive(options: GetAppIDOptions): Promise<Address> {
     switch (action) {
       case "view":
       case "view info for":
+      case "view releases for":
       case "set profile for":
         return true;
       case "start":

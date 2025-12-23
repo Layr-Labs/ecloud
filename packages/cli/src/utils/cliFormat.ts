@@ -1,37 +1,34 @@
 /**
- * Shared formatting helpers for CLI list/table output.
+ * Shared CLI formatting helpers (dependency-free).
  *
- * Keep these dependency-free (besides stdlib) so commands can reuse them.
+ * NOTE: Table rendering should use `cli-table3` directly.
  */
 export function terminalWidth(fallback = 120): number {
   const cols = typeof process.stdout.columns === "number" ? process.stdout.columns : undefined;
   return cols && cols > 0 ? cols : fallback;
 }
 
-export function stripAnsi(s: string): string {
-  // eslint-disable-next-line no-control-regex
-  return s.replace(/\u001b\[[0-9;]*m/g, "");
-}
+/**
+ * Formats an ISO string OR a unix epoch (seconds or ms) into a readable local time.
+ * If it can't parse, returns the raw value.
+ */
+export function formatHumanTime(value: unknown): string {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "-";
 
-export function padRight(s: string, width: number): string {
-  const plain = stripAnsi(s);
-  const delta = width - plain.length;
-  return delta > 0 ? s + " ".repeat(delta) : s;
-}
+  if (/^\d+$/.test(raw)) {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n > 0) {
+      const ms = raw.length <= 10 ? n * 1000 : n;
+      const d = new Date(ms);
+      if (!Number.isNaN(d.getTime())) return d.toLocaleString();
+    }
+    return raw;
+  }
 
-export function shortenMiddle(value: string, max: number): string {
-  if (value.length <= max) return value;
-  if (max <= 3) return value.slice(0, max);
-  const keep = max - 1;
-  const head = Math.ceil(keep * 0.6);
-  const tail = keep - head;
-  return `${value.slice(0, head)}…${value.slice(value.length - tail)}`;
-}
-
-export function truncateCell(s: string, width: number): string {
-  const plain = stripAnsi(s);
-  if (plain.length <= width) return s;
-  return shortenMiddle(plain, width);
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  return d.toLocaleString();
 }
 
 export function formatRepoDisplay(repoUrl: string): string {
@@ -70,29 +67,6 @@ export function formatImageDisplay(imageUrl: string): string {
   return s.replace(/^docker\.io\//i, "");
 }
 
-/**
- * Formats an ISO string OR a unix epoch (seconds or ms) into a readable local time.
- * If it can't parse, returns the raw value.
- */
-export function formatHumanTime(value: unknown): string {
-  const raw = String(value ?? "").trim();
-  if (!raw) return "-";
-
-  if (/^\d+$/.test(raw)) {
-    const n = Number(raw);
-    if (Number.isFinite(n) && n > 0) {
-      const ms = raw.length <= 10 ? n * 1000 : n;
-      const d = new Date(ms);
-      if (!Number.isNaN(d.getTime())) return d.toLocaleString();
-    }
-    return raw;
-  }
-
-  const d = new Date(raw);
-  if (Number.isNaN(d.getTime())) return raw;
-  return d.toLocaleString();
-}
-
 export function provenanceSummary(options: {
   provenanceJson?: unknown;
   provenanceSignature?: string;
@@ -105,4 +79,5 @@ export function provenanceSummary(options: {
   if (depCount > 0) parts.push(`deps:${depCount}`);
   return parts.length ? parts.join(" ") : "-";
 }
+
 

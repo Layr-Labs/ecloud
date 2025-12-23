@@ -7,18 +7,15 @@ import { getClientId } from "../../../utils/version";
 import chalk from "chalk";
 import { formatAppRelease } from "../../../utils/releases";
 import { Address, isAddress } from "viem";
+import Table from "cli-table3";
 import {
   terminalWidth,
-  padRight,
-  shortenMiddle,
-  truncateCell,
   formatRepoDisplay,
   extractRepoName,
   formatImageDisplay,
   formatHumanTime,
   provenanceSummary,
-  stripAnsi,
-} from "../../../utils/cliTable";
+} from "../../../utils/cliFormat";
 
 function sortReleasesOldestFirst(releases: AppRelease[]): AppRelease[] {
   const toNum = (v: unknown): number => {
@@ -176,79 +173,9 @@ export default class AppReleases extends Command {
         deps: chalk.bold("Deps"),
       };
 
-      const sep = "  ";
       const tw = terminalWidth();
-
-      const maxContentLen = (key: keyof Row) =>
-        Math.max(headers[key].length, ...rows.map((r) => stripAnsi(String(r[key])).length));
-
-      const min = {
-        rel: 4,
-        block: 8,
-        created: 18,
-        repo: 18,
-        commit: 40,
-        digest: 18,
-        image: 18,
-        build: 36,
-        prov: 12,
-        deps: 8,
-      };
-      const max = {
-        rel: 10,
-        block: 12,
-        created: 24,
-        repo: 48,
-        commit: 40,
-        digest: 64,
-        image: 48,
-        build: 36,
-        prov: 18,
-        deps: 10,
-      };
-
-      let widths: Record<keyof Row, number> = {
-        rel: Math.min(max.rel, Math.max(min.rel, maxContentLen("rel"))),
-        block: Math.min(max.block, Math.max(min.block, maxContentLen("block"))),
-        created: Math.min(max.created, Math.max(min.created, maxContentLen("created"))),
-        repo: Math.min(max.repo, Math.max(min.repo, maxContentLen("repo"))),
-        commit: Math.min(max.commit, Math.max(min.commit, maxContentLen("commit"))),
-        digest: Math.min(max.digest, Math.max(min.digest, maxContentLen("digest"))),
-        image: Math.min(max.image, Math.max(min.image, maxContentLen("image"))),
-        build: Math.min(max.build, Math.max(min.build, maxContentLen("build"))),
-        prov: Math.min(max.prov, Math.max(min.prov, maxContentLen("prov"))),
-        deps: Math.min(max.deps, Math.max(min.deps, maxContentLen("deps"))),
-      };
-
-      const totalWidth = () =>
-        widths.rel +
-        widths.block +
-        widths.created +
-        widths.repo +
-        widths.commit +
-        widths.digest +
-        widths.image +
-        widths.build +
-        widths.prov +
-        widths.deps +
-        sep.length * 9;
-
-      const shrink = (key: keyof Row, amount: number) => {
-        widths[key] = Math.max(min[key], widths[key] - amount);
-      };
-
-      while (
-        totalWidth() > tw &&
-        (widths.repo > min.repo || widths.image > min.image || widths.digest > min.digest)
-      ) {
-        if (widths.repo > min.repo) shrink("repo", 1);
-        if (totalWidth() <= tw) break;
-        if (widths.image > min.image) shrink("image", 1);
-        if (totalWidth() <= tw) break;
-        if (widths.digest > min.digest) shrink("digest", 1);
-      }
-
-      const shouldStack = totalWidth() > tw;
+      // With 10 columns this gets unreadable on narrow terminals; fall back to stacked.
+      const shouldStack = tw < 140;
 
       if (shouldStack) {
         for (const r of rows) {
@@ -279,57 +206,48 @@ export default class AppReleases extends Command {
         return;
       }
 
-      const headerLine = [
-        padRight(headers.rel, widths.rel),
-        padRight(headers.block, widths.block),
-        padRight(headers.created, widths.created),
-        padRight(headers.repo, widths.repo),
-        padRight(headers.commit, widths.commit),
-        padRight(headers.digest, widths.digest),
-        padRight(headers.image, widths.image),
-        padRight(headers.build, widths.build),
-        padRight(headers.prov, widths.prov),
-        padRight(headers.deps, widths.deps),
-      ].join(sep);
+      // Allocate flexible width to the "wide" columns based on terminal width.
+      // Note: cli-table3 includes borders/padding; this is intentionally approximate.
+      const fixed = 6 + 10 + 20 + 36 + 12 + 8 + 10; // rel + block + created + build + prov + deps + commit(min-ish)
+      const remaining = Math.max(60, tw - fixed);
+      const repoW = Math.max(18, Math.floor(remaining * 0.25));
+      const digestW = Math.max(18, Math.floor(remaining * 0.35));
+      const imageW = Math.max(18, remaining - repoW - digestW);
 
-      const ruleLine = [
-        "-".repeat(widths.rel),
-        "-".repeat(widths.block),
-        "-".repeat(widths.created),
-        "-".repeat(widths.repo),
-        "-".repeat(widths.commit),
-        "-".repeat(widths.digest),
-        "-".repeat(widths.image),
-        "-".repeat(widths.build),
-        "-".repeat(widths.prov),
-        "-".repeat(widths.deps),
-      ].join(sep);
-
-      this.log(headerLine);
-      this.log(ruleLine);
+      const table = new Table({
+        head: [
+          headers.rel,
+          headers.block,
+          headers.created,
+          headers.repo,
+          headers.commit,
+          headers.digest,
+          headers.image,
+          headers.build,
+          headers.prov,
+          headers.deps,
+        ],
+        colWidths: [6, 10, 20, repoW, 10, digestW, imageW, 36, 12, 8],
+        wordWrap: true,
+        style: { "padding-left": 0, "padding-right": 1, head: [], border: [] },
+      });
 
       for (const r of rows) {
-        this.log(
-          [
-            padRight(truncateCell(r.rel, widths.rel), widths.rel),
-            padRight(truncateCell(r.block, widths.block), widths.block),
-            padRight(truncateCell(r.created, widths.created), widths.created),
-            padRight(truncateCell(shortenMiddle(r.repo, widths.repo), widths.repo), widths.repo),
-            padRight(r.commit, widths.commit),
-            padRight(
-              truncateCell(shortenMiddle(r.digest, widths.digest), widths.digest),
-              widths.digest,
-            ),
-            padRight(
-              truncateCell(shortenMiddle(r.image, widths.image), widths.image),
-              widths.image,
-            ),
-            padRight(r.build, widths.build),
-            padRight(truncateCell(r.prov, widths.prov), widths.prov),
-            padRight(truncateCell(r.deps, widths.deps), widths.deps),
-          ].join(sep),
-        );
+        table.push([
+          r.rel,
+          r.block,
+          r.created,
+          r.repo,
+          r.commit,
+          r.digest,
+          r.image,
+          r.build,
+          r.prov,
+          r.deps,
+        ]);
       }
+
+      this.log(table.toString());
 
       this.log("");
       this.log(

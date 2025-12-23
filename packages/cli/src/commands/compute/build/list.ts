@@ -7,17 +7,14 @@ import { commonFlags, validateCommonFlags } from "../../../flags";
 import { createBuildClient } from "../../../client";
 import { withTelemetry } from "../../../telemetry";
 import { formatBuildStatus } from "../../../utils/buildInfo";
+import Table from "cli-table3";
 import {
   terminalWidth,
-  shortenMiddle,
   formatRepoDisplay,
   formatImageDisplay,
   provenanceSummary,
-  padRight,
-  truncateCell,
-  stripAnsi,
   formatHumanTime,
-} from "../../../utils/cliTable";
+} from "../../../utils/cliFormat";
 
 export default class BuildList extends Command {
   static description = "List recent verifiable builds for a billing address (most recent first)";
@@ -98,76 +95,9 @@ export default class BuildList extends Command {
         }),
       }));
 
-      const headers = {
-        buildId: chalk.bold("ID"),
-        status: chalk.bold("Status"),
-        repo: chalk.bold("Repo"),
-        commit: chalk.bold("Commit"),
-        image: chalk.bold("Image"),
-        created: chalk.bold("Created"),
-        prov: chalk.bold("Prov"),
-      };
-
-      const sep = "  ";
       const tw = terminalWidth();
-
-      // Compute widths, shrinking the "wide" columns to avoid wrapping.
-      const maxContentLen = (key: keyof Row) =>
-        Math.max(headers[key].length, ...rows.map((r) => stripAnsi(String(r[key])).length));
-
-      const min = {
-        buildId: 36,
-        status: 7,
-        repo: 18,
-        commit: 40,
-        image: 18,
-        created: 18,
-        prov: 12,
-      };
-      const max = {
-        buildId: 36,
-        status: 10,
-        repo: 48,
-        commit: 40,
-        image: 48,
-        created: 24,
-        prov: 18,
-      };
-
-      let widths: Record<keyof Row, number> = {
-        buildId: Math.min(max.buildId, Math.max(min.buildId, maxContentLen("buildId"))),
-        status: Math.min(max.status, Math.max(min.status, maxContentLen("status"))),
-        repo: Math.min(max.repo, Math.max(min.repo, maxContentLen("repo"))),
-        commit: Math.min(max.commit, Math.max(min.commit, maxContentLen("commit"))),
-        image: Math.min(max.image, Math.max(min.image, maxContentLen("image"))),
-        created: Math.min(max.created, Math.max(min.created, maxContentLen("created"))),
-        prov: Math.min(max.prov, Math.max(min.prov, maxContentLen("prov"))),
-      };
-
-      const totalWidth = () =>
-        widths.buildId +
-        widths.status +
-        widths.repo +
-        widths.commit +
-        widths.image +
-        widths.created +
-        widths.prov +
-        sep.length * 6;
-
-      const shrink = (key: keyof Row, amount: number) => {
-        const newW = Math.max(min[key], widths[key] - amount);
-        widths[key] = newW;
-      };
-
-      // Prefer shrinking repo/image first to keep IDs and timestamps readable.
-      while (totalWidth() > tw && (widths.repo > min.repo || widths.image > min.image)) {
-        if (widths.repo > min.repo) shrink("repo", 1);
-        if (totalWidth() <= tw) break;
-        if (widths.image > min.image) shrink("image", 1);
-      }
-
-      // If we're still too wide, fall back to a stacked layout.
-      const shouldStack = totalWidth() > tw;
+      // With 7 columns, narrow terminals get hard to read. Fall back to stacked output.
+      const shouldStack = tw < 110;
 
       this.log("");
       this.log(chalk.bold(`Builds for ${billingAddress} (${validatedFlags.environment}):`));
@@ -175,7 +105,7 @@ export default class BuildList extends Command {
 
       if (shouldStack) {
         for (const r of rows) {
-          this.log(`${padRight(r.status, 10)}  ${chalk.cyan(r.buildId)}  ${r.created}`);
+          this.log(`${r.status}  ${chalk.cyan(r.buildId)}  ${r.created}`);
           this.log(`  Repo:   ${r.repo}`);
           this.log(`  Commit: ${r.commit}`);
           this.log(`  Image:  ${r.image}`);
@@ -183,45 +113,33 @@ export default class BuildList extends Command {
           this.log(chalk.gray("  ───────────────────────────────────────────────────────────────"));
         }
       } else {
-        const headerLine = [
-          padRight(headers.buildId, widths.buildId),
-          padRight(headers.status, widths.status),
-          padRight(headers.repo, widths.repo),
-          padRight(headers.commit, widths.commit),
-          padRight(headers.image, widths.image),
-          padRight(headers.created, widths.created),
-          padRight(headers.prov, widths.prov),
-        ].join(sep);
+        // Allocate flexible width to the "wide" columns (repo/commit/image) based on terminal width.
+        // Note: cli-table3 includes borders/padding; this is intentionally approximate.
+        const fixed = 36 + 10 + 20 + 14; // id + status + created + prov
+        const remaining = Math.max(30, tw - fixed);
+        const repoW = Math.max(18, Math.floor(remaining * 0.28));
+        const commitW = Math.max(18, Math.floor(remaining * 0.36));
+        const imageW = Math.max(18, remaining - repoW - commitW);
 
-        const ruleLine = [
-          "-".repeat(widths.buildId),
-          "-".repeat(widths.status),
-          "-".repeat(widths.repo),
-          "-".repeat(widths.commit),
-          "-".repeat(widths.image),
-          "-".repeat(widths.created),
-          "-".repeat(widths.prov),
-        ].join(sep);
-
-        this.log(headerLine);
-        this.log(ruleLine);
+        const table = new Table({
+          head: [
+            chalk.bold("ID"),
+            chalk.bold("Status"),
+            chalk.bold("Repo"),
+            chalk.bold("Commit"),
+            chalk.bold("Image"),
+            chalk.bold("Created"),
+            chalk.bold("Prov"),
+          ],
+          colWidths: [36, 10, repoW, commitW, imageW, 20, 14],
+          wordWrap: true,
+          style: { "padding-left": 0, "padding-right": 1, head: [], border: [] },
+        });
 
         for (const r of rows) {
-          this.log(
-            [
-              padRight(r.buildId, widths.buildId),
-              padRight(r.status, widths.status), // never truncate status
-              padRight(truncateCell(shortenMiddle(r.repo, widths.repo), widths.repo), widths.repo),
-              padRight(r.commit, widths.commit),
-              padRight(
-                truncateCell(shortenMiddle(r.image, widths.image), widths.image),
-                widths.image,
-              ),
-              padRight(truncateCell(r.created, widths.created), widths.created),
-              padRight(truncateCell(r.prov, widths.prov), widths.prov),
-            ].join(sep),
-          );
+          table.push([r.buildId, r.status, r.repo, r.commit, r.image, r.created, r.prov]);
         }
+        this.log(table.toString());
       }
 
       this.log("");
@@ -236,4 +154,3 @@ export default class BuildList extends Command {
     });
   }
 }
-

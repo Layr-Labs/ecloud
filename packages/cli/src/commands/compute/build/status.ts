@@ -10,7 +10,7 @@ import { promptBuildIdFromRecentBuilds } from "../../../utils/prompts";
 import { privateKeyToAccount } from "viem/accounts";
 import { addHexPrefix } from "@layr-labs/ecloud-sdk";
 import { formatBuildStatus } from "../../../utils/buildInfo";
-import { formatHumanTime } from "../../../utils/cliTable";
+import { formatHumanTime } from "../../../utils/cliFormat";
 
 export default class BuildStatus extends Command {
   static description = "Get build status";
