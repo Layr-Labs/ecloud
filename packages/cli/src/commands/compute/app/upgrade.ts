@@ -23,6 +23,7 @@ import {
   getPrivateKeyInteractive,
 } from "../../../utils/prompts";
 import { getClientId } from "../../../utils/version";
+import { setLinkedAppForDirectory } from "../../../utils/globalConfig";
 import chalk from "chalk";
 
 export default class AppUpgrade extends Command {
@@ -198,6 +199,13 @@ export default class AppUpgrade extends Command {
 
       // 12. Watch until upgrade completes
       await watchUpgrade(res.appId, privateKey, rpcUrl, environment, logger, getClientId(), true); // skipTelemetry
+
+      try {
+        const cwd = process.env.INIT_CWD || process.cwd();
+        setLinkedAppForDirectory(environment, cwd, res.appId);
+      } catch (err: any) {
+        logger.debug(`Failed to link directory to app: ${err.message}`);
+      }
 
       this.log(
         `\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${res.appId}, image: ${res.imageRef})`)}`)}`,

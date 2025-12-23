@@ -28,7 +28,12 @@ import {
   UserApiClient,
 } from "@layr-labs/ecloud-sdk";
 import { getAppInfosChunked } from "./appResolver";
-import { getDefaultEnvironment, getProfileCache, setProfileCache } from "./globalConfig";
+import {
+  getDefaultEnvironment,
+  getProfileCache,
+  setProfileCache,
+  getLinkedAppForDirectory,
+} from "./globalConfig";
 import { listApps, isAppNameAvailable, findAvailableName } from "./appNames";
 import { getClientId } from "./version";
 
@@ -289,6 +294,10 @@ function getDefaultAppName(): string {
   } catch {
     return "myapp";
   }
+}
+
+function getCurrentProjectPath(): string {
+  return process.env.INIT_CWD || process.cwd();
 }
 
 function suggestImageReference(registry: RegistryInfo, imageName: string, tag: string): string {
@@ -880,7 +889,21 @@ async function getAppIDInteractive(options: GetAppIDOptions): Promise<Address> {
     });
   }
 
+  const linkedAppId = getLinkedAppForDirectory(environment, getCurrentProjectPath());
+  const normalizedLinkedAppId = linkedAppId ? linkedAppId.toLowerCase() : "";
+
   appItems.sort((a, b) => {
+    if (normalizedLinkedAppId) {
+      const aLinked = String(a.addr).toLowerCase() === normalizedLinkedAppId;
+      const bLinked = String(b.addr).toLowerCase() === normalizedLinkedAppId;
+      if (aLinked && !bLinked) {
+        return -1;
+      }
+      if (bLinked && !aLinked) {
+        return 1;
+      }
+    }
+
     const aPriority = getStatusPriority(a.status, false);
     const bPriority = getStatusPriority(b.status, false);
 
@@ -965,7 +988,19 @@ async function getAppIDInteractiveFromRegistry(
     throw new Error(`Invalid app ID address: ${appIDInput}`);
   }
 
-  const choices = Object.entries(allApps).map(([name, appID]) => {
+  const entries = Object.entries(allApps);
+  const linkedAppId = getLinkedAppForDirectory(environment, getCurrentProjectPath());
+  if (linkedAppId) {
+    const linkedIndex = entries.findIndex(
+      ([, appId]) => String(appId).toLowerCase() === linkedAppId.toLowerCase(),
+    );
+    if (linkedIndex > 0) {
+      const [linkedEntry] = entries.splice(linkedIndex, 1);
+      entries.unshift(linkedEntry);
+    }
+  }
+
+  const choices = entries.map(([name, appID]) => {
     const displayName = `${name} (${appID})`;
     return { name: displayName, value: appID };
   });
