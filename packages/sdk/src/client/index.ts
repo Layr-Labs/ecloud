@@ -9,6 +9,7 @@ import {
   getAvailableEnvironments,
 } from "./common/config/environment";
 import { createBillingModule, type BillingModule } from "./modules/billing";
+import { createBuildModule, type BuildModule, type BuildModuleConfig } from "./modules/build";
 import { addHexPrefix } from "./common/utils";
 
 // Export all types
@@ -16,6 +17,9 @@ export * from "./common/types";
 
 // Export validation utilities (non-interactive)
 export * from "./common/utils/validation";
+
+// Export common hex helpers (used by CLI as well)
+export { addHexPrefix, stripHexPrefix } from "./common/utils";
 
 // Special case on createApp - we don't need the client to run it
 export {
@@ -29,6 +33,7 @@ export { logs, LogsOptions, SDKLogsOptions } from "./modules/compute/app/logs";
 export {
   SDKDeployOptions,
   prepareDeploy,
+  prepareDeployFromVerifiableBuild,
   executeDeploy,
   watchDeployment,
   type PreparedDeploy,
@@ -37,6 +42,7 @@ export {
 export {
   SDKUpgradeOptions,
   prepareUpgrade,
+  prepareUpgradeFromVerifiableBuild,
   executeUpgrade,
   watchUpgrade,
   type PreparedUpgrade,
@@ -108,6 +114,9 @@ export {
   type AppInfo,
   type AppProfileInfo,
   type AppMetrics,
+  type AppRelease,
+  type AppReleaseBuild,
+  type AppResponse,
 } from "./common/utils/userapi";
 
 export type Environment = "sepolia" | "sepolia-dev" | "mainnet-alpha";
@@ -163,3 +172,9 @@ export function createECloudClient(cfg: ClientConfig): ECloudClient {
     }),
   };
 }
+
+// ============ Build module exports ============
+export { createBuildModule };
+export type { BuildModule, BuildModuleConfig };
+export * from "./modules/build/types";
+export * from "./modules/build/errors";

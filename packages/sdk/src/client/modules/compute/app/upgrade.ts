@@ -13,6 +13,7 @@ import { Logger, EnvironmentConfig } from "../../../common/types";
 import { getEnvironmentConfig } from "../../../common/config/environment";
 import { ensureDockerIsRunning } from "../../../common/docker/build";
 import { prepareRelease } from "../../../common/release/prepare";
+import { createReleaseFromImageDigest } from "../../../common/release/prebuilt";
 import {
   upgradeApp,
   prepareUpgradeBatch,
@@ -104,6 +105,110 @@ export interface PrepareUpgradeResult {
   prepared: PreparedUpgrade;
   /** Gas estimate for the batch transaction */
   gasEstimate: GasEstimate;
+}
+
+/**
+ * Prepare an upgrade from a pre-built image (already layered) without using Docker locally.
+ *
+ * Intended for verifiable builds: build service provides imageRef + imageDigest (sha256:...).
+ * This skips:
+ * - ensureDockerIsRunning()
+ * - prepareRelease() layering/digest extraction
+ */
+export async function prepareUpgradeFromVerifiableBuild(
+  options: Omit<SDKUpgradeOptions, "gas" | "dockerfilePath" | "imageRef"> & {
+    imageRef: string;
+    imageDigest: string; // sha256:...
+    skipTelemetry?: boolean;
+  },
+  logger: Logger = defaultLogger,
+): Promise<PrepareUpgradeResult> {
+  return withSDKTelemetry(
+    {
+      functionName: "prepareUpgradeFromVerifiableBuild",
+      skipTelemetry: options.skipTelemetry,
+      properties: {
+        environment: options.environment || "sepolia",
+      },
+    },
+    async () => {
+      // Preflight checks
+      logger.debug("Performing preflight checks...");
+      const preflightCtx = await doPreflightChecks(
+        {
+          privateKey: options.privateKey,
+          rpcUrl: options.rpcUrl,
+          environment: options.environment,
+        },
+        logger,
+      );
+
+      // Validate required parameters
+      const appID = validateUpgradeOptions(options as SDKUpgradeOptions);
+      assertValidImageReference(options.imageRef);
+      if (!/^sha256:[0-9a-f]{64}$/i.test(options.imageDigest)) {
+        throw new Error(
+          `imageDigest must be in format sha256:<64 hex>, got: ${options.imageDigest}`,
+        );
+      }
+
+      const { publicLogs } = validateLogVisibility(options.logVisibility);
+      validateResourceUsageMonitoring(options.resourceUsageMonitoring);
+      const envFilePath = options.envFilePath || "";
+
+      // Build Release struct WITHOUT Docker/layering
+      logger.info("Preparing release (verifiable build, no local layering)...");
+      const release = await createReleaseFromImageDigest(
+        {
+          imageRef: options.imageRef,
+          imageDigest: options.imageDigest,
+          envFilePath,
+          instanceType: options.instanceType,
+          environmentConfig: preflightCtx.environmentConfig,
+          appId: appID as string,
+        },
+        logger,
+      );
+
+      // Check permission state
+      logger.debug("Checking current log permission state...");
+      const currentlyPublic = await checkAppLogPermission(preflightCtx, appID, logger);
+      const needsPermissionChange = currentlyPublic !== publicLogs;
+
+      // Prepare upgrade batch (no send)
+      logger.debug("Preparing upgrade batch...");
+      const batch = await prepareUpgradeBatch({
+        privateKey: preflightCtx.privateKey,
+        rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
+        environmentConfig: preflightCtx.environmentConfig,
+        appId: appID,
+        release,
+        publicLogs,
+        needsPermissionChange,
+      });
+
+      logger.debug("Estimating gas...");
+      const gasEstimate = await estimateBatchGas({
+        publicClient: batch.publicClient,
+        environmentConfig: batch.environmentConfig,
+        executions: batch.executions,
+      });
+
+      return {
+        prepared: {
+          batch,
+          appId: appID as string,
+          imageRef: options.imageRef,
+          preflightCtx: {
+            privateKey: preflightCtx.privateKey,
+            rpcUrl: preflightCtx.rpcUrl,
+            environmentConfig: preflightCtx.environmentConfig,
+          },
+        },
+        gasEstimate,
+      };
+    },
+  );
 }
 
 /**

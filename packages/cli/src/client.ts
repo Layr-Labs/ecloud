@@ -1,6 +1,7 @@
 import {
   createComputeModule,
   createBillingModule,
+  createBuildModule,
   getEnvironmentConfig,
   requirePrivateKey,
   getPrivateKeyWithSource,
@@ -43,6 +44,20 @@ export async function createBillingClient(flags: { "private-key"?: string; verbo
   return createBillingModule({
     verbose: flags.verbose ?? false,
     privateKey: privateKey as Hex,
+    skipTelemetry: true, // CLI already has telemetry, skip SDK telemetry
+  });
+}
+
+export async function createBuildClient(flags: CommonFlags) {
+  // Environment is useful for choosing the correct API base URL; private key is only needed for
+  // authenticated operations (submit/logs).
+  flags = await validateCommonFlags(flags, { requirePrivateKey: false });
+
+  return createBuildModule({
+    verbose: flags.verbose,
+    privateKey: flags["private-key"],
+    environment: flags.environment,
+    clientId: getClientId(),
     skipTelemetry: true, // CLI already has telemetry, skip SDK telemetry
   });
 }

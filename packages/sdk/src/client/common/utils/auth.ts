@@ -88,3 +88,38 @@ export async function calculateBillingAuthSignature(
 
   return { signature, expiry };
 }
+
+export interface BuildAuthSignatureOptions {
+  account: ReturnType<typeof privateKeyToAccount>;
+  expiry: bigint;
+}
+
+export interface BuildAuthSignatureResult {
+  signature: Hex;
+  expiry: bigint;
+}
+
+/**
+ * Sign build authentication message using EIP-712 typed data
+ */
+export async function calculateBuildAuthSignature(
+  options: BuildAuthSignatureOptions,
+): Promise<BuildAuthSignatureResult> {
+  const { account, expiry } = options;
+
+  const signature = await account.signTypedData({
+    domain: {
+      name: "EigenCloud Build API",
+      version: "1",
+    },
+    types: {
+      BuildAuth: [{ name: "expiry", type: "uint256" }],
+    },
+    primaryType: "BuildAuth",
+    message: {
+      expiry,
+    },
+  });
+
+  return { signature, expiry };
+}

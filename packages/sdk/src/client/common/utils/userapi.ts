@@ -58,6 +58,64 @@ export interface AppInfoResponse {
   }>;
 }
 
+// ==================== App Releases (/apps/:id) ====================
+
+type JsonObject = Record<string, unknown>;
+
+function isJsonObject(value: unknown): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readString(obj: JsonObject, key: string): string | undefined {
+  const v = obj[key];
+  return typeof v === "string" ? v : undefined;
+}
+
+function readNumber(obj: JsonObject, key: string): number | undefined {
+  const v = obj[key];
+  return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+}
+
+export type AppContractStatus = "STARTED" | "STOPPED" | "TERMINATED" | "SUSPENDED" | string;
+
+export interface AppReleaseBuild {
+  buildId?: string;
+  billingAddress?: string;
+  repoUrl?: string;
+  gitRef?: string;
+  status?: string;
+  buildType?: string;
+  imageName?: string;
+  imageDigest?: string;
+  imageUrl?: string;
+  provenanceJson?: unknown;
+  provenanceSignature?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  errorMessage?: string;
+  dependencies?: Record<string, AppReleaseBuild>;
+}
+
+export interface AppRelease {
+  appId?: string;
+  rmsReleaseId?: string;
+  imageDigest?: string;
+  registryUrl?: string;
+  publicEnv?: string;
+  encryptedEnv?: string;
+  upgradeByTime?: number;
+  createdAt?: string;
+  createdAtBlock?: string;
+  build?: AppReleaseBuild;
+}
+
+export interface AppResponse {
+  id: string;
+  creator?: string;
+  contractStatus?: AppContractStatus;
+  releases: AppRelease[];
+}
+
 const MAX_ADDRESS_COUNT = 5;
 
 // Permission constants
@@ -135,6 +193,40 @@ export class UserApiClient {
         solanaAddresses,
       };
     });
+  }
+
+  /**
+   * Get app details from UserAPI (includes releases and build/provenance info when available).
+   *
+   * Endpoint: GET /apps/:appAddress
+   */
+  async getApp(appAddress: Address): Promise<AppResponse> {
+    const endpoint = `${this.config.userApiServerURL}/apps/${appAddress}`;
+    const res = await this.makeAuthenticatedRequest(endpoint);
+    const raw = (await res.json()) as unknown;
+
+    if (!isJsonObject(raw)) {
+      throw new Error("Unexpected /apps/:id response: expected object");
+    }
+
+    const id = readString(raw, "id");
+    if (!id) {
+      throw new Error("Unexpected /apps/:id response: missing 'id'");
+    }
+
+    const releasesRaw = raw.releases;
+    const releases = Array.isArray(releasesRaw)
+      ? releasesRaw.map((r) => transformAppRelease(r)).filter((r): r is AppRelease => !!r)
+      : [];
+
+    return {
+      id,
+      creator: readString(raw, "creator"),
+      contractStatus: (readString(raw, "contract_status") ?? readString(raw, "contractStatus")) as
+        | AppContractStatus
+        | undefined,
+      releases,
+    };
   }
 
   /**
@@ -387,4 +479,54 @@ export class UserApiClient {
       "X-eigenx-expiry": expiry.toString(),
     };
   }
+}
+
+function transformAppReleaseBuild(raw: unknown): AppReleaseBuild | undefined {
+  if (!isJsonObject(raw)) return undefined;
+
+  const depsRaw = raw.dependencies;
+  const deps: Record<string, AppReleaseBuild> | undefined = isJsonObject(depsRaw)
+    ? Object.fromEntries(
+        Object.entries(depsRaw).flatMap(([digest, depRaw]) => {
+          const parsed = transformAppReleaseBuild(depRaw);
+          return parsed ? ([[digest, parsed]] as const) : [];
+        }),
+      )
+    : undefined;
+
+  return {
+    buildId: readString(raw, "build_id") ?? readString(raw, "buildId"),
+    billingAddress: readString(raw, "billing_address") ?? readString(raw, "billingAddress"),
+    repoUrl: readString(raw, "repo_url") ?? readString(raw, "repoUrl"),
+    gitRef: readString(raw, "git_ref") ?? readString(raw, "gitRef"),
+    status: readString(raw, "status"),
+    buildType: readString(raw, "build_type") ?? readString(raw, "buildType"),
+    imageName: readString(raw, "image_name") ?? readString(raw, "imageName"),
+    imageDigest: readString(raw, "image_digest") ?? readString(raw, "imageDigest"),
+    imageUrl: readString(raw, "image_url") ?? readString(raw, "imageUrl"),
+    provenanceJson: raw.provenance_json ?? raw.provenanceJson,
+    provenanceSignature:
+      readString(raw, "provenance_signature") ?? readString(raw, "provenanceSignature"),
+    createdAt: readString(raw, "created_at") ?? readString(raw, "createdAt"),
+    updatedAt: readString(raw, "updated_at") ?? readString(raw, "updatedAt"),
+    errorMessage: readString(raw, "error_message") ?? readString(raw, "errorMessage"),
+    dependencies: deps,
+  };
+}
+
+function transformAppRelease(raw: unknown): AppRelease | undefined {
+  if (!isJsonObject(raw)) return undefined;
+
+  return {
+    appId: readString(raw, "appId") ?? readString(raw, "app_id"),
+    rmsReleaseId: readString(raw, "rmsReleaseId") ?? readString(raw, "rms_release_id"),
+    imageDigest: readString(raw, "imageDigest") ?? readString(raw, "image_digest"),
+    registryUrl: readString(raw, "registryUrl") ?? readString(raw, "registry_url"),
+    publicEnv: readString(raw, "publicEnv") ?? readString(raw, "public_env"),
+    encryptedEnv: readString(raw, "encryptedEnv") ?? readString(raw, "encrypted_env"),
+    upgradeByTime: readNumber(raw, "upgradeByTime") ?? readNumber(raw, "upgrade_by_time"),
+    createdAt: readString(raw, "createdAt") ?? readString(raw, "created_at"),
+    createdAtBlock: readString(raw, "createdAtBlock") ?? readString(raw, "created_at_block"),
+    build: raw.build ? transformAppReleaseBuild(raw.build) : undefined,
+  };
 }
