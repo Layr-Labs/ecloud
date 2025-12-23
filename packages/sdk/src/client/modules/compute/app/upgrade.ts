@@ -362,7 +362,7 @@ export async function prepareUpgrade(
       logger.debug("Estimating gas...");
       const gasEstimate = await estimateBatchGas({
         publicClient: batch.publicClient,
-        environmentConfig: batch.environmentConfig,
+        account: batch.walletClient.account!.address,
         executions: batch.executions,
       });
 
