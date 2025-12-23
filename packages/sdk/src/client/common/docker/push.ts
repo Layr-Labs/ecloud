@@ -206,12 +206,10 @@ export async function pushDockerImage(
         logger?.debug?.("No clear success indicator in push output, verifying...");
       }
 
-      logger?.info?.("Image push completed successfully");
-
       // Verify the push by checking if image exists in registry
-      // Wait a bit longer for GHCR to process
       try {
         await verifyImageExists(imageRef, logger);
+        logger?.info?.("Image push completed successfully");
         resolve();
       } catch (error: any) {
         reject(error);
