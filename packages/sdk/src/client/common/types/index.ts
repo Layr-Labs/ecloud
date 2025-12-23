@@ -2,7 +2,7 @@
  * Core types for ECloud SDK
  */
 
-import { Address } from "viem";
+import { Address, Hex } from "viem";
 
 export type AppId = Address;
 
@@ -39,13 +39,106 @@ export interface UpgradeAppOpts {
   gas?: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint };
 }
 
+/** Options for prepareDeploy */
+export interface PrepareDeployOpts {
+  /** App name - required */
+  name: string;
+  /** Path to Dockerfile (if building from Dockerfile) */
+  dockerfile?: string;
+  /** Path to .env file - optional */
+  envFile?: string;
+  /** Image reference (registry/path:tag) */
+  imageRef?: string;
+  /** Instance type SKU - required */
+  instanceType: string;
+  /** Log visibility setting - required */
+  logVisibility: logVisibility;
+  /** Resource usage monitoring setting - optional */
+  resourceUsageMonitoring?: "enable" | "disable";
+}
+
+/** Options for prepareUpgrade */
+export interface PrepareUpgradeOpts {
+  /** Path to Dockerfile (if building from Dockerfile) */
+  dockerfile?: string;
+  /** Image reference (registry/path:tag) */
+  imageRef?: string;
+  /** Path to .env file - optional */
+  envFile?: string;
+  /** Instance type SKU - required */
+  instanceType: string;
+  /** Log visibility setting - required */
+  logVisibility: logVisibility;
+  /** Resource usage monitoring setting - optional */
+  resourceUsageMonitoring?: "enable" | "disable";
+}
+
+/** Gas options for execute functions */
+export interface GasOpts {
+  maxFeePerGas?: bigint;
+  maxPriorityFeePerGas?: bigint;
+}
+
+/** Result from executeDeploy */
+export interface ExecuteDeployResult {
+  appId: AppId;
+  txHash: Hex;
+  appName: string;
+  imageRef: string;
+}
+
+/** Result from executeUpgrade */
+export interface ExecuteUpgradeResult {
+  appId: AppId;
+  txHash: Hex;
+  imageRef: string;
+}
+
+/** Data-only batch for deploy (clients provided by module) */
+export interface PreparedDeployData {
+  /** The app ID that will be deployed */
+  appId: AppId;
+  /** The salt used for deployment */
+  salt: Uint8Array;
+  /** Batch executions to be sent */
+  executions: Array<{ target: Address; value: bigint; callData: Hex }>;
+}
+
+/** Data-only batch for upgrade (clients provided by module) */
+export interface PreparedUpgradeData {
+  /** The app ID being upgraded */
+  appId: AppId;
+  /** Batch executions to be sent */
+  executions: Array<{ target: Address; value: bigint; callData: Hex }>;
+}
+
+/** Prepared deployment ready for execution */
+export interface PreparedDeploy {
+  /** The prepared data (executions, appId, etc.) */
+  data: PreparedDeployData;
+  /** App name */
+  appName: string;
+  /** Final image reference */
+  imageRef: string;
+}
+
+/** Prepared upgrade ready for execution */
+export interface PreparedUpgrade {
+  /** The prepared data (executions, appId, etc.) */
+  data: PreparedUpgradeData;
+  /** App ID being upgraded */
+  appId: AppId;
+  /** Final image reference */
+  imageRef: string;
+}
+
 export interface LifecycleOpts {
   gas?: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint };
 }
 
 export interface AppRecord {
   id: AppId;
-  owner: `0x${string}`;
+  owner: Address;
   image: string;
   status: "starting" | "running" | "stopped" | "terminated";
   createdAt: number; // epoch ms
@@ -75,7 +168,7 @@ export interface DeployOptions {
 
 export interface DeployResult {
   /** App ID (contract address) */
-  appId: string;
+  appId: AppId;
   /** App name */
   appName: string;
   /** Final image reference */
@@ -83,7 +176,7 @@ export interface DeployResult {
   /** IP address (if available) */
   ipAddress?: string;
   /** Transaction hash */
-  txHash: `0x${string}`;
+  txHash: Hex;
 }
 
 export interface BillingEnvironmentConfig {
@@ -94,7 +187,7 @@ export interface EnvironmentConfig {
   name: string;
   build: "dev" | "prod";
   chainID: bigint;
-  appControllerAddress: string;
+  appControllerAddress: Address;
   permissionControllerAddress: string;
   erc7702DelegatorAddress: string;
   kmsServerURL: string;

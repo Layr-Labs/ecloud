@@ -15,6 +15,7 @@ import { REGISTRY_PROPAGATION_WAIT_SECONDS } from "../constants";
 import { parseAndValidateEnvFile } from "../env/parser";
 
 import { Release, EnvironmentConfig, Logger } from "../types";
+import { Hex } from "viem";
 
 export interface PrepareReleaseOptions {
   dockerfilePath?: string;
@@ -24,7 +25,7 @@ export interface PrepareReleaseOptions {
   resourceUsageAllow: string;
   instanceType: string;
   environmentConfig: EnvironmentConfig;
-  appId: string;
+  appId: Hex;
 }
 
 export interface PrepareReleaseResult {

@@ -1,15 +1,14 @@
 import { Command, Args, Flags } from "@oclif/core";
-import { getEnvironmentConfig, UserApiClient } from "@layr-labs/ecloud-sdk";
+import { getEnvironmentConfig } from "@layr-labs/ecloud-sdk";
 import { commonFlags } from "../../../../flags";
+import { createComputeClient } from "../../../../client";
 import {
   getOrPromptAppID,
   getAppProfileInteractive,
-  getPrivateKeyInteractive,
   validateAppProfile,
 } from "../../../../utils/prompts";
 import { createAppResolver } from "../../../../utils/appResolver";
 import { invalidateProfileCache } from "../../../../utils/globalConfig";
-import { getClientId } from "../../../../utils/version";
 import chalk from "chalk";
 import { withTelemetry } from "../../../../telemetry";
 
@@ -50,14 +49,13 @@ export default class ProfileSet extends Command {
   async run() {
     return withTelemetry(this, async () => {
       const { args, flags } = await this.parse(ProfileSet);
+      const compute = await createComputeClient(flags);
 
-      // Get environment config
-      const environment = flags.environment || "sepolia";
+      // Get validated values from flags (mutated by createComputeClient)
+      const environment = flags.environment;
       const environmentConfig = getEnvironmentConfig(environment);
       const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
-
-      // Get private key interactively if not provided
-      const privateKey = await getPrivateKeyInteractive(flags["private-key"]);
+      const privateKey = flags["private-key"]!;
 
       // Create app resolver for name resolution
       const resolver = createAppResolver(environment, environmentConfig, privateKey, rpcUrl);
@@ -110,20 +108,11 @@ export default class ProfileSet extends Command {
         }
       }
 
-      // Upload profile via API
+      // Upload profile via SDK
       this.log("\nUploading app profile...");
 
-      const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl);
-
       try {
-        const response = await userApiClient.uploadAppProfile(
-          appId,
-          profile.name,
-          profile.website,
-          profile.description,
-          profile.xURL,
-          profile.imagePath,
-        );
+        const response = await compute.app.setProfile(appId, profile);
 
         // Update profile cache with new name
         resolver.updateCacheEntry(appId, response.name);

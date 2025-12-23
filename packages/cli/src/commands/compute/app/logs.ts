@@ -29,8 +29,8 @@ export default class AppLogs extends Command {
       const { args, flags } = await this.parse(AppLogs);
       const compute = await createComputeClient(flags);
 
-      // Get environment config
-      const environment = flags.environment || "sepolia";
+      // Get environment config (flags already validated by createComputeClient)
+      const environment = flags.environment;
       const environmentConfig = getEnvironmentConfig(environment);
       const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
 

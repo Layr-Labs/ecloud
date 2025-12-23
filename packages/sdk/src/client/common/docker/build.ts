@@ -28,6 +28,7 @@ export async function buildDockerImage(
     tag,
     "-f",
     dockerfilePath,
+    "--load",
     "--progress=plain",
     buildContext,
   ];

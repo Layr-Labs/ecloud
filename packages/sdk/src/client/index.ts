@@ -10,6 +10,7 @@ import {
 } from "./common/config/environment";
 import { createBillingModule, type BillingModule } from "./modules/billing";
 import { addHexPrefix } from "./common/utils";
+import { Hex } from "viem";
 
 // Export all types
 export * from "./common/types";
@@ -31,7 +32,6 @@ export {
   prepareDeploy,
   executeDeploy,
   watchDeployment,
-  type PreparedDeploy,
   type PrepareDeployResult,
 } from "./modules/compute/app/deploy";
 export {
@@ -39,7 +39,6 @@ export {
   prepareUpgrade,
   executeUpgrade,
   watchUpgrade,
-  type PreparedUpgrade,
   type PrepareUpgradeResult,
 } from "./modules/compute/app/upgrade";
 
@@ -114,7 +113,7 @@ export type Environment = "sepolia" | "sepolia-dev" | "mainnet-alpha";
 
 export interface ClientConfig {
   verbose: boolean;
-  privateKey: `0x${string}`;
+  privateKey: Hex;
   environment: Environment | string;
   rpcUrl?: string;
 }
