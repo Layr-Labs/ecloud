@@ -393,10 +393,15 @@ async function selectRegistryInteractive(
 
 /**
  * Prompt for image reference
+ *
+ * @param imageRef - Pre-provided image reference (skips prompt if provided)
+ * @param buildFromDockerfile - Whether building from Dockerfile (affects messaging)
+ * @param currentImageRef - Current image reference for upgrades (used as default)
  */
 export async function getImageReferenceInteractive(
   imageRef?: string,
   buildFromDockerfile: boolean = false,
+  currentImageRef?: string,
 ): Promise<string> {
   if (imageRef) {
     return imageRef;
@@ -417,17 +422,42 @@ export async function getImageReferenceInteractive(
     }
 
     displayAuthenticationInstructions();
-  } else {
-    console.log("\n🐳 Docker Image Selection");
-    console.log("Specify an existing Docker image from a registry to run in the TEE.");
-    console.log();
+    displayRegistryExamples(appName);
+
+    const imageRefInput = await input({
+      message: "Enter Docker image reference:",
+      default: "",
+      validate: (value) => {
+        const result = validateImageReference(value);
+        return result === true ? true : result;
+      },
+    });
+
+    return imageRefInput;
   }
 
-  displayRegistryExamples(appName);
+  // Deploying existing image - compute smart default
+  let defaultImageRef = "";
+
+  if (currentImageRef) {
+    // For upgrades, use the current image as default
+    defaultImageRef = currentImageRef;
+  } else if (registries.length > 0) {
+    // For new deploys, suggest based on authenticated registry
+    defaultImageRef = suggestImageReference(registries[0], appName, "latest");
+  }
+
+  console.log("\n🐳 Docker Image Selection");
+  console.log("Specify an existing Docker image from a registry to run in the TEE.");
+  console.log();
+
+  if (!defaultImageRef) {
+    displayRegistryExamples(appName);
+  }
 
   const imageRefInput = await input({
     message: "Enter Docker image reference:",
-    default: "",
+    default: defaultImageRef,
     validate: (value) => {
       const result = validateImageReference(value);
       return result === true ? true : result;

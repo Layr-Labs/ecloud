@@ -16,7 +16,11 @@ import {
   ResourceUsageMonitoring,
   confirm,
 } from "../../../utils/prompts";
-import { invalidateProfileCache, setLinkedAppForDirectory } from "../../../utils/globalConfig";
+import {
+  invalidateProfileCache,
+  setLinkedAppForDirectory,
+  setAppImageRef,
+} from "../../../utils/globalConfig";
 import { getClientId } from "../../../utils/version";
 import chalk from "chalk";
 
@@ -230,8 +234,9 @@ export default class AppDeploy extends Command {
       try {
         const cwd = process.env.INIT_CWD || process.cwd();
         setLinkedAppForDirectory(environment, cwd, res.appId);
+        setAppImageRef(environment, res.appId, res.imageRef);
       } catch (err: any) {
-        logger.debug(`Failed to link directory to app: ${err.message}`);
+        logger.debug(`Failed to save app config: ${err.message}`);
       }
 
       this.log(

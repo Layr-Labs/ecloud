@@ -38,6 +38,11 @@ export interface GlobalConfig {
       [directoryPath: string]: string;
     };
   };
+  app_images?: {
+    [environment: string]: {
+      [appId: string]: string; // appId -> last used image reference
+    };
+  };
 }
 
 // Profile cache TTL: 24 hours in milliseconds
@@ -308,6 +313,42 @@ export function updateProfileCacheEntry(
   const normalizedAppId = appId.toLowerCase();
   config.profile_cache[environment].profiles[normalizedAppId] = profileName;
   config.profile_cache[environment].updated_at = Date.now();
+
+  saveGlobalConfig(config);
+}
+
+// ==================== App Image Functions ====================
+
+/**
+ * Get the last used image reference for an app
+ */
+export function getAppImageRef(environment: string, appId: string): string | null {
+  const config = loadGlobalConfig();
+  const images = config.app_images?.[environment];
+  if (!images) {
+    return null;
+  }
+
+  const normalizedAppId = appId.toLowerCase();
+  return images[normalizedAppId] || null;
+}
+
+/**
+ * Save the image reference used for an app
+ */
+export function setAppImageRef(environment: string, appId: string, imageRef: string): void {
+  const config = loadGlobalConfig();
+
+  if (!config.app_images) {
+    config.app_images = {};
+  }
+
+  if (!config.app_images[environment]) {
+    config.app_images[environment] = {};
+  }
+
+  const normalizedAppId = appId.toLowerCase();
+  config.app_images[environment][normalizedAppId] = imageRef;
 
   saveGlobalConfig(config);
 }

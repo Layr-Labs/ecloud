@@ -16,7 +16,11 @@ import {
   confirm,
 } from "../../../utils/prompts";
 import { getClientId } from "../../../utils/version";
-import { setLinkedAppForDirectory } from "../../../utils/globalConfig";
+import {
+  setLinkedAppForDirectory,
+  getAppImageRef,
+  setAppImageRef,
+} from "../../../utils/globalConfig";
 import chalk from "chalk";
 
 export default class AppUpgrade extends Command {
@@ -91,7 +95,13 @@ export default class AppUpgrade extends Command {
       const buildFromDockerfile = dockerfilePath !== "";
 
       // 3. Get image reference interactively (context-aware)
-      const imageRef = await getImageReferenceInteractive(flags["image-ref"], buildFromDockerfile);
+      // Use saved image reference as default for upgrades
+      const savedImageRef = getAppImageRef(environment, appID) || undefined;
+      const imageRef = await getImageReferenceInteractive(
+        flags["image-ref"],
+        buildFromDockerfile,
+        savedImageRef,
+      );
 
       // 4. Get env file path interactively
       const envFilePath = await getEnvFileInteractive(flags["env-file"]);
@@ -174,8 +184,9 @@ export default class AppUpgrade extends Command {
       try {
         const cwd = process.env.INIT_CWD || process.cwd();
         setLinkedAppForDirectory(environment, cwd, res.appId);
+        setAppImageRef(environment, res.appId, res.imageRef);
       } catch (err: any) {
-        logger.debug(`Failed to link directory to app: ${err.message}`);
+        logger.debug(`Failed to save app config: ${err.message}`);
       }
 
       this.log(
