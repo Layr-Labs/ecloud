@@ -33,6 +33,11 @@ export interface GlobalConfig {
   profile_cache?: {
     [environment: string]: ProfileCacheEntry;
   };
+  directory_links?: {
+    [environment: string]: {
+      [directoryPath: string]: string;
+    };
+  };
 }
 
 // Profile cache TTL: 24 hours in milliseconds
@@ -106,6 +111,60 @@ export function saveGlobalConfig(config: GlobalConfig): void {
   // Write config file
   const content = dumpYaml(config, { lineWidth: -1 });
   fs.writeFileSync(configPath, content, { mode: 0o644 });
+}
+
+function normalizeDirectoryPath(directoryPath: string): string {
+  const resolved = path.resolve(directoryPath);
+  try {
+    return fs.realpathSync(resolved);
+  } catch {
+    return resolved;
+  }
+}
+
+/**
+ * Get linked app ID for a directory in an environment
+ */
+export function getLinkedAppForDirectory(environment: string, directoryPath: string): string | null {
+  if (!directoryPath) {
+    return null;
+  }
+
+  const config = loadGlobalConfig();
+  const links = config.directory_links?.[environment];
+  if (!links) {
+    return null;
+  }
+
+  const normalizedPath = normalizeDirectoryPath(directoryPath);
+  const appId = links[normalizedPath];
+  return appId || null;
+}
+
+/**
+ * Link a directory to an app ID in an environment
+ */
+export function setLinkedAppForDirectory(
+  environment: string,
+  directoryPath: string,
+  appId: string,
+): void {
+  if (!directoryPath || !environment) {
+    return;
+  }
+
+  const config = loadGlobalConfig();
+  if (!config.directory_links) {
+    config.directory_links = {};
+  }
+  if (!config.directory_links[environment]) {
+    config.directory_links[environment] = {};
+  }
+
+  const normalizedPath = normalizeDirectoryPath(directoryPath);
+  // Normalize appId to lowercase for consistent lookups
+  config.directory_links[environment][normalizedPath] = appId.toLowerCase();
+  saveGlobalConfig(config);
 }
 
 /**

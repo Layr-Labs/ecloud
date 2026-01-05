@@ -1,6 +1,6 @@
 {
   "name": "@layr-labs/ecloud-sdk",
-  "version": "0.0.1-rfc.1",
+  "version": "development",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -30,6 +30,7 @@
   },
   "scripts": {
     "build": "tsup",
+    "build:dev": "BUILD_TYPE=dev tsup",
     "prepublishOnly": "cp ../../README.md .",
     "lint": "eslint .",
     "format": "prettier --check .",

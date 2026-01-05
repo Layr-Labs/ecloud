@@ -468,7 +468,7 @@ export class UserApiClient {
     const { signature } = await calculatePermissionSignature({
       permission,
       expiry,
-      appControllerAddress: this.config.appControllerAddress as Address,
+      appControllerAddress: this.config.appControllerAddress,
       publicClient,
       account: this.account,
     });

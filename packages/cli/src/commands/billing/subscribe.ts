@@ -37,7 +37,9 @@ export default class BillingSubscribe extends Command {
 
       // Handle already active subscription
       if (result.type === "already_active") {
-        this.log(`\n${chalk.green("✓")} You're already subscribed to ${flags.product}.`);
+        this.log(
+          `\n${chalk.green("✓")} Wallet ${chalk.bold(billing.address)} is already subscribed to ${flags.product}.`,
+        );
         this.log(chalk.gray("Run 'ecloud billing status' for details."));
         return;
       }
@@ -57,7 +59,7 @@ export default class BillingSubscribe extends Command {
       }
 
       // Open checkout URL in browser
-      this.log(`\n${chalk.gray("Opening checkout in your browser...")}`);
+      this.log(`\nOpening checkout for wallet ${chalk.bold(billing.address)}...`);
       this.log(chalk.gray(`\nURL: ${result.checkoutUrl}`));
       await open(result.checkoutUrl);
 

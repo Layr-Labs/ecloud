@@ -14,7 +14,7 @@ import { Hex } from "viem";
 export async function createComputeClient(flags: CommonFlags) {
   flags = await validateCommonFlags(flags);
 
-  const environment = flags.environment!;
+  const environment = flags.environment;
   const environmentConfig = getEnvironmentConfig(environment);
   const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
   const { key: privateKey, source } = await requirePrivateKey({

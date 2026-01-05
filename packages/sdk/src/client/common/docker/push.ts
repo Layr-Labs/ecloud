@@ -9,10 +9,10 @@ import * as os from "os";
 import * as path from "path";
 import * as child_process from "child_process";
 
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import { promisify } from "util";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 /**
  * Extract hostname from a registry URL/string for safe comparison
@@ -206,12 +206,10 @@ export async function pushDockerImage(
         logger?.debug?.("No clear success indicator in push output, verifying...");
       }
 
-      logger?.info?.("Image push completed successfully");
-
       // Verify the push by checking if image exists in registry
-      // Wait a bit longer for GHCR to process
       try {
         await verifyImageExists(imageRef, logger);
+        logger?.info?.("Image push completed successfully");
         resolve();
       } catch (error: any) {
         reject(error);
@@ -247,7 +245,7 @@ async function verifyImageExists(
 
   while (retries > 0) {
     try {
-      await execAsync(`docker manifest inspect ${imageRef}`, {
+      await execFileAsync("docker", ["manifest", "inspect", imageRef], {
         maxBuffer: 10 * 1024 * 1024,
         timeout: 10000, // 10 second timeout
       });

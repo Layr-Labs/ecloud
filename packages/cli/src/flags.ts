@@ -1,10 +1,11 @@
 import { Flags } from "@oclif/core";
+import { getBuildType } from "@layr-labs/ecloud-sdk";
 import { getEnvironmentInteractive, getPrivateKeyInteractive } from "./utils/prompts";
 import { getDefaultEnvironment } from "./utils/globalConfig";
 
 export type CommonFlags = {
   verbose: boolean;
-  environment?: string;
+  environment: string;
   "private-key"?: string;
   "rpc-url"?: string;
 };
@@ -14,6 +15,8 @@ export const commonFlags = {
     required: false,
     description: "Deployment environment to use",
     env: "ECLOUD_ENV",
+    default: async () =>
+      getDefaultEnvironment() || (getBuildType() === "dev" ? "sepolia-dev" : "sepolia"),
   }),
   "private-key": Flags.string({
     required: false,
@@ -32,20 +35,12 @@ export const commonFlags = {
   }),
 };
 
-// Validate or prompt for required common flags
-export async function validateCommonFlags(
-  flags: CommonFlags,
-  options?: { requirePrivateKey?: boolean },
-) {
-  // If no environment is selected, default to the global config env
-  if (!flags["environment"]) {
-    flags["environment"] = getDefaultEnvironment();
-  }
-  // If the provided env is invalid, proceed to prompt
+// Prompt for missing required values interactively
+export async function validateCommonFlags(flags: CommonFlags, options?: { requirePrivateKey?: boolean }) {
+  // Validate environment (in case user passed an invalid one)
   flags["environment"] = await getEnvironmentInteractive(flags["environment"]);
   if (options?.requirePrivateKey !== false) {
-  flags["private-key"] = await getPrivateKeyInteractive(flags["private-key"]);
+    flags["private-key"] = await getPrivateKeyInteractive(flags["private-key"]);
   }
-
   return flags;
 }

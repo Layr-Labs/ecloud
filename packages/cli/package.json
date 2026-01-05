@@ -1,6 +1,6 @@
 {
   "name": "@layr-labs/ecloud-cli",
-  "version": "0.0.1-rfc.1",
+  "version": "development",
   "type": "module",
   "files": [
     "dist",
@@ -30,6 +30,7 @@
   },
   "scripts": {
     "build": "tsup",
+    "build:dev": "BUILD_TYPE=dev tsup",
     "prepublishOnly": "cp ../../README.md .",
     "lint": "eslint .",
     "format": "prettier --check .",

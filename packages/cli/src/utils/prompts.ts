@@ -9,7 +9,7 @@ import { input, select, password, confirm as inquirerConfirm } from "@inquirer/p
 import fs from "fs";
 import path from "path";
 import os from "os";
-import { Address, isAddress } from "viem";
+import { Address, Hex, isAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import {
   getEnvironmentConfig,
@@ -30,16 +30,21 @@ import {
   UserApiClient,
 } from "@layr-labs/ecloud-sdk";
 import { getAppInfosChunked } from "./appResolver";
-import { getDefaultEnvironment, getProfileCache, setProfileCache } from "./globalConfig";
+import {
+  getDefaultEnvironment,
+  getProfileCache,
+  setProfileCache,
+  getLinkedAppForDirectory,
+} from "./globalConfig";
 import { listApps, isAppNameAvailable, findAvailableName } from "./appNames";
 import { getClientId } from "./version";
 
 // Helper to add hex prefix
-function addHexPrefix(value: string): `0x${string}` {
+function addHexPrefix(value: string): Hex {
   if (value.startsWith("0x")) {
-    return value as `0x${string}`;
+    return value as Hex;
   }
-  return `0x${value}` as `0x${string}`;
+  return `0x${value}`;
 }
 
 // ==================== Dockerfile Selection ====================
@@ -466,6 +471,10 @@ function getDefaultAppName(): string {
   } catch {
     return "myapp";
   }
+}
+
+function getCurrentProjectPath(): string {
+  return process.env.INIT_CWD || process.cwd();
 }
 
 function suggestImageReference(registry: RegistryInfo, imageName: string, tag: string): string {
@@ -1111,7 +1120,21 @@ async function getAppIDInteractive(options: GetAppIDOptions): Promise<Address> {
     });
   }
 
+  const linkedAppId = getLinkedAppForDirectory(environment, getCurrentProjectPath());
+  const normalizedLinkedAppId = linkedAppId ? linkedAppId.toLowerCase() : "";
+
   appItems.sort((a, b) => {
+    if (normalizedLinkedAppId) {
+      const aLinked = String(a.addr).toLowerCase() === normalizedLinkedAppId;
+      const bLinked = String(b.addr).toLowerCase() === normalizedLinkedAppId;
+      if (aLinked && !bLinked) {
+        return -1;
+      }
+      if (bLinked && !aLinked) {
+        return 1;
+      }
+    }
+
     const aPriority = getStatusPriority(a.status, false);
     const bPriority = getStatusPriority(b.status, false);
 
@@ -1196,7 +1219,19 @@ async function getAppIDInteractiveFromRegistry(
     throw new Error(`Invalid app ID address: ${appIDInput}`);
   }
 
-  const choices = Object.entries(allApps).map(([name, appID]) => {
+  const entries = Object.entries(allApps);
+  const linkedAppId = getLinkedAppForDirectory(environment, getCurrentProjectPath());
+  if (linkedAppId) {
+    const linkedIndex = entries.findIndex(
+      ([, appId]) => String(appId).toLowerCase() === linkedAppId.toLowerCase(),
+    );
+    if (linkedIndex > 0) {
+      const [linkedEntry] = entries.splice(linkedIndex, 1);
+      entries.unshift(linkedEntry);
+    }
+  }
+
+  const choices = entries.map(([name, appID]) => {
     const displayName = `${name} (${appID})`;
     return { name: displayName, value: appID };
   });

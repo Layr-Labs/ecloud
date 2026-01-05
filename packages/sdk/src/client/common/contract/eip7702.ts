@@ -10,9 +10,6 @@ import {
   encodeFunctionData,
   encodeAbiParameters,
   decodeErrorResult,
-  keccak256,
-  toBytes,
-  concat,
 } from "viem";
 
 import type { WalletClient, PublicClient, SendTransactionParameters } from "viem";
@@ -22,52 +19,89 @@ import ERC7702DelegatorABI from "../abis/ERC7702Delegator.json";
 
 import { GasEstimate, formatETH } from "./caller";
 
+// Mode 0x01 is executeBatchMode (32 bytes, padded, big endian)
+const EXECUTE_BATCH_MODE = "0x0100000000000000000000000000000000000000000000000000000000000000" as Hex;
+
+const GAS_LIMIT_BUFFER_PERCENTAGE = 20n; // 20%
+const GAS_PRICE_BUFFER_PERCENTAGE = 100n; // 100%
+
+export type Execution = {
+  target: Address;
+  value: bigint;
+  callData: Hex;
+};
+
+/**
+ * Encode executions array and pack into execute function call data
+ */
+function encodeExecuteBatchData(executions: Execution[]): Hex {
+  const encodedExecutions = encodeAbiParameters(
+    [
+      {
+        type: "tuple[]",
+        components: [
+          { name: "target", type: "address" },
+          { name: "value", type: "uint256" },
+          { name: "callData", type: "bytes" },
+        ],
+      },
+    ],
+    [executions],
+  );
+
+  return encodeFunctionData({
+    abi: ERC7702DelegatorABI,
+    functionName: "execute",
+    args: [EXECUTE_BATCH_MODE, encodedExecutions],
+  });
+}
+
 /**
  * Options for estimating batch gas
  */
 export interface EstimateBatchGasOptions {
   publicClient: PublicClient;
-  environmentConfig: EnvironmentConfig;
-  executions: Array<{
-    target: Address;
-    value: bigint;
-    callData: Hex;
-  }>;
+  account: Address;
+  executions: Execution[];
 }
 
 /**
  * Estimate gas cost for a batch transaction
  *
  * Use this to get cost estimate before prompting user for confirmation.
- * Note: This provides a conservative estimate since batch transactions
- * through EIP-7702 can have variable costs.
  */
 export async function estimateBatchGas(options: EstimateBatchGasOptions): Promise<GasEstimate> {
-  const { publicClient, executions } = options;
+  const { publicClient, account, executions } = options;
 
-  // Get current gas prices
-  const fees = await publicClient.estimateFeesPerGas();
+  const executeBatchData = encodeExecuteBatchData(executions);
 
-  // For batch operations, we use a conservative estimate
-  // Each execution adds ~50k gas, plus base cost of ~100k for the delegator call
-  const baseGas = 100000n;
-  const perExecutionGas = 50000n;
-  const estimatedGas = baseGas + BigInt(executions.length) * perExecutionGas;
+  // EIP-7702 transactions send to self (the EOA with delegated code)
+  const [gasTipCap, block, estimatedGas] = await Promise.all([
+    publicClient.estimateMaxPriorityFeePerGas(),
+    publicClient.getBlock(),
+    publicClient.estimateGas({
+      account,
+      to: account,
+      data: executeBatchData,
+    }),
+  ]);
 
-  // Add 20% buffer for safety
-  const gasLimit = (estimatedGas * 120n) / 100n;
+  const baseFee = block.baseFeePerGas ?? 0n;
 
-  const maxFeePerGas = fees.maxFeePerGas;
-  const maxPriorityFeePerGas = fees.maxPriorityFeePerGas;
+  // Calculate gas price with 100% buffer: (baseFee + gasTipCap) * 2
+  const maxFeePerGas = ((baseFee + gasTipCap) * (100n + GAS_PRICE_BUFFER_PERCENTAGE)) / 100n;
+
+  // Add 20% buffer to gas limit
+  const gasLimit = (estimatedGas * (100n + GAS_LIMIT_BUFFER_PERCENTAGE)) / 100n;
+
   const maxCostWei = gasLimit * maxFeePerGas;
-  const maxCostEth = formatETH(maxCostWei);
 
   return {
     gasLimit,
     maxFeePerGas,
-    maxPriorityFeePerGas,
+    maxPriorityFeePerGas: gasTipCap,
     maxCostWei,
-    maxCostEth,
+    maxCostEth: formatETH(maxCostWei),
   };
 }
 
@@ -75,11 +109,7 @@ export interface ExecuteBatchOptions {
   walletClient: WalletClient;
   publicClient: PublicClient;
   environmentConfig: EnvironmentConfig;
-  executions: Array<{
-    target: Address;
-    value: bigint;
-    callData: Hex;
-  }>;
+  executions: Execution[];
   pendingMessage: string;
   /** Optional gas params from estimation */
   gas?: {
@@ -96,7 +126,7 @@ export async function checkERC7702Delegation(
   account: Address,
   delegatorAddress: Address,
 ): Promise<boolean> {
-  const code = await publicClient.getBytecode({ address: account });
+  const code = await publicClient.getCode({ address: account });
   if (!code) {
     return false;
   }
@@ -108,12 +138,6 @@ export async function checkERC7702Delegation(
 
 /**
  * Execute batch of operations via EIP-7702 delegator
- *
- * This function uses viem's built-in EIP-7702 support to handle transaction
- * construction, signing, and sending. We focus on:
- * 1. Encoding the executions correctly
- * 2. Creating authorization if needed
- * 3. Passing the right parameters to viem
  */
 export async function executeBatch(options: ExecuteBatchOptions, logger: Logger): Promise<Hex> {
   const { walletClient, publicClient, environmentConfig, executions, pendingMessage, gas } =
@@ -129,50 +153,9 @@ export async function executeBatch(options: ExecuteBatchOptions, logger: Logger)
     throw new Error("Wallet client must have a chain");
   }
 
-  // 1. Encode executions array
-  // The Execution struct is: { target: address, value: uint256, callData: bytes }
-  // Go's EncodeExecutions uses abi.Arguments.Pack which produces standard ABI encoding
-  const encodedExecutions = encodeAbiParameters(
-    [
-      {
-        type: "tuple[]",
-        components: [
-          { name: "target", type: "address" },
-          { name: "value", type: "uint256" },
-          { name: "callData", type: "bytes" },
-        ],
-      },
-    ],
-    [executions],
-  );
+  const executeBatchData = encodeExecuteBatchData(executions);
 
-  // 2. Pack ExecuteBatch call
-  // Mode 0x01 is executeBatchMode (32 bytes, padded) (big endian)
-  const executeBatchMode =
-    "0x0100000000000000000000000000000000000000000000000000000000000000" as Hex;
-
-  // Encode the execute function call
-  // Function signature: execute(bytes32 _mode, bytes _executionCalldata)
-  // Function selector: 0xe9ae5c53
-  let executeBatchData: Hex;
-  try {
-    executeBatchData = encodeFunctionData({
-      abi: ERC7702DelegatorABI,
-      functionName: "execute",
-      args: [executeBatchMode, encodedExecutions],
-    });
-  } catch {
-    // Fallback: Manually construct if viem selects wrong overload
-    const functionSignature = "execute(bytes32,bytes)";
-    const selector = keccak256(toBytes(functionSignature)).slice(0, 10) as Hex;
-    const encodedParams = encodeAbiParameters(
-      [{ type: "bytes32" }, { type: "bytes" }],
-      [executeBatchMode, encodedExecutions],
-    );
-    executeBatchData = concat([selector as Hex, encodedParams]) as Hex;
-  }
-
-  // 3. Check if account is delegated
+  // Check if account is delegated
   const isDelegated = await checkERC7702Delegation(
     publicClient,
     account.address,

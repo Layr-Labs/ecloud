@@ -14,7 +14,7 @@ import { REGISTRY_PROPAGATION_WAIT_SECONDS } from "../constants";
 
 import { parseAndValidateEnvFile } from "../env/parser";
 
-import { Release, EnvironmentConfig, Logger } from "../types";
+import { Release, EnvironmentConfig, Logger, AppId } from "../types";
 
 export interface PrepareReleaseOptions {
   dockerfilePath?: string;
@@ -24,7 +24,7 @@ export interface PrepareReleaseOptions {
   resourceUsageAllow: string;
   instanceType: string;
   environmentConfig: EnvironmentConfig;
-  appId: string;
+  appId: AppId;
 }
 
 export interface PrepareReleaseResult {

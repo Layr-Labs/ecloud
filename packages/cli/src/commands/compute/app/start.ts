@@ -31,8 +31,8 @@ export default class AppLifecycleStart extends Command {
       const { args, flags } = await this.parse(AppLifecycleStart);
       const compute = await createComputeClient(flags);
 
-      // Get environment config
-      const environment = flags.environment || "sepolia";
+      // Get environment config (flags already validated by createComputeClient)
+      const environment = flags.environment;
       const environmentConfig = getEnvironmentConfig(environment);
 
       // Get RPC URL (needed for contract queries and authentication)
@@ -51,12 +51,12 @@ export default class AppLifecycleStart extends Command {
       });
 
       // Estimate gas cost
-      const callData = encodeStartAppData(appId as `0x${string}`);
+      const callData = encodeStartAppData(appId);
       const estimate = await estimateTransactionGas({
         privateKey,
         rpcUrl,
         environmentConfig,
-        to: environmentConfig.appControllerAddress as `0x${string}`,
+        to: environmentConfig.appControllerAddress,
         data: callData,
       });
 

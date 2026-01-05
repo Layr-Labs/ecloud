@@ -1,16 +1,8 @@
 import { Command, Args, Flags } from "@oclif/core";
-import {
-  getEnvironmentConfig,
-  UserApiClient,
-  isMainnet,
-  prepareUpgrade,
-  prepareUpgradeFromVerifiableBuild,
-  executeUpgrade,
-  watchUpgrade,
-} from "@layr-labs/ecloud-sdk";
+import { getEnvironmentConfig, UserApiClient, isMainnet } from "@layr-labs/ecloud-sdk";
 import { withTelemetry } from "../../../telemetry";
 import { commonFlags } from "../../../flags";
-import { createBuildClient } from "../../../client";
+import { createBuildClient, createComputeClient } from "../../../client";
 import {
   getDockerfileInteractive,
   getImageReferenceInteractive,
@@ -22,13 +14,13 @@ import {
   LogVisibility,
   ResourceUsageMonitoring,
   confirm,
-  getPrivateKeyInteractive,
   promptUseVerifiableBuild,
   promptVerifiableSourceType,
   promptVerifiableGitSourceInputs,
   promptVerifiablePrebuiltImageRef,
 } from "../../../utils/prompts";
 import { getClientId } from "../../../utils/version";
+import { setLinkedAppForDirectory } from "../../../utils/globalConfig";
 import chalk from "chalk";
 import { formatVerifiableBuildSummary } from "../../../utils/build";
 import { assertCommitSha40, runVerifiableBuildAndVerify } from "../../../utils/verifiableBuild";
@@ -118,22 +110,13 @@ export default class AppUpgrade extends Command {
   async run() {
     return withTelemetry(this, async () => {
       const { args, flags } = await this.parse(AppUpgrade);
+      const compute = await createComputeClient(flags);
 
-      // Create CLI logger
-      const logger = {
-        info: (msg: string) => this.log(msg),
-        warn: (msg: string) => this.warn(msg),
-        error: (msg: string) => this.error(msg),
-        debug: (msg: string) => flags.verbose && this.log(msg),
-      };
-
-      // Get environment config
-      const environment = flags.environment || "sepolia";
+      // Get validated values from flags (mutated by createComputeClient)
+      const environment = flags.environment;
       const environmentConfig = getEnvironmentConfig(environment);
       const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
-
-      // Get private key interactively if not provided
-      const privateKey = await getPrivateKeyInteractive(flags["private-key"]);
+      const privateKey = flags["private-key"]!;
 
       // 1. Get app ID interactively if not provided
       const appID = await getOrPromptAppID({
@@ -342,38 +325,22 @@ export default class AppUpgrade extends Command {
           : "off";
 
       const { prepared, gasEstimate } = isVerifiable
-        ? await prepareUpgradeFromVerifiableBuild(
-            {
-              appId: appID,
-              privateKey,
-              rpcUrl,
-              environment,
-              imageRef,
-              imageDigest: verifiableImageDigest!,
-              envFilePath,
-              instanceType,
-              logVisibility,
-              resourceUsageMonitoring,
-              skipTelemetry: true,
-            },
-            logger,
-          )
-        : await prepareUpgrade(
-            {
-              appId: appID,
-              privateKey,
-              rpcUrl,
-              environment,
-              dockerfilePath,
-              imageRef,
-              envFilePath,
-              instanceType,
-              logVisibility,
-              resourceUsageMonitoring,
-              skipTelemetry: true,
-            },
-            logger,
-          );
+        ? await compute.app.prepareUpgradeFromVerifiableBuild(appID, {
+            imageRef,
+            imageDigest: verifiableImageDigest!,
+            envFile: envFilePath,
+            instanceType,
+            logVisibility,
+            resourceUsageMonitoring,
+          })
+        : await compute.app.prepareUpgrade(appID, {
+            dockerfile: dockerfilePath,
+            imageRef,
+            envFile: envFilePath,
+            instanceType,
+            logVisibility,
+            resourceUsageMonitoring,
+          });
 
       // 10. Show gas estimate and prompt for confirmation on mainnet
       this.log(`\nEstimated transaction cost: ${chalk.cyan(gasEstimate.maxCostEth)} ETH`);
@@ -387,18 +354,20 @@ export default class AppUpgrade extends Command {
       }
 
       // 11. Execute the upgrade
-      const res = await executeUpgrade(
-        prepared,
-        {
-          maxFeePerGas: gasEstimate.maxFeePerGas,
-          maxPriorityFeePerGas: gasEstimate.maxPriorityFeePerGas,
-        },
-        logger,
-        true, // skipTelemetry
-      );
+      const res = await compute.app.executeUpgrade(prepared, {
+        maxFeePerGas: gasEstimate.maxFeePerGas,
+        maxPriorityFeePerGas: gasEstimate.maxPriorityFeePerGas,
+      });
 
       // 12. Watch until upgrade completes
-      await watchUpgrade(res.appId, privateKey, rpcUrl, environment, logger, getClientId(), true); // skipTelemetry
+      await compute.app.watchUpgrade(res.appId);
+
+      try {
+        const cwd = process.env.INIT_CWD || process.cwd();
+        setLinkedAppForDirectory(environment, cwd, res.appId);
+      } catch (err: any) {
+        this.debug(`Failed to link directory to app: ${err.message}`);
+      }
 
       this.log(
         `\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${res.appId}, image: ${res.imageRef})`)}`)}`,

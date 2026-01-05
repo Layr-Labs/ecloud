@@ -2,7 +2,8 @@
  * Main Compute namespace entry point
  */
 
-import { createAppModule, type AppModule, type AppModuleConfig } from "./app";
+import { Hex } from "viem";
+import { createAppModule, type AppModule } from "./app";
 
 export interface ComputeModule {
   app: AppModule;
@@ -10,7 +11,7 @@ export interface ComputeModule {
 
 export interface ComputeModuleConfig {
   verbose?: boolean;
-  privateKey: `0x${string}`;
+  privateKey: Hex;
   rpcUrl: string;
   environment: string;
   clientId?: string;

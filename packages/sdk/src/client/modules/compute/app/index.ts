@@ -2,9 +2,29 @@
  * Main App namespace entry point
  */
 
-import { parseAbi, encodeFunctionData } from "viem";
-import { deploy as deployApp } from "./deploy";
-import { upgrade as upgradeApp } from "./upgrade";
+import {
+  parseAbi,
+  encodeFunctionData,
+  Hex,
+  createWalletClient,
+  createPublicClient,
+  http,
+} from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import {
+  deploy as deployApp,
+  prepareDeploy as prepareDeployFn,
+  prepareDeployFromVerifiableBuild as prepareDeployFromVerifiableBuildFn,
+  executeDeploy as executeDeployFn,
+  watchDeployment as watchDeploymentFn,
+} from "./deploy";
+import {
+  upgrade as upgradeApp,
+  prepareUpgrade as prepareUpgradeFn,
+  prepareUpgradeFromVerifiableBuild as prepareUpgradeFromVerifiableBuildFn,
+  executeUpgrade as executeUpgradeFn,
+  watchUpgrade as watchUpgradeFn,
+} from "./upgrade";
 import { createApp, CreateAppOpts } from "./create";
 import { logs, LogsOptions } from "./logs";
 
@@ -13,11 +33,29 @@ import {
   sendAndWaitForTransaction,
   undelegate,
   isDelegated,
+  type GasEstimate,
 } from "../../../common/contract/caller";
 import { withSDKTelemetry } from "../../../common/telemetry/wrapper";
+import { UserApiClient } from "../../../common/utils/userapi";
 
-import type { AppId, DeployAppOpts, LifecycleOpts, UpgradeAppOpts } from "../../../common/types";
-import { getLogger, addHexPrefix } from "../../../common/utils";
+import type {
+  AppId,
+  DeployAppOpts,
+  LifecycleOpts,
+  UpgradeAppOpts,
+  AppProfile,
+  AppProfileResponse,
+  ExecuteDeployResult,
+  ExecuteUpgradeResult,
+  GasOpts,
+  PrepareDeployOpts,
+  PrepareDeployFromVerifiableBuildOpts,
+  PrepareUpgradeOpts,
+  PrepareUpgradeFromVerifiableBuildOpts,
+  PreparedDeploy,
+  PreparedUpgrade,
+} from "../../../common/types";
+import { getLogger, addHexPrefix, getChainFromID } from "../../../common/utils";
 
 // Minimal ABI
 const CONTROLLER_ABI = parseAbi([
@@ -29,7 +67,7 @@ const CONTROLLER_ABI = parseAbi([
 /**
  * Encode start app call data for gas estimation
  */
-export function encodeStartAppData(appId: AppId): `0x${string}` {
+export function encodeStartAppData(appId: AppId): Hex {
   return encodeFunctionData({
     abi: CONTROLLER_ABI,
     functionName: "startApp",
@@ -40,7 +78,7 @@ export function encodeStartAppData(appId: AppId): `0x${string}` {
 /**
  * Encode stop app call data for gas estimation
  */
-export function encodeStopAppData(appId: AppId): `0x${string}` {
+export function encodeStopAppData(appId: AppId): Hex {
   return encodeFunctionData({
     abi: CONTROLLER_ABI,
     functionName: "stopApp",
@@ -51,7 +89,7 @@ export function encodeStopAppData(appId: AppId): `0x${string}` {
 /**
  * Encode terminate app call data for gas estimation
  */
-export function encodeTerminateAppData(appId: AppId): `0x${string}` {
+export function encodeTerminateAppData(appId: AppId): Hex {
   return encodeFunctionData({
     abi: CONTROLLER_ABI,
     functionName: "terminateApp",
@@ -60,10 +98,13 @@ export function encodeTerminateAppData(appId: AppId): `0x${string}` {
 }
 
 export interface AppModule {
+  // Project creation
   create: (opts: CreateAppOpts) => Promise<void>;
+
+  // Full deploy/upgrade
   deploy: (opts: DeployAppOpts) => Promise<{
     appId: AppId;
-    tx: `0x${string}`;
+    tx: Hex;
     appName: string;
     imageRef: string;
     ipAddress?: string;
@@ -71,18 +112,57 @@ export interface AppModule {
   upgrade: (
     appId: AppId,
     opts: UpgradeAppOpts,
-  ) => Promise<{ tx: `0x${string}`; appId: string; imageRef: string }>;
+  ) => Promise<{ tx: Hex; appId: AppId; imageRef: string }>;
+
+  // Granular deploy control
+  prepareDeploy: (opts: PrepareDeployOpts) => Promise<{
+    prepared: PreparedDeploy;
+    gasEstimate: GasEstimate;
+  }>;
+  prepareDeployFromVerifiableBuild: (opts: PrepareDeployFromVerifiableBuildOpts) => Promise<{
+    prepared: PreparedDeploy;
+    gasEstimate: GasEstimate;
+  }>;
+  executeDeploy: (prepared: PreparedDeploy, gas?: GasOpts) => Promise<ExecuteDeployResult>;
+  watchDeployment: (appId: AppId) => Promise<string | undefined>;
+
+  // Granular upgrade control
+  prepareUpgrade: (
+    appId: AppId,
+    opts: PrepareUpgradeOpts,
+  ) => Promise<{
+    prepared: PreparedUpgrade;
+    gasEstimate: GasEstimate;
+  }>;
+  prepareUpgradeFromVerifiableBuild: (
+    appId: AppId,
+    opts: PrepareUpgradeFromVerifiableBuildOpts,
+  ) => Promise<{
+    prepared: PreparedUpgrade;
+    gasEstimate: GasEstimate;
+  }>;
+  executeUpgrade: (prepared: PreparedUpgrade, gas?: GasOpts) => Promise<ExecuteUpgradeResult>;
+  watchUpgrade: (appId: AppId) => Promise<void>;
+
+  // Profile management
+  setProfile: (appId: AppId, profile: AppProfile) => Promise<AppProfileResponse>;
+
+  // Logs
   logs: (opts: LogsOptions) => Promise<void>;
-  start: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: `0x${string}` | false }>;
-  stop: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: `0x${string}` | false }>;
-  terminate: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: `0x${string}` | false }>;
+
+  // Lifecycle
+  start: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: Hex | false }>;
+  stop: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: Hex | false }>;
+  terminate: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: Hex | false }>;
+
+  // Delegation
   isDelegated: () => Promise<boolean>;
-  undelegate: () => Promise<{ tx: `0x${string}` | false }>;
+  undelegate: () => Promise<{ tx: Hex | false }>;
 }
 
 export interface AppModuleConfig {
   verbose?: boolean;
-  privateKey: `0x${string}`;
+  privateKey: Hex;
   rpcUrl: string;
   environment: string;
   clientId?: string;
@@ -156,6 +236,200 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
       };
     },
 
+    // Granular deploy control
+    async prepareDeploy(opts) {
+      return prepareDeployFn(
+        {
+          privateKey,
+          rpcUrl: ctx.rpcUrl,
+          environment: ctx.environment,
+          appName: opts.name,
+          instanceType: opts.instanceType,
+          dockerfilePath: opts.dockerfile,
+          envFilePath: opts.envFile,
+          imageRef: opts.imageRef,
+          logVisibility: opts.logVisibility,
+          resourceUsageMonitoring: opts.resourceUsageMonitoring,
+          skipTelemetry,
+        },
+        logger,
+      );
+    },
+
+    async prepareDeployFromVerifiableBuild(opts) {
+      return prepareDeployFromVerifiableBuildFn(
+        {
+          privateKey,
+          rpcUrl: ctx.rpcUrl,
+          environment: ctx.environment,
+          appName: opts.name,
+          instanceType: opts.instanceType,
+          envFilePath: opts.envFile,
+          imageRef: opts.imageRef,
+          imageDigest: opts.imageDigest,
+          logVisibility: opts.logVisibility,
+          resourceUsageMonitoring: opts.resourceUsageMonitoring,
+          skipTelemetry,
+        },
+        logger,
+      );
+    },
+
+    async executeDeploy(prepared, gas) {
+      // Create clients from module context
+      const account = privateKeyToAccount(privateKey);
+      const chain = getChainFromID(environment.chainID);
+      const publicClient = createPublicClient({
+        chain,
+        transport: http(ctx.rpcUrl),
+      });
+      const walletClient = createWalletClient({
+        account,
+        chain,
+        transport: http(ctx.rpcUrl),
+      });
+
+      const result = await executeDeployFn({
+        prepared,
+        context: {
+          walletClient,
+          publicClient,
+          environmentConfig: environment,
+        },
+        gas,
+        logger,
+        skipTelemetry,
+      });
+      return {
+        appId: result.appId,
+        txHash: result.txHash,
+        appName: result.appName,
+        imageRef: result.imageRef,
+      };
+    },
+
+    async watchDeployment(appId) {
+      return watchDeploymentFn(
+        appId,
+        privateKey,
+        ctx.rpcUrl,
+        ctx.environment,
+        logger,
+        ctx.clientId,
+        skipTelemetry,
+      );
+    },
+
+    // Granular upgrade control
+    async prepareUpgrade(appId, opts) {
+      return prepareUpgradeFn(
+        {
+          appId,
+          privateKey,
+          rpcUrl: ctx.rpcUrl,
+          environment: ctx.environment,
+          instanceType: opts.instanceType,
+          dockerfilePath: opts.dockerfile,
+          envFilePath: opts.envFile,
+          imageRef: opts.imageRef,
+          logVisibility: opts.logVisibility,
+          resourceUsageMonitoring: opts.resourceUsageMonitoring,
+          skipTelemetry,
+        },
+        logger,
+      );
+    },
+
+    async prepareUpgradeFromVerifiableBuild(appId, opts) {
+      return prepareUpgradeFromVerifiableBuildFn(
+        {
+          appId,
+          privateKey,
+          rpcUrl: ctx.rpcUrl,
+          environment: ctx.environment,
+          instanceType: opts.instanceType,
+          envFilePath: opts.envFile,
+          imageRef: opts.imageRef,
+          imageDigest: opts.imageDigest,
+          logVisibility: opts.logVisibility,
+          resourceUsageMonitoring: opts.resourceUsageMonitoring,
+          skipTelemetry,
+        },
+        logger,
+      );
+    },
+
+    async executeUpgrade(prepared, gas) {
+      // Create clients from module context
+      const account = privateKeyToAccount(privateKey);
+      const chain = getChainFromID(environment.chainID);
+      const publicClient = createPublicClient({
+        chain,
+        transport: http(ctx.rpcUrl),
+      });
+      const walletClient = createWalletClient({
+        account,
+        chain,
+        transport: http(ctx.rpcUrl),
+      });
+
+      const result = await executeUpgradeFn({
+        prepared,
+        context: {
+          walletClient,
+          publicClient,
+          environmentConfig: environment,
+        },
+        gas,
+        logger,
+        skipTelemetry,
+      });
+      return {
+        appId: result.appId,
+        txHash: result.txHash,
+        imageRef: result.imageRef,
+      };
+    },
+
+    async watchUpgrade(appId) {
+      return watchUpgradeFn(
+        appId,
+        privateKey,
+        ctx.rpcUrl,
+        ctx.environment,
+        logger,
+        ctx.clientId,
+        skipTelemetry,
+      );
+    },
+
+    // Profile management
+    async setProfile(appId, profile) {
+      return withSDKTelemetry(
+        {
+          functionName: "setProfile",
+          skipTelemetry,
+          properties: { environment: ctx.environment },
+        },
+        async () => {
+          const userApiClient = new UserApiClient(
+            environment,
+            privateKey,
+            ctx.rpcUrl,
+            ctx.clientId,
+          );
+          return userApiClient.uploadAppProfile(
+            appId,
+            profile.name,
+            profile.website,
+            profile.description,
+            profile.xURL,
+            profile.imagePath,
+          );
+        },
+      );
+    },
+
     async logs(opts) {
       return logs(
         {
@@ -191,7 +465,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
               privateKey,
               rpcUrl: ctx.rpcUrl,
               environmentConfig: environment,
-              to: environment.appControllerAddress as `0x${string}`,
+              to: environment.appControllerAddress,
               data,
               pendingMessage,
               txDescription: "StartApp",
@@ -225,7 +499,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
               privateKey,
               rpcUrl: ctx.rpcUrl,
               environmentConfig: environment,
-              to: environment.appControllerAddress as `0x${string}`,
+              to: environment.appControllerAddress,
               data,
               pendingMessage,
               txDescription: "StopApp",
@@ -259,7 +533,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
               privateKey,
               rpcUrl: ctx.rpcUrl,
               environmentConfig: environment,
-              to: environment.appControllerAddress as `0x${string}`,
+              to: environment.appControllerAddress,
               data,
               pendingMessage,
               txDescription: "TerminateApp",

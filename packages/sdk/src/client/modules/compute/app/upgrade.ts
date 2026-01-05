@@ -8,8 +8,15 @@
  * provided explicitly. Use the CLI for interactive parameter collection.
  */
 
-import { Address } from "viem";
-import { Logger, EnvironmentConfig } from "../../../common/types";
+import { Address, Hex } from "viem";
+import type { WalletClient, PublicClient } from "viem";
+import {
+  Logger,
+  AppId,
+  PreparedUpgrade,
+  PreparedUpgradeData,
+  EnvironmentConfig,
+} from "../../../common/types";
 import { getEnvironmentConfig } from "../../../common/config/environment";
 import { ensureDockerIsRunning } from "../../../common/docker/build";
 import { prepareRelease } from "../../../common/release/prepare";
@@ -18,7 +25,6 @@ import {
   upgradeApp,
   prepareUpgradeBatch,
   executeUpgradeBatch,
-  type PreparedUpgradeBatch,
   type GasEstimate,
 } from "../../../common/contract/caller";
 import { estimateBatchGas } from "../../../common/contract/eip7702";
@@ -72,29 +78,11 @@ export interface SDKUpgradeOptions {
 
 export interface UpgradeResult {
   /** App ID (contract address) */
-  appId: string;
+  appId: AppId;
   /** Final image reference */
   imageRef: string;
   /** Transaction hash */
-  txHash: `0x${string}`;
-}
-
-/**
- * Prepared upgrade ready for gas estimation and execution
- */
-export interface PreparedUpgrade {
-  /** The prepared batch (executions, clients, etc.) */
-  batch: PreparedUpgradeBatch;
-  /** App ID being upgraded */
-  appId: string;
-  /** Final image reference */
-  imageRef: string;
-  /** Preflight context for post-upgrade operations */
-  preflightCtx: {
-    privateKey: string;
-    rpcUrl: string;
-    environmentConfig: EnvironmentConfig;
-  };
+  txHash: Hex;
 }
 
 /**
@@ -105,6 +93,19 @@ export interface PrepareUpgradeResult {
   prepared: PreparedUpgrade;
   /** Gas estimate for the batch transaction */
   gasEstimate: GasEstimate;
+}
+
+/** Options for executing a prepared upgrade */
+export interface ExecuteUpgradeOptions {
+  prepared: PreparedUpgrade;
+  context: {
+    walletClient: WalletClient;
+    publicClient: PublicClient;
+    environmentConfig: EnvironmentConfig;
+  };
+  gas?: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint };
+  logger?: Logger;
+  skipTelemetry?: boolean;
 }
 
 /**
@@ -190,20 +191,21 @@ export async function prepareUpgradeFromVerifiableBuild(
       logger.debug("Estimating gas...");
       const gasEstimate = await estimateBatchGas({
         publicClient: batch.publicClient,
-        environmentConfig: batch.environmentConfig,
+        account: batch.walletClient.account!.address,
         executions: batch.executions,
       });
 
+      // Extract only data fields for public type (clients stay internal)
+      const data: PreparedUpgradeData = {
+        appId: batch.appId,
+        executions: batch.executions,
+      };
+
       return {
         prepared: {
-          batch,
-          appId: appID as string,
+          data,
+          appId: appID as Address,
           imageRef: options.imageRef,
-          preflightCtx: {
-            privateKey: preflightCtx.privateKey,
-            rpcUrl: preflightCtx.rpcUrl,
-            environmentConfig: preflightCtx.environmentConfig,
-          },
         },
         gasEstimate,
       };
@@ -330,7 +332,7 @@ export async function upgrade(
           resourceUsageAllow,
           instanceType,
           environmentConfig: preflightCtx.environmentConfig,
-          appId: appID as string,
+          appId: appID,
         },
         logger,
       );
@@ -370,7 +372,7 @@ export async function upgrade(
       );
 
       return {
-        appId: appID as string,
+        appId: appID,
         imageRef: finalImageRef,
         txHash,
       };
@@ -440,7 +442,7 @@ export async function prepareUpgrade(
           resourceUsageAllow,
           instanceType,
           environmentConfig: preflightCtx.environmentConfig,
-          appId: appID as string,
+          appId: appID,
         },
         logger,
       );
@@ -466,20 +468,21 @@ export async function prepareUpgrade(
       logger.debug("Estimating gas...");
       const gasEstimate = await estimateBatchGas({
         publicClient: batch.publicClient,
-        environmentConfig: batch.environmentConfig,
+        account: batch.walletClient.account!.address,
         executions: batch.executions,
       });
 
+      // Extract only data fields for public type (clients stay internal)
+      const data: PreparedUpgradeData = {
+        appId: batch.appId,
+        executions: batch.executions,
+      };
+
       return {
         prepared: {
-          batch,
-          appId: appID as string,
+          data,
+          appId: appID,
           imageRef: finalImageRef,
-          preflightCtx: {
-            privateKey: preflightCtx.privateKey,
-            rpcUrl: preflightCtx.rpcUrl,
-            environmentConfig: preflightCtx.environmentConfig,
-          },
         },
         gasEstimate,
       };
@@ -494,12 +497,9 @@ export async function prepareUpgrade(
  * Note: This only submits the on-chain transaction. Call watchUpgrade separately
  * to wait for the upgrade to complete.
  */
-export async function executeUpgrade(
-  prepared: PreparedUpgrade,
-  gas: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } | undefined,
-  logger: Logger = defaultLogger,
-  skipTelemetry?: boolean,
-): Promise<UpgradeResult> {
+export async function executeUpgrade(options: ExecuteUpgradeOptions): Promise<UpgradeResult> {
+  const { prepared, context, gas, logger = defaultLogger, skipTelemetry } = options;
+
   return withSDKTelemetry(
     {
       functionName: "executeUpgrade",
@@ -508,7 +508,7 @@ export async function executeUpgrade(
     async () => {
       // Execute the batch transaction
       logger.info("Upgrading on-chain...");
-      const txHash = await executeUpgradeBatch(prepared.batch, gas, logger);
+      const txHash = await executeUpgradeBatch(prepared.data, context, gas, logger);
 
       return {
         appId: prepared.appId,

@@ -8,7 +8,7 @@
  * 4. Fall back to local registry for legacy apps
  */
 
-import { Address, isAddress } from "viem";
+import { Address, Hex, isAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import {
   UserApiClient,
@@ -221,7 +221,7 @@ export class AppResolver {
 
     try {
       // Get all apps for the current developer
-      const account = privateKeyToAccount(this.privateKey as `0x${string}`);
+      const account = privateKeyToAccount(this.privateKey as Hex);
       const { apps } = await getAllAppsByDeveloper(
         this.rpcUrl,
         this.environmentConfig,

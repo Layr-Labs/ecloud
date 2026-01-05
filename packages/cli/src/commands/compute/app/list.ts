@@ -8,7 +8,7 @@ import {
 } from "@layr-labs/ecloud-sdk";
 import { commonFlags, validateCommonFlags } from "../../../flags";
 import { privateKeyToAccount } from "viem/accounts";
-import { Address } from "viem";
+import { Address, Hex } from "viem";
 import { getAppName } from "../../../utils/appNames";
 import {
   ContractAppStatusTerminated,
@@ -17,7 +17,6 @@ import {
 } from "../../../utils/prompts";
 import { getAppInfosChunked } from "../../../utils/appResolver";
 import { formatAppDisplay, printAppDisplay } from "../../../utils/format";
-import { getClientId } from "../../../utils/version";
 import chalk from "chalk";
 import { withTelemetry } from "../../../telemetry";
 
@@ -44,14 +43,14 @@ export default class AppList extends Command {
       // Validate flags and prompt for missing values
       const validatedFlags = await validateCommonFlags(flags);
 
-      // Get environment config
-      const environment = validatedFlags.environment || "sepolia";
+      // Get validated values from flags
+      const environment = validatedFlags.environment;
       const environmentConfig = getEnvironmentConfig(environment);
       const rpcUrl = validatedFlags["rpc-url"] || environmentConfig.defaultRPCURL;
       const privateKey = validatedFlags["private-key"]!;
 
       // Get developer address from private key
-      const account = privateKeyToAccount(privateKey as `0x${string}`);
+      const account = privateKeyToAccount(privateKey as Hex);
       const developerAddr = account.address;
 
       if (flags.verbose) {
