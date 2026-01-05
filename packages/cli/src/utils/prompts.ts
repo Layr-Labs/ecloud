@@ -618,14 +618,18 @@ export async function getImageReferenceInteractive(
 
 /**
  * Get available app name interactively
+ * @param suggestedBaseName - undefined: derive from imageRef, null: no default, string: use as base
  */
 async function getAvailableAppNameInteractive(
   environment: string,
   imageRef: string,
-  suggestedBaseName?: string,
+  suggestedBaseName?: string | null,
 ): Promise<string> {
-  const baseName = suggestedBaseName || extractAppNameFromImage(imageRef);
-  const suggestedName = findAvailableName(environment, baseName);
+  const baseName =
+    suggestedBaseName === null
+      ? undefined
+      : suggestedBaseName || extractAppNameFromImage(imageRef);
+  const suggestedName = baseName ? findAvailableName(environment, baseName) : undefined;
 
   while (true) {
     console.log("\nApp name selection:");
@@ -654,12 +658,13 @@ async function getAvailableAppNameInteractive(
 
 /**
  * Prompt for app name
+ * @param suggestedBaseName - undefined: derive from imageRef, null: no default, string: use as base
  */
 export async function getOrPromptAppName(
   appName: string | undefined,
   environment: string,
   imageRef: string,
-  suggestedBaseName?: string,
+  suggestedBaseName?: string | null,
 ): Promise<string> {
   if (appName) {
     validateAppName(appName);
