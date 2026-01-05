@@ -114,8 +114,8 @@ export default class BuildList extends Command {
         }
       } else {
         // Allocate flexible width to the "wide" columns (repo/commit/image) based on terminal width.
-        // Note: cli-table3 includes borders/padding; this is intentionally approximate.
-        const fixed = 36 + 10 + 20 + 14; // id + status + created + prov
+        // cli-table3 adds 8 border chars (left + right + 6 between columns).
+        const fixed = 37 + 10 + 20 + 14 + 8; // id + status + created + prov + borders
         const remaining = Math.max(30, tw - fixed);
         const repoW = Math.max(18, Math.floor(remaining * 0.28));
         const commitW = Math.max(18, Math.floor(remaining * 0.36));
@@ -131,7 +131,7 @@ export default class BuildList extends Command {
             chalk.bold("Created"),
             chalk.bold("Prov"),
           ],
-          colWidths: [36, 10, repoW, commitW, imageW, 20, 14],
+          colWidths: [37, 10, repoW, commitW, imageW, 20, 14],
           wordWrap: true,
           style: { "padding-left": 0, "padding-right": 1, head: [], border: [] },
         });
