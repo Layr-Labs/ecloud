@@ -125,7 +125,10 @@ function normalizeDirectoryPath(directoryPath: string): string {
 /**
  * Get linked app ID for a directory in an environment
  */
-export function getLinkedAppForDirectory(environment: string, directoryPath: string): string | null {
+export function getLinkedAppForDirectory(
+  environment: string,
+  directoryPath: string,
+): string | null {
   if (!directoryPath) {
     return null;
   }

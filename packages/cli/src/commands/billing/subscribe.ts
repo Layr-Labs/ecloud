@@ -81,7 +81,7 @@ export default class BillingSubscribe extends Command {
             this.log(
               `\n${chalk.green("✓")} Subscription activated successfully for ${flags.product}!`,
             );
-            this.log(`\n${chalk.gray("Start deploying with:")} ecloud app deploy`);
+            this.log(`\n${chalk.gray("Start deploying with:")} ecloud compute app deploy`);
             return;
           }
         } catch (error) {

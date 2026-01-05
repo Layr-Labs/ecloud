@@ -25,6 +25,8 @@ import {
   validateFilePath,
   validatePrivateKeyFormat,
   extractAppNameFromImage,
+  type Build,
+  type BuildModule,
   UserApiClient,
 } from "@layr-labs/ecloud-sdk";
 import { getAppInfosChunked } from "./appResolver";
@@ -86,6 +88,181 @@ export async function getDockerfileInteractive(dockerfilePath?: string): Promise
     default:
       throw new Error(`Unexpected choice: ${choice}`);
   }
+}
+
+// ==================== Verifiable Build (Interactive) ====================
+
+export type VerifiableSourceType = "git" | "prebuilt";
+
+export interface VerifiableGitSourceInputs {
+  repoUrl: string;
+  gitRef: string;
+  dockerfilePath: string;
+  caddyfilePath?: string;
+  buildContextPath: string;
+  dependencies: string[];
+}
+
+/**
+ * Prompt: "Build from verifiable source?" (only used when --verifiable is not set)
+ */
+export async function promptUseVerifiableBuild(): Promise<boolean> {
+  return confirmWithDefault("Build from verifiable source?", false);
+}
+
+/**
+ * Prompt: select verifiable build source type
+ */
+export async function promptVerifiableSourceType(): Promise<VerifiableSourceType> {
+  return select({
+    message: "Choose verifiable source type:",
+    choices: [
+      { name: "Build from git source (public repo required)", value: "git" },
+      { name: "Use a prebuilt verifiable image (eigencloud-containers)", value: "prebuilt" },
+    ],
+  });
+}
+
+/**
+ * Prompt for Git-source verifiable build inputs.
+ */
+export async function promptVerifiableGitSourceInputs(): Promise<VerifiableGitSourceInputs> {
+  const repoUrl = (
+    await input({
+      message: "Enter public git repository URL:",
+      default: "",
+      validate: (value) => {
+        if (!value.trim()) return "Repository URL is required";
+        try {
+          // Restrict to GitHub HTTPS URLs since verifiable builds require a public repo.
+          const url = new URL(value.trim());
+          if (url.protocol !== "https:") return "Repository URL must start with https://";
+          if (url.hostname.toLowerCase() !== "github.com")
+            return "Repository URL must be a public GitHub HTTPS URL (github.com)";
+
+          // Require at least /owner/repo
+          const parts = url.pathname.replace(/\/+$/, "").split("/").filter(Boolean);
+          if (parts.length < 2) return "Repository URL must be https://github.com/<owner>/<repo>";
+
+          // Disallow obvious non-repo paths
+          const [owner, repo] = parts;
+          if (!owner || !repo) return "Repository URL must be https://github.com/<owner>/<repo>";
+          if (repo.toLowerCase() === "settings") return "Repository URL looks invalid";
+
+          // Disallow fragments/query
+          if (url.search || url.hash)
+            return "Repository URL must not include query params or fragments";
+
+          // Allow optional .git suffix; otherwise accept as-is.
+        } catch {
+          return "Invalid URL format";
+        }
+        return true;
+      },
+    })
+  ).trim();
+
+  const gitRef = (
+    await input({
+      message: "Enter git commit SHA (40 hex chars):",
+      default: "",
+      validate: (value) => {
+        const trimmed = value.trim();
+        if (!trimmed) return "Commit SHA is required";
+        if (!/^[0-9a-f]{40}$/i.test(trimmed))
+          return "Commit must be a 40-character hexadecimal SHA";
+        return true;
+      },
+    })
+  ).trim();
+
+  const buildContextPath = (
+    await input({
+      message: "Enter build context path (relative to repo):",
+      default: ".",
+      validate: (value) => (value.trim() ? true : "Build context path cannot be empty"),
+    })
+  ).trim();
+
+  const dockerfilePath = (
+    await input({
+      message: "Enter Dockerfile path (relative to build context):",
+      default: "Dockerfile",
+      validate: (value) => (value.trim() ? true : "Dockerfile path cannot be empty"),
+    })
+  ).trim();
+
+  const caddyfileRaw = (
+    await input({
+      message: "Enter Caddyfile path (relative to build context, optional):",
+      default: "",
+      validate: (value) => {
+        const trimmed = value.trim();
+        if (!trimmed) return true;
+        if (trimmed.includes("..")) return "Caddyfile path must not contain '..'";
+        return true;
+      },
+    })
+  ).trim();
+
+  const depsRaw = (
+    await input({
+      message: "Enter dependency digests (comma-separated sha256:..., optional):",
+      default: "",
+      validate: (value) => {
+        const trimmed = value.trim();
+        if (!trimmed) return true;
+        const parts = trimmed
+          .split(",")
+          .map((p) => p.trim())
+          .filter(Boolean);
+        for (const p of parts) {
+          if (!/^sha256:[0-9a-f]{64}$/i.test(p)) {
+            return `Invalid dependency digest: ${p} (expected sha256:<64 hex>)`;
+          }
+        }
+        return true;
+      },
+    })
+  ).trim();
+
+  const dependencies =
+    depsRaw === ""
+      ? []
+      : depsRaw
+          .split(",")
+          .map((p) => p.trim())
+          .filter(Boolean);
+
+  return {
+    repoUrl,
+    gitRef,
+    dockerfilePath,
+    caddyfilePath: caddyfileRaw === "" ? undefined : caddyfileRaw,
+    buildContextPath,
+    dependencies,
+  };
+}
+
+/**
+ * Prompt for prebuilt verifiable image reference.
+ *
+ * Required format: docker.io/eigenlayer/eigencloud-containers:<tag>
+ */
+export async function promptVerifiablePrebuiltImageRef(): Promise<string> {
+  const ref = await input({
+    message: "Enter prebuilt verifiable image ref:",
+    default: "docker.io/eigenlayer/eigencloud-containers:",
+    validate: (value) => {
+      const trimmed = value.trim();
+      if (!trimmed) return "Image reference is required";
+      if (!/^docker\.io\/eigenlayer\/eigencloud-containers:[^@\s]+$/i.test(trimmed)) {
+        return "Image ref must match docker.io/eigenlayer/eigencloud-containers:<tag>";
+      }
+      return true;
+    },
+  });
+  return ref.trim();
 }
 
 // ==================== Image Reference Selection ====================
@@ -445,9 +622,11 @@ export async function getImageReferenceInteractive(
 async function getAvailableAppNameInteractive(
   environment: string,
   imageRef: string,
+  suggestedBaseName?: string,
+  skipDefaultName?: boolean,
 ): Promise<string> {
-  const baseName = extractAppNameFromImage(imageRef);
-  const suggestedName = findAvailableName(environment, baseName);
+  const baseName = skipDefaultName ? undefined : suggestedBaseName || extractAppNameFromImage(imageRef);
+  const suggestedName = baseName ? findAvailableName(environment, baseName) : undefined;
 
   while (true) {
     console.log("\nApp name selection:");
@@ -481,6 +660,8 @@ export async function getOrPromptAppName(
   appName: string | undefined,
   environment: string,
   imageRef: string,
+  suggestedBaseName?: string,
+  skipDefaultName?: boolean,
 ): Promise<string> {
   if (appName) {
     validateAppName(appName);
@@ -488,10 +669,61 @@ export async function getOrPromptAppName(
       return appName;
     }
     console.log(`Warning: App name '${appName}' is already taken.`);
-    return getAvailableAppNameInteractive(environment, imageRef);
+    return getAvailableAppNameInteractive(environment, imageRef, suggestedBaseName, skipDefaultName);
   }
 
-  return getAvailableAppNameInteractive(environment, imageRef);
+  return getAvailableAppNameInteractive(environment, imageRef, suggestedBaseName, skipDefaultName);
+}
+
+// ==================== Build ID Selection ====================
+
+function formatBuildChoice(build: Build): string {
+  const repoUrl = String(build.repoUrl || "")
+    .replace(/\.git$/i, "")
+    .replace(/\/+$/, "");
+  const repoName = (() => {
+    try {
+      const url = new URL(repoUrl);
+      const parts = url.pathname.split("/").filter(Boolean);
+      return parts.length ? parts[parts.length - 1] : repoUrl;
+    } catch {
+      const m = repoUrl.match(/[:/]+([^/:]+)$/);
+      return m?.[1] || repoUrl || "unknown";
+    }
+  })();
+
+  const shortSha = build.gitRef ? String(build.gitRef).slice(0, 10) : "unknown";
+  const shortId = build.buildId ? String(build.buildId).slice(0, 8) : "unknown";
+  const created = build.createdAt ? new Date(build.createdAt).toLocaleString() : "";
+  const status = String(build.status || "unknown");
+  return `${status}  ${repoName}@${shortSha}  ${shortId}  ${created}`;
+}
+
+export async function promptBuildIdFromRecentBuilds(options: {
+  client: BuildModule;
+  billingAddress: string;
+  limit?: number;
+}): Promise<string> {
+  const limit = Math.max(1, Math.min(100, options.limit ?? 20));
+  const builds = await options.client.list({
+    billingAddress: options.billingAddress,
+    limit,
+    offset: 0,
+  });
+
+  if (!builds || builds.length === 0) {
+    throw new Error(`No builds found for billing address ${options.billingAddress}`);
+  }
+
+  const choice = await select({
+    message: "Select a build:",
+    choices: builds.map((b) => ({
+      name: formatBuildChoice(b),
+      value: b.buildId,
+    })),
+  });
+
+  return choice;
 }
 
 // ==================== Environment File Selection ====================
@@ -849,6 +1081,7 @@ async function getAppIDInteractive(options: GetAppIDOptions): Promise<Address> {
     switch (action) {
       case "view":
       case "view info for":
+      case "view releases for":
       case "set profile for":
         return true;
       case "start":

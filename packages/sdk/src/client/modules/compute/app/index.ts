@@ -14,12 +14,14 @@ import { privateKeyToAccount } from "viem/accounts";
 import {
   deploy as deployApp,
   prepareDeploy as prepareDeployFn,
+  prepareDeployFromVerifiableBuild as prepareDeployFromVerifiableBuildFn,
   executeDeploy as executeDeployFn,
   watchDeployment as watchDeploymentFn,
 } from "./deploy";
 import {
   upgrade as upgradeApp,
   prepareUpgrade as prepareUpgradeFn,
+  prepareUpgradeFromVerifiableBuild as prepareUpgradeFromVerifiableBuildFn,
   executeUpgrade as executeUpgradeFn,
   watchUpgrade as watchUpgradeFn,
 } from "./upgrade";
@@ -47,7 +49,9 @@ import type {
   ExecuteUpgradeResult,
   GasOpts,
   PrepareDeployOpts,
+  PrepareDeployFromVerifiableBuildOpts,
   PrepareUpgradeOpts,
+  PrepareUpgradeFromVerifiableBuildOpts,
   PreparedDeploy,
   PreparedUpgrade,
 } from "../../../common/types";
@@ -115,6 +119,10 @@ export interface AppModule {
     prepared: PreparedDeploy;
     gasEstimate: GasEstimate;
   }>;
+  prepareDeployFromVerifiableBuild: (opts: PrepareDeployFromVerifiableBuildOpts) => Promise<{
+    prepared: PreparedDeploy;
+    gasEstimate: GasEstimate;
+  }>;
   executeDeploy: (prepared: PreparedDeploy, gas?: GasOpts) => Promise<ExecuteDeployResult>;
   watchDeployment: (appId: AppId) => Promise<string | undefined>;
 
@@ -122,6 +130,13 @@ export interface AppModule {
   prepareUpgrade: (
     appId: AppId,
     opts: PrepareUpgradeOpts,
+  ) => Promise<{
+    prepared: PreparedUpgrade;
+    gasEstimate: GasEstimate;
+  }>;
+  prepareUpgradeFromVerifiableBuild: (
+    appId: AppId,
+    opts: PrepareUpgradeFromVerifiableBuildOpts,
   ) => Promise<{
     prepared: PreparedUpgrade;
     gasEstimate: GasEstimate;
@@ -241,6 +256,25 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
       );
     },
 
+    async prepareDeployFromVerifiableBuild(opts) {
+      return prepareDeployFromVerifiableBuildFn(
+        {
+          privateKey,
+          rpcUrl: ctx.rpcUrl,
+          environment: ctx.environment,
+          appName: opts.name,
+          instanceType: opts.instanceType,
+          envFilePath: opts.envFile,
+          imageRef: opts.imageRef,
+          imageDigest: opts.imageDigest,
+          logVisibility: opts.logVisibility,
+          resourceUsageMonitoring: opts.resourceUsageMonitoring,
+          skipTelemetry,
+        },
+        logger,
+      );
+    },
+
     async executeDeploy(prepared, gas) {
       // Create clients from module context
       const account = privateKeyToAccount(privateKey);
@@ -298,6 +332,25 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           dockerfilePath: opts.dockerfile,
           envFilePath: opts.envFile,
           imageRef: opts.imageRef,
+          logVisibility: opts.logVisibility,
+          resourceUsageMonitoring: opts.resourceUsageMonitoring,
+          skipTelemetry,
+        },
+        logger,
+      );
+    },
+
+    async prepareUpgradeFromVerifiableBuild(appId, opts) {
+      return prepareUpgradeFromVerifiableBuildFn(
+        {
+          appId,
+          privateKey,
+          rpcUrl: ctx.rpcUrl,
+          environment: ctx.environment,
+          instanceType: opts.instanceType,
+          envFilePath: opts.envFile,
+          imageRef: opts.imageRef,
+          imageDigest: opts.imageDigest,
           logVisibility: opts.logVisibility,
           resourceUsageMonitoring: opts.resourceUsageMonitoring,
           skipTelemetry,

@@ -1,5 +1,5 @@
 import { Command, Flags } from "@oclif/core";
-import { getEnvironmentConfig, isMainnet, UserApiClient } from "@layr-labs/ecloud-sdk";
+import { getEnvironmentConfig, UserApiClient, isMainnet } from "@layr-labs/ecloud-sdk";
 import { withTelemetry } from "../../../telemetry";
 import { commonFlags } from "../../../flags";
 import { createComputeClient } from "../../../client";
@@ -15,10 +15,23 @@ import {
   LogVisibility,
   ResourceUsageMonitoring,
   confirm,
+  promptUseVerifiableBuild,
+  promptVerifiableSourceType,
+  promptVerifiableGitSourceInputs,
+  promptVerifiablePrebuiltImageRef,
 } from "../../../utils/prompts";
 import { invalidateProfileCache, setLinkedAppForDirectory } from "../../../utils/globalConfig";
 import { getClientId } from "../../../utils/version";
 import chalk from "chalk";
+import { createBuildClient } from "../../../client";
+import { formatVerifiableBuildSummary } from "../../../utils/build";
+import { assertCommitSha40, runVerifiableBuildAndVerify } from "../../../utils/verifiableBuild";
+import {
+  assertEigencloudContainersImageRef,
+  resolveDockerHubImageDigest,
+} from "../../../utils/dockerhub";
+import { isTlsEnabledFromEnvFile } from "../../../utils/tls";
+import type { SubmitBuildRequest } from "@layr-labs/ecloud-sdk";
 
 export default class AppDeploy extends Command {
   static description = "Deploy new app";
@@ -84,6 +97,35 @@ export default class AppDeploy extends Command {
       required: false,
       description: "Path to app icon/logo image - JPG/PNG, max 4MB, square recommended (optional)",
     }),
+
+    // Verifiable build flags
+    verifiable: Flags.boolean({
+      description:
+        "Enable verifiable build mode (either build from git source via --repo/--commit, or deploy a prebuilt verifiable image via --image-ref)",
+      default: false,
+    }),
+    repo: Flags.string({
+      description: "Git repository URL (required with --verifiable git source mode)",
+      env: "ECLOUD_BUILD_REPO",
+    }),
+    commit: Flags.string({
+      description: "Git commit SHA (required with --verifiable git source mode)",
+      env: "ECLOUD_BUILD_COMMIT",
+    }),
+    "build-dockerfile": Flags.string({
+      description: "Dockerfile path for verifiable build (git source mode)",
+      default: "Dockerfile",
+      env: "ECLOUD_BUILD_DOCKERFILE",
+    }),
+    "build-context": Flags.string({
+      description: "Build context path for verifiable build (git source mode)",
+      default: ".",
+      env: "ECLOUD_BUILD_CONTEXT",
+    }),
+    "build-dependencies": Flags.string({
+      description: "Dependency digests for verifiable build (git source mode) (sha256:...)",
+      multiple: true,
+    }),
   };
 
   async run() {
@@ -97,18 +139,198 @@ export default class AppDeploy extends Command {
       const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
       const privateKey = flags["private-key"]!;
 
-      // 1. Get dockerfile path interactively
-      const dockerfilePath = await getDockerfileInteractive(flags.dockerfile);
+      type VerifiableMode = "none" | "git" | "prebuilt";
+      let buildClient: Awaited<ReturnType<typeof createBuildClient>> | undefined;
+      const getBuildClient = async () => {
+        if (buildClient) return buildClient;
+        buildClient = await createBuildClient({
+          ...flags,
+          "private-key": privateKey,
+        });
+        return buildClient;
+      };
+
+      // Optional: verifiable build mode (git source build OR prebuilt verifiable image)
+      let verifiableImageUrl: string | undefined;
+      let verifiableImageDigest: string | undefined;
+      let suggestedAppBaseName: string | undefined;
+      let skipDefaultAppName = false;
+      let verifiableMode: VerifiableMode = "none";
+      let envFilePath: string | undefined;
+
+      const suggestAppBaseNameFromRepoUrl = (repoUrl: string): string | undefined => {
+        const normalized = String(repoUrl || "")
+          .trim()
+          .replace(/\.git$/i, "")
+          .replace(/\/+$/, "");
+        if (!normalized) return undefined;
+
+        // Best-effort: take the last path segment (works for https://.../owner/repo and git@...:owner/repo)
+        const lastSlash = normalized.lastIndexOf("/");
+        const lastColon = normalized.lastIndexOf(":");
+        const idx = Math.max(lastSlash, lastColon);
+        const raw = (idx >= 0 ? normalized.slice(idx + 1) : normalized).trim();
+        if (!raw) return undefined;
+
+        // Make it app-name-ish (validateAppName will still be enforced in the prompt)
+        const cleaned = raw
+          .toLowerCase()
+          .replace(/_/g, "-")
+          .replace(/[^a-z0-9-]/g, "-")
+          .replace(/-+/g, "-")
+          .replace(/^-+|-+$/g, "");
+        return cleaned || undefined;
+      };
+
+      if (flags.verifiable) {
+        // Explicit verifiable mode via flag: infer source based on provided flags.
+        if (flags.repo || flags.commit) {
+          verifiableMode = "git";
+          if (!flags.repo)
+            this.error("--repo is required when using --verifiable (git source mode)");
+          if (!flags.commit)
+            this.error("--commit is required when using --verifiable (git source mode)");
+          try {
+            assertCommitSha40(flags.commit);
+          } catch (e: any) {
+            this.error(e?.message || String(e));
+          }
+        } else if (flags["image-ref"]) {
+          verifiableMode = "prebuilt";
+          try {
+            assertEigencloudContainersImageRef(flags["image-ref"]);
+          } catch (e: any) {
+            this.error(e?.message || String(e));
+          }
+        } else {
+          this.error(
+            "When using --verifiable, you must provide either --repo/--commit or --image-ref",
+          );
+        }
+      } else {
+        // Interactive verifiable selection when --verifiable is not set.
+        // If the user explicitly provided --dockerfile, assume they want the normal local-build flow.
+        if (!flags.dockerfile) {
+          const useVerifiable = await promptUseVerifiableBuild();
+          if (useVerifiable) {
+            const sourceType = await promptVerifiableSourceType();
+            verifiableMode = sourceType;
+          }
+        }
+      }
+
+      if (verifiableMode === "git") {
+        const inputs: SubmitBuildRequest = flags.verifiable
+          ? {
+              repoUrl: flags.repo!,
+              gitRef: flags.commit!,
+              dockerfilePath: flags["build-dockerfile"],
+              caddyfilePath: undefined,
+              buildContextPath: flags["build-context"],
+              dependencies: flags["build-dependencies"],
+            }
+          : await promptVerifiableGitSourceInputs();
+
+        // Prompt for env file after git inputs
+        envFilePath = await getEnvFileInteractive(flags["env-file"]);
+
+        const includeTlsCaddyfile = isTlsEnabledFromEnvFile(envFilePath);
+        if (includeTlsCaddyfile && !inputs.caddyfilePath) {
+          inputs.caddyfilePath = "Caddyfile";
+        }
+
+        this.log(chalk.blue("Building from source with verifiable build..."));
+        this.log("");
+
+        const buildClient = await getBuildClient();
+        const { build, verified } = await runVerifiableBuildAndVerify(buildClient, inputs, {
+          onLog: (chunk) => process.stdout.write(chunk),
+        });
+
+        if (!build.imageUrl || !build.imageDigest) {
+          this.error(
+            "Build completed but did not return imageUrl/imageDigest; cannot deploy verifiable build",
+          );
+        }
+
+        verifiableImageUrl = build.imageUrl;
+        verifiableImageDigest = build.imageDigest;
+        suggestedAppBaseName = suggestAppBaseNameFromRepoUrl(build.repoUrl);
+
+        for (const line of formatVerifiableBuildSummary({
+          buildId: build.buildId,
+          imageUrl: build.imageUrl,
+          imageDigest: build.imageDigest,
+          repoUrl: build.repoUrl,
+          gitRef: build.gitRef,
+          dependencies: build.dependencies,
+          provenanceSignature: verified.provenanceSignature,
+        })) {
+          this.log(line);
+        }
+      }
+
+      if (verifiableMode === "prebuilt") {
+        const imageRef = flags.verifiable
+          ? flags["image-ref"]!
+          : await promptVerifiablePrebuiltImageRef();
+        try {
+          assertEigencloudContainersImageRef(imageRef);
+        } catch (e: any) {
+          this.error(e?.message || String(e));
+        }
+
+        this.log(chalk.blue("Resolving and verifying prebuilt verifiable image..."));
+        this.log("");
+
+        const digest = await resolveDockerHubImageDigest(imageRef);
+        const buildClient = await getBuildClient();
+        const verify = await buildClient.verify(digest);
+        if (verify.status !== "verified") {
+          this.error(`Provenance verification failed: ${verify.error}`);
+        }
+
+        verifiableImageUrl = imageRef;
+        verifiableImageDigest = digest;
+        // For prebuilt images, both repoUrl and imageRef point to the shared eigencloud-containers
+        // repo, so skip the default and require the user to enter a name
+        skipDefaultAppName = true;
+
+        for (const line of formatVerifiableBuildSummary({
+          buildId: verify.buildId,
+          imageUrl: imageRef,
+          imageDigest: digest,
+          repoUrl: verify.repoUrl,
+          gitRef: verify.gitRef,
+          dependencies: undefined,
+          provenanceSignature: verify.provenanceSignature,
+        })) {
+          this.log(line);
+        }
+      }
+
+      // 1. Get dockerfile path interactively (skip when using verifiable image)
+      const isVerifiable = verifiableMode !== "none";
+      const dockerfilePath = isVerifiable ? "" : await getDockerfileInteractive(flags.dockerfile);
       const buildFromDockerfile = dockerfilePath !== "";
 
       // 2. Get image reference interactively (context-aware)
-      const imageRef = await getImageReferenceInteractive(flags["image-ref"], buildFromDockerfile);
+      // If verifiable build was used, force image-ref to the built image URL.
+      const imageRef = verifiableImageUrl
+        ? verifiableImageUrl
+        : await getImageReferenceInteractive(flags["image-ref"], buildFromDockerfile);
 
       // 3. Get app name interactively
-      const appName = await getOrPromptAppName(flags.name, environment, imageRef);
+      const appName = await getOrPromptAppName(
+        flags.name,
+        environment,
+        imageRef,
+        suggestedAppBaseName,
+        skipDefaultAppName,
+      );
 
       // 4. Get env file path interactively
-      const envFilePath = await getEnvFileInteractive(flags["env-file"]);
+      envFilePath = envFilePath ?? (await getEnvFileInteractive(flags["env-file"]));
 
       // 5. Get instance type interactively
       const availableTypes = await fetchAvailableInstanceTypes(
@@ -139,15 +361,25 @@ export default class AppDeploy extends Command {
           ? "private"
           : "off";
 
-      const { prepared, gasEstimate } = await compute.app.prepareDeploy({
-        name: appName,
-        dockerfile: dockerfilePath,
-        imageRef,
-        envFile: envFilePath,
-        instanceType,
-        logVisibility,
-        resourceUsageMonitoring,
-      });
+      const { prepared, gasEstimate } = isVerifiable
+        ? await compute.app.prepareDeployFromVerifiableBuild({
+            name: appName,
+            imageRef,
+            imageDigest: verifiableImageDigest!,
+            envFile: envFilePath,
+            instanceType,
+            logVisibility,
+            resourceUsageMonitoring,
+          })
+        : await compute.app.prepareDeploy({
+            name: appName,
+            dockerfile: dockerfilePath,
+            imageRef,
+            envFile: envFilePath,
+            instanceType,
+            logVisibility,
+            resourceUsageMonitoring,
+          });
 
       // 9. Show gas estimate and prompt for confirmation on mainnet
       this.log(`\nEstimated transaction cost: ${chalk.cyan(gasEstimate.maxCostEth)} ETH`);

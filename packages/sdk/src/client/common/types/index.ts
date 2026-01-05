@@ -73,6 +73,40 @@ export interface PrepareUpgradeOpts {
   resourceUsageMonitoring?: "enable" | "disable";
 }
 
+/** Options for prepareDeployFromVerifiableBuild */
+export interface PrepareDeployFromVerifiableBuildOpts {
+  /** App name - required */
+  name: string;
+  /** Image reference (registry/path:tag) - required */
+  imageRef: string;
+  /** Image digest (sha256:...) - required */
+  imageDigest: string;
+  /** Path to .env file - optional */
+  envFile?: string;
+  /** Instance type SKU - required */
+  instanceType: string;
+  /** Log visibility setting - required */
+  logVisibility: logVisibility;
+  /** Resource usage monitoring setting - optional */
+  resourceUsageMonitoring?: "enable" | "disable";
+}
+
+/** Options for prepareUpgradeFromVerifiableBuild */
+export interface PrepareUpgradeFromVerifiableBuildOpts {
+  /** Image reference (registry/path:tag) - required */
+  imageRef: string;
+  /** Image digest (sha256:...) - required */
+  imageDigest: string;
+  /** Path to .env file - optional */
+  envFile?: string;
+  /** Instance type SKU - required */
+  instanceType: string;
+  /** Log visibility setting - required */
+  logVisibility: logVisibility;
+  /** Resource usage monitoring setting - optional */
+  resourceUsageMonitoring?: "enable" | "disable";
+}
+
 /** Gas options for execute functions */
 export interface GasOpts {
   maxFeePerGas?: bigint;

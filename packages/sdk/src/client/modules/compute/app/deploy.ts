@@ -20,6 +20,7 @@ import {
 import { getEnvironmentConfig } from "../../../common/config/environment";
 import { ensureDockerIsRunning } from "../../../common/docker/build";
 import { prepareRelease } from "../../../common/release/prepare";
+import { createReleaseFromImageDigest } from "../../../common/release/prebuilt";
 import {
   deployApp,
   calculateAppID,
@@ -98,6 +99,141 @@ export interface ExecuteDeployOptions {
   gas?: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint };
   logger?: Logger;
   skipTelemetry?: boolean;
+}
+
+/**
+ * Prepare a deployment from a pre-built image (already layered) without using Docker locally.
+ *
+ * This is intended for verifiable builds where the build service outputs:
+ * - imageRef (tagged image URL)
+ * - imageDigest (sha256:... digest)
+ *
+ * Flow is the same as prepareDeploy, except:
+ * - Skips ensureDockerIsRunning()
+ * - Skips prepareRelease() image layering and digest extraction
+ * - Uses provided imageDigest + derived registry name to construct the Release struct
+ */
+export async function prepareDeployFromVerifiableBuild(
+  options: Omit<SDKDeployOptions, "gas" | "dockerfilePath" | "imageRef"> & {
+    imageRef: string;
+    imageDigest: string; // sha256:...
+    skipTelemetry?: boolean;
+  },
+  logger: Logger = defaultLogger,
+): Promise<PrepareDeployResult> {
+  return withSDKTelemetry(
+    {
+      functionName: "prepareDeployFromVerifiableBuild",
+      skipTelemetry: options.skipTelemetry,
+      properties: {
+        environment: options.environment || "sepolia",
+      },
+    },
+    async () => {
+      // Validate required parameters (no dockerfilePath in this mode)
+      if (!options.privateKey) throw new Error("privateKey is required for deployment");
+      if (!options.imageRef) throw new Error("imageRef is required for deployment");
+      if (!options.imageDigest) throw new Error("imageDigest is required for deployment");
+
+      assertValidImageReference(options.imageRef);
+      validateAppName(options.appName);
+      validateLogVisibility(options.logVisibility);
+
+      // Validate digest format
+      if (!/^sha256:[0-9a-f]{64}$/i.test(options.imageDigest)) {
+        throw new Error(
+          `imageDigest must be in format sha256:<64 hex>, got: ${options.imageDigest}`,
+        );
+      }
+
+      // Convert log visibility to internal format (we only need the on-chain permission bit here)
+      const { publicLogs } = validateLogVisibility(options.logVisibility);
+
+      // Validate resource usage monitoring value (verifiable build image is already layered)
+      validateResourceUsageMonitoring(options.resourceUsageMonitoring);
+
+      // Preflight checks + quota checks (same as normal path)
+      logger.debug("Performing preflight checks...");
+      const preflightCtx = await doPreflightChecks(
+        {
+          privateKey: options.privateKey,
+          rpcUrl: options.rpcUrl,
+          environment: options.environment,
+        },
+        logger,
+      );
+
+      logger.debug("Checking quota availability...");
+      await checkQuotaAvailable(preflightCtx);
+
+      // Generate salt
+      const salt = generateRandomSalt();
+      logger.debug(`Generated salt: ${Buffer.from(salt).toString("hex")}`);
+
+      // Calculate app ID
+      logger.debug("Calculating app ID...");
+      const appIDToBeDeployed = await calculateAppID(
+        preflightCtx.privateKey,
+        options.rpcUrl || preflightCtx.rpcUrl,
+        preflightCtx.environmentConfig,
+        salt,
+      );
+      logger.info(``);
+      logger.info(`App ID: ${appIDToBeDeployed}`);
+      logger.info(``);
+
+      // Build Release struct WITHOUT Docker/layering
+      const release = await createReleaseFromImageDigest(
+        {
+          imageRef: options.imageRef,
+          imageDigest: options.imageDigest,
+          envFilePath: options.envFilePath,
+          instanceType: options.instanceType,
+          environmentConfig: preflightCtx.environmentConfig,
+          appId: appIDToBeDeployed,
+        },
+        logger,
+      );
+
+      // Prepare deploy batch
+      logger.debug("Preparing deploy batch...");
+      const batch = await prepareDeployBatch(
+        {
+          privateKey: preflightCtx.privateKey,
+          rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
+          environmentConfig: preflightCtx.environmentConfig,
+          salt,
+          release,
+          publicLogs,
+        },
+        logger,
+      );
+
+      // Estimate gas
+      logger.debug("Estimating gas...");
+      const gasEstimate = await estimateBatchGas({
+        publicClient: batch.publicClient,
+        account: batch.walletClient.account!.address,
+        executions: batch.executions,
+      });
+
+      // Extract only data fields for public type (clients stay internal)
+      const data: PreparedDeployData = {
+        appId: batch.appId,
+        salt: batch.salt,
+        executions: batch.executions,
+      };
+
+      return {
+        prepared: {
+          data,
+          appName: options.appName,
+          imageRef: options.imageRef,
+        },
+        gasEstimate,
+      };
+    },
+  );
 }
 
 /**
