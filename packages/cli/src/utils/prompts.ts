@@ -618,17 +618,14 @@ export async function getImageReferenceInteractive(
 
 /**
  * Get available app name interactively
- * @param suggestedBaseName - undefined: derive from imageRef, null: no default, string: use as base
  */
 async function getAvailableAppNameInteractive(
   environment: string,
   imageRef: string,
-  suggestedBaseName?: string | null,
+  suggestedBaseName?: string,
+  skipDefaultName?: boolean,
 ): Promise<string> {
-  const baseName =
-    suggestedBaseName === null
-      ? undefined
-      : suggestedBaseName || extractAppNameFromImage(imageRef);
+  const baseName = skipDefaultName ? undefined : suggestedBaseName || extractAppNameFromImage(imageRef);
   const suggestedName = baseName ? findAvailableName(environment, baseName) : undefined;
 
   while (true) {
@@ -658,13 +655,13 @@ async function getAvailableAppNameInteractive(
 
 /**
  * Prompt for app name
- * @param suggestedBaseName - undefined: derive from imageRef, null: no default, string: use as base
  */
 export async function getOrPromptAppName(
   appName: string | undefined,
   environment: string,
   imageRef: string,
-  suggestedBaseName?: string | null,
+  suggestedBaseName?: string,
+  skipDefaultName?: boolean,
 ): Promise<string> {
   if (appName) {
     validateAppName(appName);
@@ -672,10 +669,10 @@ export async function getOrPromptAppName(
       return appName;
     }
     console.log(`Warning: App name '${appName}' is already taken.`);
-    return getAvailableAppNameInteractive(environment, imageRef, suggestedBaseName);
+    return getAvailableAppNameInteractive(environment, imageRef, suggestedBaseName, skipDefaultName);
   }
 
-  return getAvailableAppNameInteractive(environment, imageRef, suggestedBaseName);
+  return getAvailableAppNameInteractive(environment, imageRef, suggestedBaseName, skipDefaultName);
 }
 
 // ==================== Build ID Selection ====================

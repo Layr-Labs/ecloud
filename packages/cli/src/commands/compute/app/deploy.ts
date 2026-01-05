@@ -153,7 +153,8 @@ export default class AppDeploy extends Command {
       // Optional: verifiable build mode (git source build OR prebuilt verifiable image)
       let verifiableImageUrl: string | undefined;
       let verifiableImageDigest: string | undefined;
-      let suggestedAppBaseName: string | null | undefined;
+      let suggestedAppBaseName: string | undefined;
+      let skipDefaultAppName = false;
       let verifiableMode: VerifiableMode = "none";
       let envFilePath: string | undefined;
 
@@ -292,8 +293,8 @@ export default class AppDeploy extends Command {
         verifiableImageUrl = imageRef;
         verifiableImageDigest = digest;
         // For prebuilt images, both repoUrl and imageRef point to the shared eigencloud-containers
-        // repo, so we explicitly set null to prompt without a default
-        suggestedAppBaseName = null;
+        // repo, so skip the default and require the user to enter a name
+        skipDefaultAppName = true;
 
         for (const line of formatVerifiableBuildSummary({
           buildId: verify.buildId,
@@ -325,6 +326,7 @@ export default class AppDeploy extends Command {
         environment,
         imageRef,
         suggestedAppBaseName,
+        skipDefaultAppName,
       );
 
       // 4. Get env file path interactively
