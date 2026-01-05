@@ -141,7 +141,9 @@ export async function prepareDeployFromVerifiableBuild(
 
       // Validate digest format
       if (!/^sha256:[0-9a-f]{64}$/i.test(options.imageDigest)) {
-        throw new Error(`imageDigest must be in format sha256:<64 hex>, got: ${options.imageDigest}`);
+        throw new Error(
+          `imageDigest must be in format sha256:<64 hex>, got: ${options.imageDigest}`,
+        );
       }
 
       // Convert log visibility to internal format (we only need the on-chain permission bit here)

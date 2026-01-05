@@ -46,7 +46,10 @@ export async function createReleaseFromImageDigest(
 
   // Encrypt private environment variables
   logger.info("Encrypting environment variables...");
-  const { encryptionKey } = getKMSKeysForEnvironment(environmentConfig.name, environmentConfig.build);
+  const { encryptionKey } = getKMSKeysForEnvironment(
+    environmentConfig.name,
+    environmentConfig.build,
+  );
   const protectedHeaders = getAppProtectedHeaders(appId);
   const privateEnvBytes = Buffer.from(JSON.stringify(privateEnv));
   const encryptedEnvStr = await encryptRSAOAEPAndAES256GCM(
@@ -97,5 +100,3 @@ function extractRegistryNameNoDocker(imageRef: string): string {
 
   return name;
 }
-
-

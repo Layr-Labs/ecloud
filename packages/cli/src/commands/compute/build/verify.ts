@@ -34,7 +34,9 @@ export default class BuildVerify extends Command {
   async run(): Promise<void> {
     return withTelemetry(this, async () => {
       const { args, flags } = await this.parse(BuildVerify);
-      const validatedFlags = await validateCommonFlags(flags, { requirePrivateKey: !args.identifier });
+      const validatedFlags = await validateCommonFlags(flags, {
+        requirePrivateKey: !args.identifier,
+      });
       const client = await createBuildClient(validatedFlags);
 
       this.log(chalk.gray("Fetching provenance..."));
@@ -75,5 +77,3 @@ export default class BuildVerify extends Command {
     });
   }
 }
-
-

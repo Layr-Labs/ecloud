@@ -36,7 +36,10 @@ export const commonFlags = {
 };
 
 // Prompt for missing required values interactively
-export async function validateCommonFlags(flags: CommonFlags, options?: { requirePrivateKey?: boolean }) {
+export async function validateCommonFlags(
+  flags: CommonFlags,
+  options?: { requirePrivateKey?: boolean },
+) {
   // Validate environment (in case user passed an invalid one)
   flags["environment"] = await getEnvironmentInteractive(flags["environment"]);
   if (options?.requirePrivateKey !== false) {

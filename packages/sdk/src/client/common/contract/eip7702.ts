@@ -4,13 +4,7 @@
  * This module handles EIP-7702 delegation and batch execution
  */
 
-import {
-  Address,
-  Hex,
-  encodeFunctionData,
-  encodeAbiParameters,
-  decodeErrorResult,
-} from "viem";
+import { Address, Hex, encodeFunctionData, encodeAbiParameters, decodeErrorResult } from "viem";
 
 import type { WalletClient, PublicClient, SendTransactionParameters } from "viem";
 import { EnvironmentConfig, Logger } from "../types";
@@ -20,7 +14,8 @@ import ERC7702DelegatorABI from "../abis/ERC7702Delegator.json";
 import { GasEstimate, formatETH } from "./caller";
 
 // Mode 0x01 is executeBatchMode (32 bytes, padded, big endian)
-const EXECUTE_BATCH_MODE = "0x0100000000000000000000000000000000000000000000000000000000000000" as Hex;
+const EXECUTE_BATCH_MODE =
+  "0x0100000000000000000000000000000000000000000000000000000000000000" as Hex;
 
 const GAS_LIMIT_BUFFER_PERCENTAGE = 20n; // 20%
 const GAS_PRICE_BUFFER_PERCENTAGE = 100n; // 100%
