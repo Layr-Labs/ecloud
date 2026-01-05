@@ -291,7 +291,8 @@ export default class AppDeploy extends Command {
 
         verifiableImageUrl = imageRef;
         verifiableImageDigest = digest;
-        suggestedAppBaseName = suggestAppBaseNameFromRepoUrl(verify.repoUrl);
+        // Note: for prebuilt images, verify.repoUrl points to the shared eigencloud-containers
+        // repo, so we don't suggest an app name based on it - prompt without a default instead
 
         for (const line of formatVerifiableBuildSummary({
           buildId: verify.buildId,
