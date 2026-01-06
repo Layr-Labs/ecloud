@@ -1,0 +1,358 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Run in dry-run mode (no publishing)'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  id-token: write
+  pull-requests: read
+
+env:
+  NODE_VERSION: "20.x"
+  PNPM_VERSION: "9"
+
+jobs:
+  test:
+    if: github.event_name == 'pull_request'
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "pnpm"
+
+      - name: Show build info
+        run: make info
+
+      - name: Install dependencies
+        run: make install
+
+      - name: Run checks
+        run: make ci-check
+
+      - name: Build packages
+        run: make build BUILD_TYPE=dev
+
+      - name: Show package versions
+        run: make show-versions
+
+      - name: Summary
+        run: |
+          echo "### PR Checks Passed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "All linting, formatting, type checking, and build steps completed successfully." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Build Type:** dev" >> $GITHUB_STEP_SUMMARY
+
+  dry-run:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'true'
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Detect version
+        run: |
+          VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.1-dev.manual")
+          PACKAGE_VERSION="${VERSION#v}"
+          
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "PACKAGE_VERSION=$PACKAGE_VERSION" >> $GITHUB_ENV
+          
+          if [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-dev ]]; then
+            echo "BUILD_TYPE=dev" >> $GITHUB_ENV
+            echo "NPM_TAG=dev" >> $GITHUB_ENV
+          else
+            echo "BUILD_TYPE=prod" >> $GITHUB_ENV
+            echo "NPM_TAG=latest" >> $GITHUB_ENV
+          fi
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "pnpm"
+
+      - name: Get short sha
+        run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+
+      - name: Install dependencies
+        run: make install
+
+      - name: Run checks
+        run: make ci-check
+
+      - name: Build packages
+        env:
+          POSTHOG_API_KEY_BUILD_TIME: ${{ secrets.POSTHOG_API_KEY }}
+        run: |
+          make build \
+            BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            PACKAGE_VERSION=${{ env.PACKAGE_VERSION }}
+
+      - name: Generate VERSION files
+        run: |
+          make version \
+            PACKAGE_VERSION=${{ env.PACKAGE_VERSION }} \
+            SHORT_SHA=${{ env.SHORT_SHA }}
+
+      - name: Prepare packages
+        run: |
+          make prepare \
+            PACKAGE_VERSION=${{ env.PACKAGE_VERSION }}
+
+      - name: Dry-run summary
+        run: |
+          make dry-run \
+            PACKAGE_VERSION=${{ env.PACKAGE_VERSION }} \
+            BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            NPM_TAG=${{ env.NPM_TAG }}
+
+      - name: Summary
+        run: |
+          echo "### Dry-Run Complete (No Publishing)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** \`${{ env.PACKAGE_VERSION }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Build Type:** \`${{ env.BUILD_TYPE }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**NPM Tag:** \`${{ env.NPM_TAG }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ env.SHORT_SHA }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** Build and checks passed, but packages were NOT published." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "To publish, re-run with dry_run=false or push a version tag." >> $GITHUB_STEP_SUMMARY
+
+  release:
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'false')
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Determine release type and set variables
+        id: release-type
+        run: |
+          # Handle manual trigger vs tag push
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # For manual triggers, use current commit and detect version from latest tag
+            VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.1-dev.manual")
+            echo "Manual trigger detected, using version: $VERSION"
+            echo "IS_MANUAL=true" >> $GITHUB_ENV
+          else
+            VERSION="${{ github.ref_name }}"
+            echo "Tag push detected: $VERSION"
+            echo "IS_MANUAL=false" >> $GITHUB_ENV
+          fi
+          
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          
+          # Clean leading v from version
+          PACKAGE_VERSION="${VERSION#v}"
+          echo "PACKAGE_VERSION=$PACKAGE_VERSION" >> $GITHUB_ENV
+          
+          # Determine if this is a dev or prod release
+          if [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-dev ]]; then
+            echo "RELEASE_TYPE=dev" >> $GITHUB_ENV
+            echo "BUILD_TYPE=dev" >> $GITHUB_ENV
+            echo "NPM_TAG=dev" >> $GITHUB_ENV
+            echo "IS_DEV=true" >> $GITHUB_ENV
+            echo "IS_PROD=false" >> $GITHUB_ENV
+            echo "Detected DEV release: $PACKAGE_VERSION"
+          else
+            echo "RELEASE_TYPE=prod" >> $GITHUB_ENV
+            echo "BUILD_TYPE=prod" >> $GITHUB_ENV
+            echo "NPM_TAG=latest" >> $GITHUB_ENV
+            echo "IS_DEV=false" >> $GITHUB_ENV
+            echo "IS_PROD=true" >> $GITHUB_ENV
+            echo "Detected PRODUCTION release: $PACKAGE_VERSION"
+            
+            # Extract base version for prod releases
+            BASE_VERSION="${VERSION%%-*}"
+            echo "BASE_VERSION=$BASE_VERSION" >> $GITHUB_ENV
+          fi
+
+      - name: Enforce dev tag format
+        if: env.IS_DEV == 'true'
+        run: |
+          VERSION="${{ env.VERSION }}"
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-dev ]]; then
+            echo "Version '$VERSION' does not match required pattern v<major>.<minor>.<patch>-dev*"
+            exit 1
+          fi
+          echo "Dev tag format validated"
+
+      - name: Verify dev testing occurred
+        if: env.IS_PROD == 'true'
+        run: |
+          echo "Production release detected - verifying dev testing"
+          echo "Looking for dev tag with base version: ${{ env.BASE_VERSION }}"
+
+          # Check if any dev tag exists for this semantic version
+          DEV_TAGS=$(git tag -l "${{ env.BASE_VERSION }}-dev*" | head -10)
+          if [ -z "$DEV_TAGS" ]; then
+            echo "ERROR: No dev tag found for version ${{ env.BASE_VERSION }}"
+            echo ""
+            echo "Available dev tags:"
+            git tag -l "*-dev*" | head -10 || echo "No dev tags found"
+            echo ""
+            echo "Must test in dev first: git tag ${{ env.BASE_VERSION }}-dev"
+            exit 1
+          fi
+
+          echo "Found dev tags for ${{ env.BASE_VERSION }}:"
+          echo "$DEV_TAGS"
+
+          # Verify dev and prod tags point to same commit
+          PROD_COMMIT=$(git rev-list -n 1 "${{ github.ref_name }}")
+          echo "Production tag ${{ github.ref_name }} points to commit: $PROD_COMMIT"
+
+          for DEV_TAG in $DEV_TAGS; do
+            DEV_COMMIT=$(git rev-list -n 1 "$DEV_TAG")
+            echo "Dev tag $DEV_TAG points to commit: $DEV_COMMIT"
+            
+            if [ "$DEV_COMMIT" = "$PROD_COMMIT" ]; then
+              echo "Dev tag $DEV_TAG verified - same commit as production tag"
+              echo "VERIFIED_DEV_TAG=$DEV_TAG" >> $GITHUB_ENV
+              exit 0
+            fi
+          done
+
+          echo "ERROR: No dev tag points to the same commit as production tag ${{ github.ref_name }}"
+          echo "Production commit: $PROD_COMMIT"
+          echo "Dev tags and their commits:"
+          for DEV_TAG in $DEV_TAGS; do
+            DEV_COMMIT=$(git rev-list -n 1 "$DEV_TAG")
+            echo "  $DEV_TAG: $DEV_COMMIT"
+          done
+          echo ""
+          echo "Create a dev tag on the same commit: git tag ${{ env.BASE_VERSION }}-dev $PROD_COMMIT"
+          exit 1
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: "https://registry.npmjs.org"
+          cache: "pnpm"
+
+      - name: Get short sha
+        run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+
+      - name: Validate version
+        run: make validate-version PACKAGE_VERSION=${{ env.PACKAGE_VERSION }}
+
+      - name: Install dependencies
+        run: make install
+
+      - name: Run checks
+        run: make ci-check
+
+      - name: Build packages
+        env:
+          POSTHOG_API_KEY_BUILD_TIME: ${{ secrets.POSTHOG_API_KEY }}
+        run: |
+          make build \
+            BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            PACKAGE_VERSION=${{ env.PACKAGE_VERSION }}
+
+      - name: Generate VERSION files
+        run: |
+          make version \
+            PACKAGE_VERSION=${{ env.PACKAGE_VERSION }} \
+            SHORT_SHA=${{ env.SHORT_SHA }}
+
+      - name: Prepare packages for publishing
+        run: |
+          make prepare \
+            PACKAGE_VERSION=${{ env.PACKAGE_VERSION }}
+
+      - name: Show versions before publish
+        run: make show-versions PACKAGE_VERSION=${{ env.PACKAGE_VERSION }} BUILD_TYPE=${{ env.BUILD_TYPE }} NPM_TAG=${{ env.NPM_TAG }}
+
+      - name: Publish packages to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          make publish \
+            PACKAGE_VERSION=${{ env.PACKAGE_VERSION }} \
+            NPM_TAG=${{ env.NPM_TAG }}
+
+      - name: Summary (Dev)
+        if: env.IS_DEV == 'true'
+        run: |
+          echo "### Dev Release Published" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** \`${{ env.PACKAGE_VERSION }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**NPM Tag:** \`dev\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ env.SHORT_SHA }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Packages:**" >> $GITHUB_STEP_SUMMARY
+          echo "- [@layr-labs/ecloud-sdk@${{ env.PACKAGE_VERSION }}](https://www.npmjs.com/package/@layr-labs/ecloud-sdk)" >> $GITHUB_STEP_SUMMARY
+          echo "- [@layr-labs/ecloud-cli@${{ env.PACKAGE_VERSION }}](https://www.npmjs.com/package/@layr-labs/ecloud-cli)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Install:**" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "npm install -g @layr-labs/ecloud-cli@dev" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Summary (Prod)
+        if: env.IS_PROD == 'true'
+        run: |
+          echo "### Production Release Published" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** \`${{ env.PACKAGE_VERSION }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**NPM Tag:** \`latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ env.SHORT_SHA }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Verified Dev Tag:** \`${{ env.VERIFIED_DEV_TAG }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Packages:**" >> $GITHUB_STEP_SUMMARY
+          echo "- [@layr-labs/ecloud-sdk@${{ env.PACKAGE_VERSION }}](https://www.npmjs.com/package/@layr-labs/ecloud-sdk)" >> $GITHUB_STEP_SUMMARY
+          echo "- [@layr-labs/ecloud-cli@${{ env.PACKAGE_VERSION }}](https://www.npmjs.com/package/@layr-labs/ecloud-cli)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Install:**" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "npm install -g @layr-labs/ecloud-cli@latest" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
