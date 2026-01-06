@@ -6,7 +6,12 @@
 
 import { Address, Hex, encodeFunctionData, encodeAbiParameters, decodeErrorResult } from "viem";
 
-import type { WalletClient, PublicClient, SendTransactionParameters } from "viem";
+import type {
+  WalletClient,
+  PublicClient,
+  SendTransactionParameters,
+  SignAuthorizationReturnType,
+} from "viem";
 import { EnvironmentConfig, Logger } from "../types";
 
 import ERC7702DelegatorABI from "../abis/ERC7702Delegator.json";
@@ -155,10 +160,7 @@ export async function executeBatch(options: ExecuteBatchOptions, logger: Logger)
   );
 
   // 4. Create authorization if needed
-  // Using a more permissive type because viem's SignAuthorizationReturnType has slightly
-  // different shape than what sendTransaction expects, but they are compatible at runtime
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let authorizationList: Array<any> = [];
+  let authorizationList: Array<SignAuthorizationReturnType> = [];
 
   if (!isDelegated) {
     const transactionNonce = await publicClient.getTransactionCount({
