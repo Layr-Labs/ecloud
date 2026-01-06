@@ -16,6 +16,7 @@ import {
   EnvironmentConfig,
   AppInfo,
 } from "@layr-labs/ecloud-sdk";
+import { createViemClients } from "./viemClients";
 import { getProfileCache, setProfileCache, updateProfileCacheEntry } from "./globalConfig";
 import {
   listApps as listLocalApps,
@@ -220,10 +221,17 @@ export class AppResolver {
     }
 
     try {
+      // Create viem clients for API calls
+      const { publicClient, walletClient } = createViemClients({
+        privateKey: this.privateKey!,
+        rpcUrl: this.rpcUrl!,
+        environment: this.environment,
+      });
+
       // Get all apps for the current developer
       const account = privateKeyToAccount(this.privateKey as Hex);
       const { apps } = await getAllAppsByDeveloper(
-        this.rpcUrl,
+        publicClient,
         this.environmentConfig,
         account.address,
       );
@@ -237,8 +245,8 @@ export class AppResolver {
       // Fetch info for all apps to get profile names
       const userApiClient = new UserApiClient(
         this.environmentConfig,
-        this.privateKey,
-        this.rpcUrl,
+        walletClient,
+        publicClient,
         getClientId(),
       );
       const appInfos = await getAppInfosChunked(userApiClient, apps);

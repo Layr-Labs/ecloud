@@ -6,6 +6,7 @@ import {
   getOrPromptAppID,
   getAppProfileInteractive,
   validateAppProfile,
+  imagePathToBlob,
 } from "../../../../utils/prompts";
 import { createAppResolver } from "../../../../utils/appResolver";
 import { invalidateProfileCache } from "../../../../utils/globalConfig";
@@ -76,19 +77,27 @@ export default class ProfileSet extends Command {
       let profile;
       if (flags.name) {
         // Non-interactive mode - use flags
-        profile = {
+        // Validate profile fields first (before converting imagePath to Blob)
+        const validationError = validateAppProfile({
           name: flags.name,
           website: flags.website,
           description: flags.description,
           xURL: flags["x-url"],
           imagePath: flags.image,
-        };
-
-        // Validate profile fields
-        const validationError = validateAppProfile(profile);
+        });
         if (validationError) {
           this.error(validationError);
         }
+
+        const { image, imageName } = imagePathToBlob(flags.image);
+        profile = {
+          name: flags.name,
+          website: flags.website,
+          description: flags.description,
+          xURL: flags["x-url"],
+          image,
+          imageName,
+        };
 
         // Show profile summary
         this.log("\n📋 Profile Summary:");
@@ -96,7 +105,7 @@ export default class ProfileSet extends Command {
         if (profile.website) this.log(`  Website:     ${profile.website}`);
         if (profile.description) this.log(`  Description: ${profile.description}`);
         if (profile.xURL) this.log(`  X URL:       ${profile.xURL}`);
-        if (profile.imagePath) this.log(`  Image:       ${profile.imagePath}`);
+        if (profile.imageName) this.log(`  Image:       ${profile.imageName}`);
       } else {
         // Interactive mode - prompt for all fields
         this.log("\nEnter profile information:");

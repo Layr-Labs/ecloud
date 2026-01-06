@@ -2,9 +2,7 @@
  * Shared authentication utilities for API clients
  */
 
-import { Hex, parseAbi, type Address } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
-import { createPublicClient } from "viem";
+import { Hex, parseAbi, type Address, type PublicClient, type WalletClient } from "viem";
 
 // Minimal AppController ABI for permission calculation
 const APP_CONTROLLER_ABI = parseAbi([
@@ -15,8 +13,8 @@ export interface PermissionSignatureOptions {
   permission: Hex;
   expiry: bigint;
   appControllerAddress: Address;
-  publicClient: ReturnType<typeof createPublicClient>;
-  account: ReturnType<typeof privateKeyToAccount>;
+  publicClient: PublicClient;
+  walletClient: WalletClient;
 }
 
 export interface PermissionSignatureResult {
@@ -26,11 +24,13 @@ export interface PermissionSignatureResult {
 
 /**
  * Calculate permission digest via AppController contract and sign it with EIP-191
+ *
+ * Works with any WalletClient - whether backed by a local private key or external signer.
  */
 export async function calculatePermissionSignature(
   options: PermissionSignatureOptions,
 ): Promise<PermissionSignatureResult> {
-  const { permission, expiry, appControllerAddress, publicClient, account } = options;
+  const { permission, expiry, appControllerAddress, publicClient, walletClient } = options;
 
   // Calculate permission digest hash using AppController contract
   const digest = (await publicClient.readContract({
@@ -40,8 +40,15 @@ export async function calculatePermissionSignature(
     args: [permission, expiry],
   })) as Hex;
 
+  // Get account from wallet client
+  const account = walletClient.account;
+  if (!account) {
+    throw new Error("WalletClient must have an account attached");
+  }
+
   // Sign the digest using EIP-191 (signMessage handles prefixing automatically)
-  const signature = await account.signMessage({
+  const signature = await walletClient.signMessage({
+    account,
     message: { raw: digest },
   });
 
@@ -49,7 +56,7 @@ export async function calculatePermissionSignature(
 }
 
 export interface BillingAuthSignatureOptions {
-  account: ReturnType<typeof privateKeyToAccount>;
+  walletClient: WalletClient;
   product: string;
   expiry: bigint;
 }
@@ -59,16 +66,8 @@ export interface BillingAuthSignatureResult {
   expiry: bigint;
 }
 
-/**
- * Sign billing authentication message using EIP-712 typed data
- */
-export async function calculateBillingAuthSignature(
-  options: BillingAuthSignatureOptions,
-): Promise<BillingAuthSignatureResult> {
-  const { account, product, expiry } = options;
-
-  // Sign using EIP-712 typed data
-  const signature = await account.signTypedData({
+const generateBillingSigData = (product: string, expiry: bigint) => {
+  return {
     domain: {
       name: "EigenCloud Billing API",
       version: "1",
@@ -79,18 +78,39 @@ export async function calculateBillingAuthSignature(
         { name: "expiry", type: "uint256" },
       ],
     },
-    primaryType: "BillingAuth",
+    primaryType: "BillingAuth" as const,
     message: {
       product,
       expiry,
     },
+  };
+};
+
+/**
+ * Sign billing authentication message using EIP-712 typed data
+ */
+export async function calculateBillingAuthSignature(
+  options: BillingAuthSignatureOptions,
+): Promise<BillingAuthSignatureResult> {
+  const { walletClient, product, expiry } = options;
+
+  // Get account from wallet client
+  const account = walletClient.account;
+  if (!account) {
+    throw new Error("WalletClient must have an account attached");
+  }
+
+  // Sign using EIP-712 typed data
+  const signature = await walletClient.signTypedData({
+    account,
+    ...generateBillingSigData(product, expiry),
   });
 
   return { signature, expiry };
 }
 
 export interface BuildAuthSignatureOptions {
-  account: ReturnType<typeof privateKeyToAccount>;
+  walletClient: WalletClient;
   expiry: bigint;
 }
 
@@ -105,9 +125,16 @@ export interface BuildAuthSignatureResult {
 export async function calculateBuildAuthSignature(
   options: BuildAuthSignatureOptions,
 ): Promise<BuildAuthSignatureResult> {
-  const { account, expiry } = options;
+  const { walletClient, expiry } = options;
 
-  const signature = await account.signTypedData({
+  // Get account from wallet client
+  const account = walletClient.account;
+  if (!account) {
+    throw new Error("WalletClient must have an account attached");
+  }
+
+  const signature = await walletClient.signTypedData({
+    account,
     domain: {
       name: "EigenCloud Build API",
       version: "1",

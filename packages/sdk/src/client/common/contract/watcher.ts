@@ -1,19 +1,22 @@
 /**
  * Contract watcher
  *
- * Watches app status until it reaches Running state using UserAPI
+ * Watches app status until it reaches Running state using UserAPI.
  */
 
 import { Address } from "viem";
+import type { WalletClient, PublicClient } from "viem";
 import { EnvironmentConfig, Logger } from "../types";
 import { UserApiClient } from "../utils/userapi";
 
+/**
+ * Options for watching app status
+ */
 export interface WatchUntilRunningOptions {
-  privateKey: string;
-  rpcUrl: string;
+  walletClient: WalletClient;
+  publicClient: PublicClient;
   environmentConfig: EnvironmentConfig;
   appId: Address;
-  clientId?: string;
 }
 
 const WATCH_POLL_INTERVAL_SECONDS = 5;
@@ -28,10 +31,10 @@ export async function watchUntilRunning(
   options: WatchUntilRunningOptions,
   logger: Logger,
 ): Promise<string | undefined> {
-  const { environmentConfig, appId, privateKey, rpcUrl, clientId } = options;
+  const { walletClient, publicClient, environmentConfig, appId } = options;
 
   // Create UserAPI client
-  const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl, clientId);
+  const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient);
 
   // Track initial status and whether we've seen a change
   let initialStatus: string | undefined;
@@ -102,12 +105,14 @@ export async function watchUntilRunning(
   }
 }
 
+/**
+ * Options for watching upgrade completion
+ */
 export interface WatchUntilUpgradeCompleteOptions {
-  privateKey: string;
-  rpcUrl: string;
+  walletClient: WalletClient;
+  publicClient: PublicClient;
   environmentConfig: EnvironmentConfig;
   appId: Address;
-  clientId?: string;
 }
 
 const APP_STATUS_STOPPED = "Stopped";
@@ -121,10 +126,10 @@ export async function watchUntilUpgradeComplete(
   options: WatchUntilUpgradeCompleteOptions,
   logger: Logger,
 ): Promise<void> {
-  const { environmentConfig, appId, privateKey, rpcUrl, clientId } = options;
+  const { walletClient, publicClient, environmentConfig, appId } = options;
 
   // Create UserAPI client
-  const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl, clientId);
+  const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient);
 
   // Track initial status and whether we've seen a change
   let initialStatus: string | undefined;

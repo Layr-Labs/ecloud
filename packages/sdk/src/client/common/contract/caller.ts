@@ -1,28 +1,36 @@
 /**
  * Contract interactions
  *
- * This module handles on-chain contract interactions using viem
+ * This module handles on-chain contract interactions using viem.
+ *
+ * Accepts viem's WalletClient and PublicClient directly, which abstract over both
+ * local accounts (privateKeyToAccount) and external signers (MetaMask, etc.).
+ *
+ * @example
+ * // CLI usage with private key
+ * const { walletClient, publicClient } = createClients({ privateKey, rpcUrl, chainId });
+ * await deployApp({ walletClient, publicClient, environmentConfig, ... }, logger);
+ *
+ * @example
+ * // Browser usage with external wallet
+ * const walletClient = createWalletClient({ chain, transport: custom(window.ethereum!) });
+ * const publicClient = createPublicClient({ chain, transport: custom(window.ethereum!) });
+ * await deployApp({ walletClient, publicClient, environmentConfig, ... }, logger);
  */
 
-import { privateKeyToAccount } from "viem/accounts";
 import { executeBatch, checkERC7702Delegation } from "./eip7702";
 import {
-  createWalletClient,
-  createPublicClient,
-  http,
   Address,
   Hex,
   encodeFunctionData,
   decodeErrorResult,
+  bytesToHex,
 } from "viem";
 import type { WalletClient, PublicClient } from "viem";
-import { hashAuthorization } from "viem/utils";
-import { sign } from "viem/accounts";
-
-import { addHexPrefix, getChainFromID } from "../utils";
 
 import { EnvironmentConfig, Logger, PreparedDeployData, PreparedUpgradeData } from "../types";
 import { Release } from "../types";
+import { getChainFromID } from "../utils/helpers";
 
 import AppControllerABI from "../abis/AppController.json";
 import PermissionControllerABI from "../abis/PermissionController.json";
@@ -47,9 +55,8 @@ export interface GasEstimate {
  * Options for estimating transaction gas
  */
 export interface EstimateGasOptions {
-  privateKey: string;
-  rpcUrl: string;
-  environmentConfig: EnvironmentConfig;
+  publicClient: PublicClient;
+  from: Address;
   to: Address;
   data: Hex;
   value?: bigint;
@@ -76,24 +83,14 @@ export function formatETH(wei: bigint): string {
  * Use this to get cost estimate before prompting user for confirmation.
  */
 export async function estimateTransactionGas(options: EstimateGasOptions): Promise<GasEstimate> {
-  const { privateKey, rpcUrl, environmentConfig, to, data, value = 0n } = options;
-
-  const privateKeyHex = addHexPrefix(privateKey) as Hex;
-  const account = privateKeyToAccount(privateKeyHex);
-
-  const chain = getChainFromID(environmentConfig.chainID);
-
-  const publicClient = createPublicClient({
-    chain,
-    transport: http(rpcUrl),
-  });
+  const { publicClient, from, to, data, value = 0n } = options;
 
   // Get current gas prices
   const fees = await publicClient.estimateFeesPerGas();
 
   // Estimate gas for the transaction
   const gasLimit = await publicClient.estimateGas({
-    account: account.address,
+    account: from,
     to,
     data,
     value,
@@ -113,19 +110,28 @@ export async function estimateTransactionGas(options: EstimateGasOptions): Promi
   };
 }
 
+/**
+ * Deploy app options
+ */
 export interface DeployAppOptions {
-  privateKey: string; // Will be converted to Hex
-  rpcUrl: string;
+  walletClient: WalletClient;
+  publicClient: PublicClient;
   environmentConfig: EnvironmentConfig;
   salt: Uint8Array;
   release: Release;
   publicLogs: boolean;
   imageRef: string;
-  /** Optional gas params from estimation */
-  gas?: {
-    maxFeePerGas?: bigint;
-    maxPriorityFeePerGas?: bigint;
-  };
+  gas?: GasEstimate;
+}
+
+/**
+ * Options for calculateAppID
+ */
+export interface CalculateAppIDOptions {
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+  ownerAddress: Address;
+  salt: Uint8Array;
 }
 
 /**
@@ -165,37 +171,21 @@ export interface PreparedUpgradeBatch {
 /**
  * Calculate app ID from owner address and salt
  */
-export async function calculateAppID(
-  privateKey: string | Hex,
-  rpcUrl: string,
-  environmentConfig: EnvironmentConfig,
-  salt: Uint8Array,
-): Promise<Address> {
-  const privateKeyHex = addHexPrefix(privateKey);
-  const account = privateKeyToAccount(privateKeyHex);
-
-  const chain = getChainFromID(environmentConfig.chainID);
-
-  const publicClient = createPublicClient({
-    chain,
-    transport: http(rpcUrl),
-  });
+export async function calculateAppID(options: CalculateAppIDOptions): Promise<Address> {
+  const { publicClient, environmentConfig, ownerAddress, salt } = options;
 
   // Ensure salt is properly formatted as hex string (32 bytes = 64 hex chars)
-  const saltHexString = Buffer.from(salt).toString("hex");
+  // bytesToHex returns 0x-prefixed string, slice(2) removes the prefix for padding
+  const saltHexString = bytesToHex(salt).slice(2);
   // Pad to 64 characters if needed
   const paddedSaltHex = saltHexString.padStart(64, "0");
   const saltHex = `0x${paddedSaltHex}` as Hex;
 
-  // Ensure address is a string (viem might return Hex type)
-  const accountAddress =
-    typeof account.address === "string" ? account.address : (account.address as Buffer).toString();
-
   const appID = await publicClient.readContract({
-    address: environmentConfig.appControllerAddress,
+    address: environmentConfig.appControllerAddress as Address,
     abi: AppControllerABI,
     functionName: "calculateAppId",
-    args: [accountAddress as Address, saltHex],
+    args: [ownerAddress, saltHex],
   });
 
   return appID as Address;
@@ -205,12 +195,13 @@ export async function calculateAppID(
  * Options for preparing a deploy batch
  */
 export interface PrepareDeployBatchOptions {
-  privateKey: string;
-  rpcUrl: string;
+  walletClient: WalletClient;
+  publicClient: PublicClient;
   environmentConfig: EnvironmentConfig;
   salt: Uint8Array;
   release: Release;
   publicLogs: boolean;
+  imageRef: string;
 }
 
 /**
@@ -222,34 +213,28 @@ export async function prepareDeployBatch(
   options: PrepareDeployBatchOptions,
   logger: Logger,
 ): Promise<PreparedDeployBatch> {
-  const { privateKey, rpcUrl, environmentConfig, salt, release, publicLogs } = options;
+  const { walletClient, publicClient, environmentConfig, salt, release, publicLogs } = options;
 
-  const privateKeyHex = addHexPrefix(privateKey) as Hex;
-  const account = privateKeyToAccount(privateKeyHex);
-
-  const chain = getChainFromID(environmentConfig.chainID);
-
-  const publicClient = createPublicClient({
-    chain,
-    transport: http(rpcUrl),
-  });
-  const walletClient = createWalletClient({
-    account,
-    chain,
-    transport: http(rpcUrl),
-  });
+  const account = walletClient.account;
+  if (!account) {
+    throw new Error("WalletClient must have an account attached");
+  }
 
   // 1. Calculate app ID
   logger.info("Calculating app ID...");
-  const appId = await calculateAppID(privateKeyHex, rpcUrl, environmentConfig, salt);
-  logger.info(`App ID: ${appId}`);
+  const appId = await calculateAppID({
+    publicClient,
+    environmentConfig,
+    ownerAddress: account.address,
+    salt,
+  });
 
   // Verify the app ID calculation matches what createApp will deploy
   logger.debug(`App ID calculated: ${appId}`);
   logger.debug(`This address will be used for acceptAdmin call`);
 
   // 2. Pack create app call
-  const saltHexString = Buffer.from(salt).toString("hex");
+  const saltHexString = bytesToHex(salt).slice(2);
   const paddedSaltHex = saltHexString.padStart(64, "0");
   const saltHex = `0x${paddedSaltHex}` as Hex;
 
@@ -257,13 +242,13 @@ export async function prepareDeployBatch(
   const releaseForViem = {
     rmsRelease: {
       artifacts: release.rmsRelease.artifacts.map((artifact) => ({
-        digest: `0x${Buffer.from(artifact.digest).toString("hex").padStart(64, "0")}` as Hex,
+        digest: `0x${bytesToHex(artifact.digest).slice(2).padStart(64, "0")}` as Hex,
         registry: artifact.registry,
       })),
       upgradeByTime: release.rmsRelease.upgradeByTime,
     },
-    publicEnv: `0x${Buffer.from(release.publicEnv).toString("hex")}` as Hex,
-    encryptedEnv: `0x${Buffer.from(release.encryptedEnv).toString("hex")}` as Hex,
+    publicEnv: bytesToHex(release.publicEnv) as Hex,
+    encryptedEnv: bytesToHex(release.encryptedEnv) as Hex,
   };
 
   const createData = encodeFunctionData({
@@ -337,7 +322,7 @@ export async function executeDeployBatch(
     publicClient: PublicClient;
     environmentConfig: EnvironmentConfig;
   },
-  gas: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } | undefined,
+  gas: GasEstimate | undefined,
   logger: Logger,
 ): Promise<{ appId: Address; txHash: Hex }> {
   const pendingMessage = "Deploying new app...";
@@ -364,17 +349,7 @@ export async function deployApp(
   options: DeployAppOptions,
   logger: Logger,
 ): Promise<{ appId: Address; txHash: Hex }> {
-  const prepared = await prepareDeployBatch(
-    {
-      privateKey: options.privateKey,
-      rpcUrl: options.rpcUrl,
-      environmentConfig: options.environmentConfig,
-      salt: options.salt,
-      release: options.release,
-      publicLogs: options.publicLogs,
-    },
-    logger,
-  );
+  const prepared = await prepareDeployBatch(options, logger);
 
   // Extract data and context from prepared batch
   const data: PreparedDeployData = {
@@ -391,33 +366,33 @@ export async function deployApp(
   return executeDeployBatch(data, context, options.gas, logger);
 }
 
+/**
+ * Upgrade app options
+ */
 export interface UpgradeAppOptions {
-  privateKey: string; // Will be converted to Hex
-  rpcUrl: string;
+  walletClient: WalletClient;
+  publicClient: PublicClient;
   environmentConfig: EnvironmentConfig;
-  appId: Address;
+  appID: Address;
   release: Release;
   publicLogs: boolean;
   needsPermissionChange: boolean;
   imageRef: string;
-  /** Optional gas params from estimation */
-  gas?: {
-    maxFeePerGas?: bigint;
-    maxPriorityFeePerGas?: bigint;
-  };
+  gas?: GasEstimate;
 }
 
 /**
  * Options for preparing an upgrade batch
  */
 export interface PrepareUpgradeBatchOptions {
-  privateKey: string;
-  rpcUrl: string;
+  walletClient: WalletClient;
+  publicClient: PublicClient;
   environmentConfig: EnvironmentConfig;
-  appId: Address;
+  appID: Address;
   release: Release;
   publicLogs: boolean;
   needsPermissionChange: boolean;
+  imageRef: string;
 }
 
 /**
@@ -428,49 +403,26 @@ export interface PrepareUpgradeBatchOptions {
 export async function prepareUpgradeBatch(
   options: PrepareUpgradeBatchOptions,
 ): Promise<PreparedUpgradeBatch> {
-  const {
-    privateKey,
-    rpcUrl,
-    environmentConfig,
-    appId,
-    release,
-    publicLogs,
-    needsPermissionChange,
-  } = options;
-
-  const privateKeyHex = addHexPrefix(privateKey) as Hex;
-  const account = privateKeyToAccount(privateKeyHex);
-
-  const chain = getChainFromID(environmentConfig.chainID);
-
-  const publicClient = createPublicClient({
-    chain,
-    transport: http(rpcUrl),
-  });
-  const walletClient = createWalletClient({
-    account,
-    chain,
-    transport: http(rpcUrl),
-  });
+  const { walletClient, publicClient, environmentConfig, appID, release, publicLogs, needsPermissionChange } = options;
 
   // 1. Pack upgrade app call
   // Convert Release Uint8Array values to hex strings for viem
   const releaseForViem = {
     rmsRelease: {
       artifacts: release.rmsRelease.artifacts.map((artifact) => ({
-        digest: `0x${Buffer.from(artifact.digest).toString("hex").padStart(64, "0")}` as Hex,
+        digest: `0x${bytesToHex(artifact.digest).slice(2).padStart(64, "0")}` as Hex,
         registry: artifact.registry,
       })),
       upgradeByTime: release.rmsRelease.upgradeByTime,
     },
-    publicEnv: `0x${Buffer.from(release.publicEnv).toString("hex")}` as Hex,
-    encryptedEnv: `0x${Buffer.from(release.encryptedEnv).toString("hex")}` as Hex,
+    publicEnv: bytesToHex(release.publicEnv) as Hex,
+    encryptedEnv: bytesToHex(release.encryptedEnv) as Hex,
   };
 
   const upgradeData = encodeFunctionData({
     abi: AppControllerABI,
     functionName: "upgradeApp",
-    args: [appId, releaseForViem],
+    args: [appID, releaseForViem],
   });
 
   // 2. Start with upgrade execution
@@ -494,7 +446,7 @@ export async function prepareUpgradeBatch(
         abi: PermissionControllerABI,
         functionName: "setAppointee",
         args: [
-          appId,
+          appID,
           "0x493219d9949348178af1f58740655951a8cd110c" as Address, // AnyoneCanCallAddress
           "0x57ee1fb74c1087e26446abc4fb87fd8f07c43d8d" as Address, // ApiPermissionsTarget
           "0x2fd3f2fe" as Hex, // CanViewAppLogsPermission
@@ -511,7 +463,7 @@ export async function prepareUpgradeBatch(
         abi: PermissionControllerABI,
         functionName: "removeAppointee",
         args: [
-          appId,
+          appID,
           "0x493219d9949348178af1f58740655951a8cd110c" as Address, // AnyoneCanCallAddress
           "0x57ee1fb74c1087e26446abc4fb87fd8f07c43d8d" as Address, // ApiPermissionsTarget
           "0x2fd3f2fe" as Hex, // CanViewAppLogsPermission
@@ -526,7 +478,7 @@ export async function prepareUpgradeBatch(
   }
 
   return {
-    appId,
+    appId: appID,
     executions,
     walletClient,
     publicClient,
@@ -544,7 +496,7 @@ export async function executeUpgradeBatch(
     publicClient: PublicClient;
     environmentConfig: EnvironmentConfig;
   },
-  gas: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } | undefined,
+  gas: GasEstimate | undefined,
   logger: Logger,
 ): Promise<Hex> {
   const pendingMessage = `Upgrading app ${data.appId}...`;
@@ -568,15 +520,7 @@ export async function executeUpgradeBatch(
  * Upgrade app on-chain (convenience wrapper that prepares and executes)
  */
 export async function upgradeApp(options: UpgradeAppOptions, logger: Logger): Promise<Hex> {
-  const prepared = await prepareUpgradeBatch({
-    privateKey: options.privateKey,
-    rpcUrl: options.rpcUrl,
-    environmentConfig: options.environmentConfig,
-    appId: options.appId,
-    release: options.release,
-    publicLogs: options.publicLogs,
-    needsPermissionChange: options.needsPermissionChange,
-  });
+  const prepared = await prepareUpgradeBatch(options);
 
   // Extract data and context from prepared batch
   const data: PreparedUpgradeData = {
@@ -596,51 +540,29 @@ export async function upgradeApp(options: UpgradeAppOptions, logger: Logger): Pr
  * Send and wait for transaction with confirmation support
  */
 export interface SendTransactionOptions {
-  privateKey: string;
-  rpcUrl: string;
+  walletClient: WalletClient;
+  publicClient: PublicClient;
   environmentConfig: EnvironmentConfig;
   to: Address;
   data: Hex;
   value?: bigint;
   pendingMessage: string;
   txDescription: string;
-  /** Optional gas params from estimation */
-  gas?: {
-    maxFeePerGas?: bigint;
-    maxPriorityFeePerGas?: bigint;
-  };
+  gas?: GasEstimate;
 }
 
 export async function sendAndWaitForTransaction(
   options: SendTransactionOptions,
   logger: Logger,
 ): Promise<Hex> {
-  const {
-    privateKey,
-    rpcUrl,
-    environmentConfig,
-    to,
-    data,
-    value = 0n,
-    pendingMessage,
-    txDescription,
-    gas,
-  } = options;
+  const { walletClient, publicClient, environmentConfig, to, data, value = 0n, pendingMessage, txDescription, gas } = options;
 
-  const privateKeyHex = addHexPrefix(privateKey) as Hex;
-  const account = privateKeyToAccount(privateKeyHex);
+  const account = walletClient.account;
+  if (!account) {
+    throw new Error("WalletClient must have an account attached");
+  }
 
   const chain = getChainFromID(environmentConfig.chainID);
-
-  const publicClient = createPublicClient({
-    chain,
-    transport: http(rpcUrl),
-  });
-  const walletClient = createWalletClient({
-    account,
-    chain,
-    transport: http(rpcUrl),
-  });
 
   // Show pending message if provided
   if (pendingMessage) {
@@ -654,7 +576,10 @@ export async function sendAndWaitForTransaction(
     data,
     value,
     ...(gas?.maxFeePerGas && { maxFeePerGas: gas.maxFeePerGas }),
-    ...(gas?.maxPriorityFeePerGas && { maxPriorityFeePerGas: gas.maxPriorityFeePerGas }),
+    ...(gas?.maxPriorityFeePerGas && {
+      maxPriorityFeePerGas: gas.maxPriorityFeePerGas,
+    }),
+    chain,
   });
 
   logger.info(`Transaction sent: ${hash}`);
@@ -738,17 +663,10 @@ function formatAppControllerError(decoded: {
  * Get active app count for a user
  */
 export async function getActiveAppCount(
-  rpcUrl: string,
+  publicClient: PublicClient,
   environmentConfig: EnvironmentConfig,
   user: Address,
 ): Promise<number> {
-  const chain = getChainFromID(environmentConfig.chainID);
-
-  const publicClient = createPublicClient({
-    chain,
-    transport: http(rpcUrl),
-  });
-
   const count = await publicClient.readContract({
     address: environmentConfig.appControllerAddress,
     abi: AppControllerABI,
@@ -763,17 +681,10 @@ export async function getActiveAppCount(
  * Get max active apps per user (quota limit)
  */
 export async function getMaxActiveAppsPerUser(
-  rpcUrl: string,
+  publicClient: PublicClient,
   environmentConfig: EnvironmentConfig,
   user: Address,
 ): Promise<number> {
-  const chain = getChainFromID(environmentConfig.chainID);
-
-  const publicClient = createPublicClient({
-    chain,
-    transport: http(rpcUrl),
-  });
-
   const quota = await publicClient.readContract({
     address: environmentConfig.appControllerAddress,
     abi: AppControllerABI,
@@ -793,19 +704,12 @@ export interface AppConfig {
 }
 
 export async function getAppsByCreator(
-  rpcUrl: string,
+  publicClient: PublicClient,
   environmentConfig: EnvironmentConfig,
   creator: Address,
   offset: bigint,
   limit: bigint,
 ): Promise<{ apps: Address[]; appConfigs: AppConfig[] }> {
-  const chain = getChainFromID(environmentConfig.chainID);
-
-  const publicClient = createPublicClient({
-    chain,
-    transport: http(rpcUrl),
-  });
-
   const result = (await publicClient.readContract({
     address: environmentConfig.appControllerAddress,
     abi: AppControllerABI,
@@ -824,19 +728,12 @@ export async function getAppsByCreator(
  * Get apps by developer
  */
 export async function getAppsByDeveloper(
-  rpcUrl: string,
+  publicClient: PublicClient,
   environmentConfig: EnvironmentConfig,
   developer: Address,
   offset: bigint,
   limit: bigint,
 ): Promise<{ apps: Address[]; appConfigs: AppConfig[] }> {
-  const chain = getChainFromID(environmentConfig.chainID);
-
-  const publicClient = createPublicClient({
-    chain,
-    transport: http(rpcUrl),
-  });
-
   const result = (await publicClient.readContract({
     address: environmentConfig.appControllerAddress,
     abi: AppControllerABI,
@@ -855,7 +752,7 @@ export async function getAppsByDeveloper(
  * Fetch all apps by a developer by auto-pagination
  */
 export async function getAllAppsByDeveloper(
-  rpcUrl: string,
+  publicClient: PublicClient,
   env: EnvironmentConfig,
   developer: Address,
   pageSize: bigint = 100n,
@@ -865,7 +762,7 @@ export async function getAllAppsByDeveloper(
   const allConfigs: AppConfig[] = [];
 
   while (true) {
-    const { apps, appConfigs } = await getAppsByDeveloper(rpcUrl, env, developer, offset, pageSize);
+    const { apps, appConfigs } = await getAppsByDeveloper(publicClient, env, developer, offset, pageSize);
 
     if (apps.length === 0) break;
 
@@ -887,17 +784,10 @@ export async function getAllAppsByDeveloper(
  * Get latest release block numbers for multiple apps
  */
 export async function getAppLatestReleaseBlockNumbers(
-  rpcUrl: string,
+  publicClient: PublicClient,
   environmentConfig: EnvironmentConfig,
   appIDs: Address[],
 ): Promise<Map<Address, number>> {
-  const chain = getChainFromID(environmentConfig.chainID);
-
-  const publicClient = createPublicClient({
-    chain,
-    transport: http(rpcUrl),
-  });
-
   // Fetch block numbers in parallel
   const results = await Promise.all(
     appIDs.map((appID) =>
@@ -927,17 +817,9 @@ export async function getAppLatestReleaseBlockNumbers(
  * Get block timestamps for multiple block numbers
  */
 export async function getBlockTimestamps(
-  rpcUrl: string,
-  environmentConfig: EnvironmentConfig,
+  publicClient: PublicClient,
   blockNumbers: number[],
 ): Promise<Map<number, number>> {
-  const chain = getChainFromID(environmentConfig.chainID);
-
-  const publicClient = createPublicClient({
-    chain,
-    transport: http(rpcUrl),
-  });
-
   // Deduplicate block numbers
   const uniqueBlockNumbers = [...new Set(blockNumbers)].filter((n) => n > 0);
 
@@ -961,19 +843,21 @@ export async function getBlockTimestamps(
 }
 
 /**
+ * Suspend options
+ */
+export interface SuspendOptions {
+  walletClient: WalletClient;
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+  account: Address;
+  apps: Address[];
+}
+
+/**
  * Suspend apps for an account
  */
-export async function suspend(
-  options: {
-    privateKey: string;
-    rpcUrl: string;
-    environmentConfig: EnvironmentConfig;
-    account: Address;
-    apps: Address[];
-  },
-  logger: Logger,
-): Promise<Hex | false> {
-  const { privateKey, rpcUrl, environmentConfig, account, apps } = options;
+export async function suspend(options: SuspendOptions, logger: Logger): Promise<Hex | false> {
+  const { walletClient, publicClient, environmentConfig, account, apps } = options;
 
   const suspendData = encodeFunctionData({
     abi: AppControllerABI,
@@ -983,74 +867,60 @@ export async function suspend(
 
   const pendingMessage = `Suspending ${apps.length} app(s)...`;
 
-  return sendAndWaitForTransaction(
-    {
-      privateKey,
-      rpcUrl,
-      environmentConfig,
-      to: environmentConfig.appControllerAddress,
-      data: suspendData,
-      pendingMessage,
-      txDescription: "Suspend",
-    },
-    logger,
-  );
+  return sendAndWaitForTransaction({
+    walletClient,
+    publicClient,
+    environmentConfig,
+    to: environmentConfig.appControllerAddress as Address,
+    data: suspendData,
+    pendingMessage,
+    txDescription: "Suspend",
+  }, logger);
+}
+
+/**
+ * Options for checking delegation status
+ */
+export interface IsDelegatedOptions {
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+  address: Address;
 }
 
 /**
  * Check if account is delegated to the ERC-7702 delegator
  */
-export async function isDelegated(options: {
-  privateKey: string;
-  rpcUrl: string;
-  environmentConfig: EnvironmentConfig;
-}): Promise<boolean> {
-  const { privateKey, rpcUrl, environmentConfig } = options;
-
-  const privateKeyHex = addHexPrefix(privateKey);
-  const account = privateKeyToAccount(privateKeyHex);
-
-  const chain = getChainFromID(environmentConfig.chainID);
-
-  const publicClient = createPublicClient({
-    chain,
-    transport: http(rpcUrl),
-  });
+export async function isDelegated(options: IsDelegatedOptions): Promise<boolean> {
+  const { publicClient, environmentConfig, address } = options;
 
   return checkERC7702Delegation(
     publicClient,
-    account.address,
+    address,
     environmentConfig.erc7702DelegatorAddress as Address,
   );
 }
 
 /**
+ * Undelegate options
+ */
+export interface UndelegateOptions {
+  walletClient: WalletClient;
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+}
+
+/**
  * Undelegate account (removes EIP-7702 delegation)
  */
-export async function undelegate(
-  options: {
-    privateKey: string;
-    rpcUrl: string;
-    environmentConfig: EnvironmentConfig;
-  },
-  logger: Logger,
-): Promise<Hex> {
-  const { privateKey, rpcUrl, environmentConfig } = options;
+export async function undelegate(options: UndelegateOptions, logger: Logger): Promise<Hex> {
+  const { walletClient, publicClient, environmentConfig } = options;
 
-  const privateKeyHex = addHexPrefix(privateKey);
-  const account = privateKeyToAccount(privateKeyHex);
+  const account = walletClient.account;
+  if (!account) {
+    throw new Error("WalletClient must have an account attached");
+  }
 
   const chain = getChainFromID(environmentConfig.chainID);
-
-  const publicClient = createPublicClient({
-    chain,
-    transport: http(rpcUrl),
-  });
-  const walletClient = createWalletClient({
-    account,
-    chain,
-    transport: http(rpcUrl),
-  });
 
   // Create authorization to undelegate (empty address = undelegate)
   const transactionNonce = await publicClient.getTransactionCount({
@@ -1061,36 +931,16 @@ export async function undelegate(
   const chainId = await publicClient.getChainId();
   const authorizationNonce = BigInt(transactionNonce) + 1n;
 
-  const authorization = {
-    chainId: Number(chainId),
-    address: "0x0000000000000000000000000000000000000000" as Address, // Empty address = undelegate
-    nonce: authorizationNonce,
-  };
+  logger.debug("Signing undelegate authorization");
 
-  const sighash = hashAuthorization({
-    chainId: authorization.chainId,
-    contractAddress: authorization.address,
-    nonce: Number(authorization.nonce),
+  const signedAuthorization = await walletClient.signAuthorization({
+    contractAddress: "0x0000000000000000000000000000000000000000" as Address,
+    chainId: chainId,
+    nonce: Number(authorizationNonce),
+    account: account,
   });
 
-  const sig = await sign({
-    hash: sighash,
-    privateKey: privateKeyHex,
-  });
-
-  const v = Number(sig.v);
-  const yParity = v === 27 ? 0 : 1;
-
-  const authorizationList = [
-    {
-      chainId: authorization.chainId,
-      address: authorization.address,
-      nonce: Number(authorization.nonce),
-      r: sig.r as Hex,
-      s: sig.s as Hex,
-      yParity,
-    },
-  ];
+  const authorizationList = [signedAuthorization];
 
   // Send transaction with authorization list
   const hash = await walletClient.sendTransaction({
@@ -1099,6 +949,7 @@ export async function undelegate(
     data: "0x" as Hex, // Empty data
     value: 0n,
     authorizationList,
+    chain,
   });
 
   logger.info(`Transaction sent: ${hash}`);

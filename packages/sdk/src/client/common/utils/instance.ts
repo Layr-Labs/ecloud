@@ -21,8 +21,8 @@ export async function getCurrentInstanceType(
   try {
     const userApiClient = new UserApiClient(
       preflightCtx.environmentConfig,
-      preflightCtx.privateKey,
-      preflightCtx.rpcUrl,
+      preflightCtx.walletClient,
+      preflightCtx.publicClient,
       clientId,
     );
 

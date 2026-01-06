@@ -9,6 +9,7 @@ import {
 } from "@layr-labs/ecloud-sdk";
 import { getOrPromptAppID, confirm } from "../../../utils/prompts";
 import { getPrivateKeyInteractive } from "../../../utils/prompts";
+import { createViemClients } from "../../../utils/viemClients";
 import chalk from "chalk";
 import { withTelemetry } from "../../../telemetry";
 
@@ -50,12 +51,18 @@ export default class AppLifecycleStart extends Command {
         action: "start",
       });
 
+      // Create viem clients for gas estimation
+      const { publicClient, address } = createViemClients({
+        privateKey,
+        rpcUrl,
+        environment,
+      });
+
       // Estimate gas cost
       const callData = encodeStartAppData(appId);
       const estimate = await estimateTransactionGas({
-        privateKey,
-        rpcUrl,
-        environmentConfig,
+        publicClient,
+        from: address,
         to: environmentConfig.appControllerAddress,
         data: callData,
       });
@@ -72,10 +79,7 @@ export default class AppLifecycleStart extends Command {
       }
 
       const res = await compute.app.start(appId, {
-        gas: {
-          maxFeePerGas: estimate.maxFeePerGas,
-          maxPriorityFeePerGas: estimate.maxPriorityFeePerGas,
-        },
+        gas: estimate,
       });
 
       if (!res.tx) {

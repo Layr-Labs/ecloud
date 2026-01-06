@@ -3,6 +3,7 @@
  */
 
 import { Address, Hex } from "viem";
+import { GasEstimate } from "../contract/caller";
 
 export type AppId = Address;
 
@@ -22,7 +23,7 @@ export interface DeployAppOpts {
   /** Log visibility setting - required */
   logVisibility: logVisibility;
   /** Optional gas params from estimation */
-  gas?: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint };
+  gas?: GasEstimate;
 }
 
 export interface UpgradeAppOpts {
@@ -36,7 +37,7 @@ export interface UpgradeAppOpts {
   instanceType: string;
   /** Log visibility setting - required */
   logVisibility: logVisibility;
-  gas?: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint };
+  gas?: GasEstimate;
 }
 
 /** Options for prepareDeploy */
@@ -167,7 +168,7 @@ export interface PreparedUpgrade {
 }
 
 export interface LifecycleOpts {
-  gas?: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint };
+  gas?: GasEstimate;
 }
 
 export interface AppRecord {
@@ -279,7 +280,9 @@ export interface AppProfile {
   /** X (Twitter) URL (optional) */
   xURL?: string;
   /** Path to image file (optional) */
-  imagePath?: string;
+  image?: Blob | File;
+  /** Image name (optional) */
+  imageName?: string;
 }
 
 /**

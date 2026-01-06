@@ -3,6 +3,7 @@ import { getEnvironmentConfig, UserApiClient, isMainnet } from "@layr-labs/eclou
 import { withTelemetry } from "../../../telemetry";
 import { commonFlags } from "../../../flags";
 import { createComputeClient } from "../../../client";
+import { createViemClients } from "../../../utils/viemClients";
 import {
   getDockerfileInteractive,
   getImageReferenceInteractive,
@@ -19,6 +20,7 @@ import {
   promptVerifiableSourceType,
   promptVerifiableGitSourceInputs,
   promptVerifiablePrebuiltImageRef,
+  imagePathToBlob,
 } from "../../../utils/prompts";
 import { invalidateProfileCache, setLinkedAppForDirectory } from "../../../utils/globalConfig";
 import { getClientId } from "../../../utils/version";
@@ -393,10 +395,7 @@ export default class AppDeploy extends Command {
       }
 
       // 10. Execute the deployment
-      const res = await compute.app.executeDeploy(prepared, {
-        maxFeePerGas: gasEstimate.maxFeePerGas,
-        maxPriorityFeePerGas: gasEstimate.maxPriorityFeePerGas,
-      });
+      const res = await compute.app.executeDeploy(prepared, gasEstimate);
 
       // 11. Collect app profile while deployment is in progress (optional)
       if (!flags["skip-profile"]) {
@@ -408,17 +407,20 @@ export default class AppDeploy extends Command {
           website?: string;
           description?: string;
           xURL?: string;
-          imagePath?: string;
+          image?: Blob | File;
+          imageName?: string;
         } | null = null;
 
         if (hasProfileFlags) {
           // Use flags directly if any were provided
+          const { image, imageName } = imagePathToBlob(flags.image);
           profile = {
             name: appName,
             website: flags.website,
             description: flags.description,
             xURL: flags["x-url"],
-            imagePath: flags.image,
+            image,
+            imageName,
           };
         } else {
           // Otherwise prompt interactively
@@ -478,11 +480,21 @@ export default class AppDeploy extends Command {
  */
 async function fetchAvailableInstanceTypes(
   environmentConfig: any,
-  privateKey?: string,
-  rpcUrl?: string,
+  privateKey: string,
+  rpcUrl: string,
 ): Promise<Array<{ sku: string; description: string }>> {
   try {
-    const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl, getClientId());
+    const { publicClient, walletClient } = createViemClients({
+      privateKey,
+      rpcUrl,
+      environment: environmentConfig.name,
+    });
+    const userApiClient = new UserApiClient(
+      environmentConfig,
+      walletClient,
+      publicClient,
+      getClientId(),
+    );
 
     const skuList = await userApiClient.getSKUs();
     if (skuList.skus.length === 0) {

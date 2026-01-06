@@ -5,23 +5,29 @@
  */
 
 import axios, { AxiosResponse } from "axios";
-import { privateKeyToAccount } from "viem/accounts";
-
-import type { Hex } from "viem";
+import { Address, type WalletClient } from "viem";
 import { calculateBillingAuthSignature } from "./auth";
 
 export class BuildApiClient {
   private readonly baseUrl: string;
-  private readonly account?: ReturnType<typeof privateKeyToAccount>;
+  private readonly walletClient?: WalletClient;
   private readonly clientId?: string;
 
-  constructor(options: { baseUrl: string; privateKey?: Hex | string; clientId?: string }) {
+  constructor(options: { baseUrl: string; walletClient?: WalletClient; clientId?: string }) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
     this.clientId = options.clientId;
+    this.walletClient = options.walletClient;
+  }
 
-    if (options.privateKey) {
-      this.account = privateKeyToAccount(options.privateKey as Hex);
+  /**
+   * Get the address of the connected wallet
+   */
+  get address(): Address {
+    const account = this.walletClient?.account;
+    if (!account) {
+      throw new Error("WalletClient must have an account attached");
     }
+    return account.address;
   }
 
   async submitBuild(payload: {
@@ -85,7 +91,9 @@ export class BuildApiClient {
     method: "POST" | "GET",
     body?: unknown,
   ): Promise<T> {
-    if (!this.account) throw new Error("Private key required for authenticated requests");
+    if (!this.walletClient?.account) {
+      throw new Error("WalletClient with account required for authenticated requests");
+    }
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -96,13 +104,13 @@ export class BuildApiClient {
     // Keep expiry short to reduce replay window.
     const expiry = BigInt(Math.floor(Date.now() / 1000) + 60);
     const { signature } = await calculateBillingAuthSignature({
-      account: this.account,
+      walletClient: this.walletClient,
       product: "compute",
       expiry,
     });
     headers.Authorization = `Bearer ${signature}`;
     headers["X-eigenx-expiry"] = expiry.toString();
-    headers["X-Account"] = this.account.address;
+    headers["X-Account"] = this.address;
 
     const res: AxiosResponse = await axios({
       url: `${this.baseUrl}${path}`,
@@ -117,20 +125,22 @@ export class BuildApiClient {
   }
 
   private async authenticatedTextRequest(path: string): Promise<string> {
-    if (!this.account) throw new Error("Private key required for authenticated requests");
+    if (!this.walletClient?.account) {
+      throw new Error("WalletClient with account required for authenticated requests");
+    }
 
     const headers: Record<string, string> = {};
     if (this.clientId) headers["x-client-id"] = this.clientId;
 
     const expiry = BigInt(Math.floor(Date.now() / 1000) + 60);
     const { signature } = await calculateBillingAuthSignature({
-      account: this.account,
+      walletClient: this.walletClient,
       product: "compute",
       expiry,
     });
     headers.Authorization = `Bearer ${signature}`;
     headers["X-eigenx-expiry"] = expiry.toString();
-    headers["X-Account"] = this.account.address;
+    headers["X-Account"] = this.address;
 
     const res: AxiosResponse = await axios({
       url: `${this.baseUrl}${path}`,

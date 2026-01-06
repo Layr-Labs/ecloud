@@ -30,6 +30,7 @@ import {
   UserApiClient,
 } from "@layr-labs/ecloud-sdk";
 import { getAppInfosChunked } from "./appResolver";
+import { createViemClients } from "./viemClients";
 import {
   getDefaultEnvironment,
   getProfileCache,
@@ -625,7 +626,9 @@ async function getAvailableAppNameInteractive(
   suggestedBaseName?: string,
   skipDefaultName?: boolean,
 ): Promise<string> {
-  const baseName = skipDefaultName ? undefined : suggestedBaseName || extractAppNameFromImage(imageRef);
+  const baseName = skipDefaultName
+    ? undefined
+    : suggestedBaseName || extractAppNameFromImage(imageRef);
   const suggestedName = baseName ? findAvailableName(environment, baseName) : undefined;
 
   while (true) {
@@ -669,7 +672,12 @@ export async function getOrPromptAppName(
       return appName;
     }
     console.log(`Warning: App name '${appName}' is already taken.`);
-    return getAvailableAppNameInteractive(environment, imageRef, suggestedBaseName, skipDefaultName);
+    return getAvailableAppNameInteractive(
+      environment,
+      imageRef,
+      suggestedBaseName,
+      skipDefaultName,
+    );
   }
 
   return getAvailableAppNameInteractive(environment, imageRef, suggestedBaseName, skipDefaultName);
@@ -1018,8 +1026,15 @@ async function getAppIDInteractive(options: GetAppIDOptions): Promise<Address> {
   const account = privateKeyToAccount(privateKeyHex);
   const developerAddr = account.address;
 
+  // Create viem clients for API calls
+  const { publicClient, walletClient } = createViemClients({
+    privateKey: options.privateKey!,
+    rpcUrl: options.rpcUrl!,
+    environment,
+  });
+
   const { apps, appConfigs } = await getAllAppsByDeveloper(
-    options.rpcUrl,
+    publicClient,
     environmentConfig,
     developerAddr,
   );
@@ -1039,8 +1054,8 @@ async function getAppIDInteractive(options: GetAppIDOptions): Promise<Address> {
     try {
       const userApiClient = new UserApiClient(
         environmentConfig,
-        options.privateKey,
-        options.rpcUrl,
+        walletClient,
+        publicClient,
         getClientId(),
       );
       const appInfos = await getAppInfosChunked(userApiClient, apps);
@@ -1637,13 +1652,15 @@ export async function getAppProfileInteractive(
     const description = await getAppDescriptionInteractive();
     const xURL = await getAppXURLInteractive();
     const imagePath = await getAppImageInteractive();
+    const { image, imageName } = imagePathToBlob(imagePath);
 
     const profile: AppProfile = {
       name,
       website,
       description,
       xURL,
-      imagePath,
+      image,
+      imageName,
     };
 
     console.log("\n" + formatProfileForDisplay(profile));
@@ -1799,8 +1816,25 @@ function formatProfileForDisplay(profile: AppProfile): string {
   if (profile.xURL) {
     output += `  X URL:       ${profile.xURL}\n`;
   }
-  if (profile.imagePath) {
-    output += `  Image:       ${profile.imagePath}\n`;
+  if (profile.imageName) {
+    output += `  Image:       ${profile.imageName}\n`;
   }
   return output;
+}
+
+export function imagePathToBlob(imagePath?: string): {
+  image: Blob | undefined;
+  imageName: string | undefined;
+} {
+  if (!imagePath) {
+    return { image: undefined, imageName: undefined };
+  }
+  try {
+    const fileBuffer = fs.readFileSync(imagePath);
+    const imageName = path.basename(imagePath);
+    return { image: new Blob([fileBuffer]), imageName };
+  } catch (err) {
+    console.error(`Failed to read image file: ${err}`);
+    return { image: undefined, imageName: undefined };
+  }
 }

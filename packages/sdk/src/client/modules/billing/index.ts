@@ -1,14 +1,18 @@
 /**
  * Main Billing namespace entry point
+ *
+ * Accepts viem's WalletClient which abstracts over both local accounts
+ * (privateKeyToAccount) and external signers (MetaMask, etc.).
  */
+
+import type { WalletClient } from "viem";
 
 import { BillingApiClient } from "../../common/utils/billingapi";
 import { getBillingEnvironmentConfig, getBuildType } from "../../common/config/environment";
-import { getLogger, isSubscriptionActive, addHexPrefix } from "../../common/utils";
-import { getAddressFromPrivateKey } from "../../common/auth";
+import { getLogger, isSubscriptionActive } from "../../common/utils";
 import { withSDKTelemetry } from "../../common/telemetry/wrapper";
 
-import type { Address, Hex } from "viem";
+import type { Address } from "viem";
 import type {
   ProductID,
   SubscriptionOpts,
@@ -26,14 +30,18 @@ export interface BillingModule {
 
 export interface BillingModuleConfig {
   verbose?: boolean;
-  privateKey: Hex;
+  walletClient: WalletClient;
   skipTelemetry?: boolean; // Skip telemetry when called from CLI
 }
 
 export function createBillingModule(config: BillingModuleConfig): BillingModule {
-  const { verbose = false, skipTelemetry = false } = config;
-  const privateKey = addHexPrefix(config.privateKey);
-  const address = getAddressFromPrivateKey(privateKey) as Address;
+  const { verbose = false, skipTelemetry = false, walletClient } = config;
+
+  // Get address from wallet client's account
+  if (!walletClient.account) {
+    throw new Error("WalletClient must have an account attached");
+  }
+  const address = walletClient.account.address as Address;
 
   const logger = getLogger(verbose);
 
@@ -41,7 +49,7 @@ export function createBillingModule(config: BillingModuleConfig): BillingModule 
   const billingEnvConfig = getBillingEnvironmentConfig(getBuildType());
 
   // Create billing API client
-  const billingApi = new BillingApiClient(billingEnvConfig, privateKey);
+  const billingApi = new BillingApiClient(billingEnvConfig, walletClient);
 
   return {
     address,

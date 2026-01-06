@@ -11,6 +11,7 @@ import {
 import { createBillingModule, type BillingModule } from "./modules/billing";
 import { createBuildModule, type BuildModule, type BuildModuleConfig } from "./modules/build";
 import { addHexPrefix } from "./common/utils";
+import { createClients } from "./common/utils/helpers";
 import { Hex } from "viem";
 
 // Export all types
@@ -30,7 +31,7 @@ export {
   PRIMARY_LANGUAGES,
   getAvailableTemplates,
 } from "./modules/compute/app/create";
-export { logs, LogsOptions, SDKLogsOptions } from "./modules/compute/app/logs";
+export { logs, LogsOptions } from "./modules/compute/app/logs";
 export {
   SDKDeployOptions,
   prepareDeploy,
@@ -70,6 +71,7 @@ export {
   isEnvironmentAvailable,
   getBuildType,
   isMainnet,
+  getBillingEnvironmentConfig,
 } from "./common/config/environment";
 export { isSubscriptionActive } from "./common/utils/billing";
 
@@ -107,6 +109,9 @@ export {
 // Export instance type utilities
 export { getCurrentInstanceType } from "./common/utils/instance";
 
+// Export viem client creation utilities (for CLI and server applications)
+export { getChainFromID, createClients as createViemClients } from "./common/utils/helpers";
+
 // Export user API client
 export {
   UserApiClient,
@@ -117,6 +122,8 @@ export {
   type AppReleaseBuild,
   type AppResponse,
 } from "./common/utils/userapi";
+
+export { BillingApiClient } from "./common/utils/billingapi";
 
 export type Environment = "sepolia" | "sepolia-dev" | "mainnet-alpha";
 
@@ -158,16 +165,23 @@ export function createECloudClient(cfg: ClientConfig): ECloudClient {
     );
   }
 
+  // Create viem clients for modules
+  const { walletClient, publicClient } = createClients({
+    privateKey: cfg.privateKey,
+    rpcUrl,
+    chainId: environmentConfig.chainID,
+  });
+
   return {
     compute: createComputeModule({
-      rpcUrl,
       verbose: cfg.verbose,
-      privateKey: cfg.privateKey,
+      walletClient,
+      publicClient,
       environment: cfg.environment,
     }),
     billing: createBillingModule({
       verbose: cfg.verbose,
-      privateKey: cfg.privateKey,
+      walletClient,
     }),
   };
 }

@@ -1,22 +1,35 @@
 /**
  * BillingAPI Client to manage product subscriptions
  * Standalone client - does not depend on chain infrastructure
+ *
+ * Accepts viem's WalletClient which abstracts over both local accounts
+ * (privateKeyToAccount) and external signers (MetaMask, etc.).
  */
 
 import axios, { AxiosResponse } from "axios";
-import { Hex } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import { Address, type WalletClient } from "viem";
 import { ProductID, CreateSubscriptionResponse, ProductSubscriptionResponse } from "../types";
 import { calculateBillingAuthSignature } from "./auth";
 import { BillingEnvironmentConfig } from "../types";
 
+/**
+ * BillingAPI Client for managing product subscriptions.
+ */
 export class BillingApiClient {
-  private readonly account: ReturnType<typeof privateKeyToAccount>;
-  private readonly config: BillingEnvironmentConfig;
+  constructor(
+    private readonly config: BillingEnvironmentConfig,
+    private readonly walletClient: WalletClient,
+  ) {}
 
-  constructor(config: BillingEnvironmentConfig, privateKey: Hex) {
-    this.account = privateKeyToAccount(privateKey);
-    this.config = config;
+  /**
+   * Get the address of the connected wallet
+   */
+  get address(): Address {
+    const account = this.walletClient.account;
+    if (!account) {
+      throw new Error("WalletClient must have an account attached");
+    }
+    return account.address;
   }
 
   async createSubscription(productId: ProductID = "compute"): Promise<CreateSubscriptionResponse> {
@@ -49,7 +62,7 @@ export class BillingApiClient {
 
     // Use EIP-712 typed data signature for billing auth
     const { signature } = await calculateBillingAuthSignature({
-      account: this.account,
+      walletClient: this.walletClient,
       product: productId,
       expiry,
     });
@@ -57,7 +70,7 @@ export class BillingApiClient {
     // Prepare headers
     const headers: Record<string, string> = {
       Authorization: `Bearer ${signature}`,
-      "X-Account": this.account.address,
+      "X-Account": this.address,
       "X-Expiry": expiry.toString(),
     };
 

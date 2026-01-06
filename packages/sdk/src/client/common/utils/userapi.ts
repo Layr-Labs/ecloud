@@ -1,14 +1,8 @@
-/**
- * UserAPI Client to manage interactions with the coordinator
- */
-
 import axios, { AxiosResponse } from "axios";
-import FormData from "form-data";
-import { Address, Hex, createPublicClient, http } from "viem";
+import { Address, Hex, type PublicClient, type WalletClient } from "viem";
 import { calculatePermissionSignature } from "./auth";
-import { privateKeyToAccount } from "viem/accounts";
 import { EnvironmentConfig } from "../types";
-import { addHexPrefix, stripHexPrefix, getChainFromID } from "./helpers";
+import { stripHexPrefix } from "./helpers";
 
 export interface AppProfileInfo {
   name: string;
@@ -138,23 +132,30 @@ function getDefaultClientId(): string {
   return `ecloud-sdk/v${version}`;
 }
 
+/**
+ * UserAPI Client for interacting with the EigenCloud UserAPI service.
+ */
 export class UserApiClient {
-  private readonly account?: ReturnType<typeof privateKeyToAccount>;
-  private readonly rpcUrl?: string;
   private readonly clientId: string;
 
   constructor(
     private readonly config: EnvironmentConfig,
-    privateKey?: string | Hex,
-    rpcUrl?: string,
+    private readonly walletClient: WalletClient,
+    private readonly publicClient: PublicClient,
     clientId?: string,
   ) {
-    if (privateKey) {
-      const privateKeyHex = addHexPrefix(privateKey);
-      this.account = privateKeyToAccount(privateKeyHex);
-    }
-    this.rpcUrl = rpcUrl;
     this.clientId = clientId || getDefaultClientId();
+  }
+
+  /**
+   * Get the address of the connected wallet
+   */
+  get address(): Address {
+    const account = this.walletClient.account;
+    if (!account) {
+      throw new Error("WalletClient must have an account attached");
+    }
+    return account.address;
   }
 
   async getInfos(appIDs: Address[], addressCount = 1): Promise<AppInfo[]> {
@@ -275,14 +276,23 @@ export class UserApiClient {
 
   /**
    * Upload app profile information with optional image
+   *
+   * @param appAddress - The app's contract address
+   * @param name - Display name for the app
+   * @param options - Optional fields including website, description, xURL, and image
+   * @param options.image - Image file as Blob or File (browser: from input element, Node.js: new Blob([buffer]))
+   * @param options.imageName - Filename for the image (required if image is provided)
    */
   async uploadAppProfile(
     appAddress: Address,
     name: string,
-    website?: string,
-    description?: string,
-    xURL?: string,
-    imagePath?: string,
+    options?: {
+      website?: string;
+      description?: string;
+      xURL?: string;
+      image?: Blob | File;
+      imageName?: string;
+    },
   ): Promise<{
     name: string;
     website?: string;
@@ -292,46 +302,41 @@ export class UserApiClient {
   }> {
     const endpoint = `${this.config.userApiServerURL}/apps/${appAddress}/profile`;
 
-    // Build multipart form data using form-data package
+    // Build multipart form data using Web FormData API (works in browser and Node.js 18+)
     const formData = new FormData();
 
     // Add required name field
     formData.append("name", name);
 
     // Add optional text fields
-    if (website) {
-      formData.append("website", website);
+    if (options?.website) {
+      formData.append("website", options.website);
     }
-    if (description) {
-      formData.append("description", description);
+    if (options?.description) {
+      formData.append("description", options.description);
     }
-    if (xURL) {
-      formData.append("xURL", xURL);
+    if (options?.xURL) {
+      formData.append("xURL", options.xURL);
     }
 
-    // Add optional image file
-    if (imagePath) {
-      const fs = await import("fs");
-      const path = await import("path");
-      const fileName = path.basename(imagePath);
-
-      // Read file into buffer
-      const fileBuffer = fs.readFileSync(imagePath);
-      formData.append("image", fileBuffer, fileName);
+    // Add optional image file (Blob or File)
+    if (options?.image) {
+      // If it's a File, use its name; otherwise require imageName
+      const fileName =
+        options.image instanceof File ? options.image.name : options.imageName || "image";
+      formData.append("image", options.image, fileName);
     }
 
     // Make authenticated POST request
+    // Note: Don't set Content-Type header manually - axios will set it with the correct boundary
     const headers: Record<string, string> = {
       "x-client-id": this.clientId,
-      ...formData.getHeaders(),
     };
 
     // Add auth headers (Authorization and X-eigenx-expiry)
-    if (this.account) {
-      const expiry = BigInt(Math.floor(Date.now() / 1000) + 5 * 60); // 5 minutes
-      const authHeaders = await this.generateAuthHeaders(CanUpdateAppProfilePermission, expiry);
-      Object.assign(headers, authHeaders);
-    }
+    const expiry = BigInt(Math.floor(Date.now() / 1000) + 5 * 60); // 5 minutes
+    const authHeaders = await this.generateAuthHeaders(CanUpdateAppProfilePermission, expiry);
+    Object.assign(headers, authHeaders);
 
     try {
       // Use axios to post req
@@ -391,7 +396,7 @@ export class UserApiClient {
       "x-client-id": this.clientId,
     };
     // Add auth headers if permission is specified
-    if (permission && this.account) {
+    if (permission) {
       const expiry = BigInt(Math.floor(Date.now() / 1000) + 5 * 60); // 5 minutes
       const authHeaders = await this.generateAuthHeaders(permission, expiry);
       Object.assign(headers, authHeaders);
@@ -449,28 +454,13 @@ export class UserApiClient {
     permission: Hex,
     expiry: bigint,
   ): Promise<Record<string, string>> {
-    if (!this.account) {
-      throw new Error("Private key required for authenticated requests");
-    }
-
-    if (!this.rpcUrl) {
-      throw new Error("RPC URL required for authenticated requests");
-    }
-
-    const chain = getChainFromID(this.config.chainID);
-
-    const publicClient = createPublicClient({
-      chain,
-      transport: http(this.rpcUrl),
-    });
-
     // Calculate permission signature using shared auth utility
     const { signature } = await calculatePermissionSignature({
       permission,
       expiry,
       appControllerAddress: this.config.appControllerAddress,
-      publicClient,
-      account: this.account,
+      publicClient: this.publicClient,
+      walletClient: this.walletClient,
     });
 
     // Return auth headers

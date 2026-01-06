@@ -2,10 +2,9 @@
  * Permission checking utilities
  */
 
-import { Address, createPublicClient, http, Hex } from "viem";
+import { Address, Hex, PublicClient } from "viem";
 import { EnvironmentConfig, Logger } from "../types";
 import PermissionControllerABI from "../abis/PermissionController.json";
-import { getChainFromID } from "./helpers";
 
 // Permission constants (matching Go version)
 const AnyoneCanCallAddress = "0x493219d9949348178af1f58740655951a8cd110c" as Address;
@@ -17,22 +16,15 @@ const CanViewAppLogsPermission = "0x2fd3f2fe" as Hex;
  */
 export async function checkAppLogPermission(
   preflightCtx: {
+    publicClient: PublicClient;
     environmentConfig: EnvironmentConfig;
-    rpcUrl: string;
   },
   appAddress: Address,
   logger: Logger,
 ): Promise<boolean> {
-  const chain = getChainFromID(preflightCtx.environmentConfig.chainID);
-
-  const publicClient = createPublicClient({
-    chain,
-    transport: http(preflightCtx.rpcUrl),
-  });
-
   try {
     // Call the canCall method on PermissionController
-    const canCall = await publicClient.readContract({
+    const canCall = await preflightCtx.publicClient.readContract({
       address: preflightCtx.environmentConfig.permissionControllerAddress as Address,
       abi: PermissionControllerABI,
       functionName: "canCall",

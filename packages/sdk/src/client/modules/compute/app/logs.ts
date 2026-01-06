@@ -7,11 +7,10 @@
  * provided explicitly. Use the CLI for interactive parameter collection.
  */
 
-import { Address } from "viem";
-import { Logger } from "../../../common/types";
+import { Address, type PublicClient, type WalletClient } from "viem";
+import { EnvironmentConfig, Logger } from "../../../common/types";
 import { defaultLogger } from "../../../common/utils";
 import { UserApiClient } from "../../../common/utils/userapi";
-import { getEnvironmentConfig } from "../../../common/config/environment";
 import { validateAppID } from "../../../common/utils/validation";
 import { withSDKTelemetry } from "../../../common/telemetry/wrapper";
 import chalk from "chalk";
@@ -19,33 +18,12 @@ import chalk from "chalk";
 /**
  * Required logs options for SDK (non-interactive)
  */
-export interface SDKLogsOptions {
+export interface LogsOptions {
   /** App ID (address) or app name - required */
   appID: string | Address;
   /** Watch logs continuously - optional */
   watch?: boolean;
-  /** Environment name - optional, defaults to 'sepolia' */
-  environment?: string;
-  /** Private key for authenticated requests - optional */
-  privateKey?: string;
-  /** RPC URL - optional, uses environment default */
-  rpcUrl?: string;
   /** Client ID for API requests - optional */
-  clientId?: string;
-  /** Skip telemetry (for CLI usage) - optional */
-  skipTelemetry?: boolean;
-}
-
-/**
- * Legacy interface for backward compatibility
- * @deprecated Use SDKLogsOptions instead
- */
-export interface LogsOptions {
-  appID?: string | Address;
-  watch?: boolean;
-  environment?: string;
-  privateKey?: string;
-  rpcUrl?: string;
   clientId?: string;
 }
 
@@ -177,21 +155,26 @@ async function watchLogs(
  * This function is non-interactive and requires appID to be provided explicitly.
  *
  * @param options - Required options including appID
+ * @param walletClient - Viem WalletClient for signing requests
+ * @param publicClient - Viem PublicClient for chain queries
+ * @param environmentConfig - Environment configuration
  * @param logger - Optional logger instance
+ * @param skipTelemetry - Skip telemetry (for CLI usage)
  * @throws Error if appID is missing or invalid
  */
 export async function logs(
-  options: SDKLogsOptions | LogsOptions,
+  options: LogsOptions,
+  walletClient: WalletClient,
+  publicClient: PublicClient,
+  environmentConfig: EnvironmentConfig,
   logger: Logger = defaultLogger,
   skipTelemetry: boolean = false,
 ): Promise<void> {
-  const skipTelemetryFlag = skipTelemetry || (options as SDKLogsOptions).skipTelemetry || false;
-
   return withSDKTelemetry(
     {
       functionName: "logs",
-      skipTelemetry: skipTelemetryFlag,
-      properties: { environment: (options.environment || "sepolia") as string },
+      skipTelemetry: skipTelemetry,
+      properties: { environment: environmentConfig.name },
     },
     async () => {
       console.log();
@@ -199,16 +182,6 @@ export async function logs(
       // Validate required parameters
       if (!options.appID) {
         throw new Error("appID is required for viewing logs");
-      }
-
-      // Get environment config
-      const environment = options.environment || "sepolia";
-      const environmentConfig = getEnvironmentConfig(environment);
-
-      // Get RPC URL (needed for contract queries and authentication)
-      const rpcUrl = options.rpcUrl || environmentConfig.defaultRPCURL;
-      if (!rpcUrl) {
-        throw new Error("RPC URL is required for authenticated requests");
       }
 
       // Validate app ID (must be a valid address - name resolution is done by CLI)
@@ -220,8 +193,8 @@ export async function logs(
       // Create user API client
       const userApiClient = new UserApiClient(
         environmentConfig,
-        options.privateKey,
-        rpcUrl,
+        walletClient,
+        publicClient,
         options.clientId,
       );
 
