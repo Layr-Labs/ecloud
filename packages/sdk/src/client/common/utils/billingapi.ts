@@ -14,16 +14,6 @@ import { BillingEnvironmentConfig } from "../types";
 
 /**
  * BillingAPI Client for managing product subscriptions.
- *
- * @example
- * // CLI usage with private key
- * const { walletClient } = createClients({ privateKey, rpcUrl, chainId });
- * const client = new BillingApiClient(config, walletClient);
- *
- * @example
- * // Browser usage with external wallet
- * const walletClient = createWalletClient({ chain, transport: custom(window.ethereum!) });
- * const client = new BillingApiClient(config, walletClient);
  */
 export class BillingApiClient {
   constructor(

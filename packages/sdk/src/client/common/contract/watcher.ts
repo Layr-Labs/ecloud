@@ -2,20 +2,6 @@
  * Contract watcher
  *
  * Watches app status until it reaches Running state using UserAPI.
- *
- * Accepts viem's WalletClient and PublicClient which abstract over both local accounts
- * (privateKeyToAccount) and external signers (MetaMask, etc.).
- *
- * @example
- * // CLI usage with private key
- * const { walletClient, publicClient } = createClients({ privateKey, rpcUrl, chainId });
- * await watchUntilRunning({ walletClient, publicClient, environmentConfig, appId }, logger);
- *
- * @example
- * // Browser usage with external wallet
- * const walletClient = createWalletClient({ chain, transport: custom(window.ethereum!) });
- * const publicClient = createPublicClient({ chain, transport: custom(window.ethereum!) });
- * await watchUntilRunning({ walletClient, publicClient, environmentConfig, appId }, logger);
  */
 
 import { Address } from "viem";

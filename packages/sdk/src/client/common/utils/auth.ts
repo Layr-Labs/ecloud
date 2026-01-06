@@ -1,8 +1,5 @@
 /**
  * Shared authentication utilities for API clients
- *
- * Uses viem's WalletClient which abstracts over both local accounts (privateKeyToAccount)
- * and external signers (MetaMask, etc.)
  */
 
 import { Hex, parseAbi, type Address, type PublicClient, type WalletClient } from "viem";
@@ -91,8 +88,6 @@ const generateBillingSigData = (product: string, expiry: bigint) => {
 
 /**
  * Sign billing authentication message using EIP-712 typed data
- *
- * Works with any WalletClient - whether backed by a local private key or external signer.
  */
 export async function calculateBillingAuthSignature(
   options: BillingAuthSignatureOptions,
@@ -126,8 +121,6 @@ export interface BuildAuthSignatureResult {
 
 /**
  * Sign build authentication message using EIP-712 typed data
- *
- * Works with any WalletClient - whether backed by a local private key or external signer.
  */
 export async function calculateBuildAuthSignature(
   options: BuildAuthSignatureOptions,

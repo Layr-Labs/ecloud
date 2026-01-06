@@ -2,15 +2,7 @@
  * Main App namespace entry point
  */
 
-import {
-  parseAbi,
-  encodeFunctionData,
-  Hex,
-  createWalletClient,
-  createPublicClient,
-  http,
-} from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import { parseAbi, encodeFunctionData, Hex, type WalletClient, type PublicClient } from "viem";
 import {
   deploy as deployApp,
   prepareDeploy as prepareDeployFn,
@@ -54,7 +46,7 @@ import type {
   PreparedDeploy,
   PreparedUpgrade,
 } from "../../../common/types";
-import { getLogger, addHexPrefix, getChainFromID } from "../../../common/utils";
+import { getLogger } from "../../../common/utils";
 
 // Minimal ABI
 const CONTROLLER_ABI = parseAbi([
@@ -161,35 +153,28 @@ export interface AppModule {
 
 export interface AppModuleConfig {
   verbose?: boolean;
-  privateKey: Hex;
-  rpcUrl: string;
+  walletClient: WalletClient;
+  publicClient: PublicClient;
   environment: string;
   clientId?: string;
   skipTelemetry?: boolean; // Skip telemetry when called from CLI
 }
 
 export function createAppModule(ctx: AppModuleConfig): AppModule {
-  const privateKey = addHexPrefix(ctx.privateKey);
+  const { walletClient, publicClient } = ctx;
   const skipTelemetry = ctx.skipTelemetry || false;
+
+  // Validate that wallet client has an account attached
+  if (!walletClient.account) {
+    throw new Error("WalletClient must have an account attached");
+  }
+  const account = walletClient.account;
 
   // Pull config for selected Environment
   const environment = getEnvironmentConfig(ctx.environment);
 
   // Get logger that respects verbose setting
   const logger = getLogger(ctx.verbose);
-
-  // Create viem clients once for reuse
-  const account = privateKeyToAccount(privateKey);
-  const chain = getChainFromID(environment.chainID);
-  const publicClient = createPublicClient({
-    chain,
-    transport: http(ctx.rpcUrl),
-  });
-  const walletClient = createWalletClient({
-    account,
-    chain,
-    transport: http(ctx.rpcUrl),
-  });
 
   return {
     async create(opts) {
@@ -200,8 +185,8 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
       // Map DeployAppOpts to SDKDeployOptions and call the deploy function
       const result = await deployApp(
         {
-          privateKey,
-          rpcUrl: ctx.rpcUrl,
+          walletClient,
+          publicClient,
           environment: ctx.environment,
           appName: opts.name,
           instanceType: opts.instanceType,
@@ -228,8 +213,8 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
       const result = await upgradeApp(
         {
           appId: appId,
-          privateKey,
-          rpcUrl: ctx.rpcUrl,
+          walletClient,
+          publicClient,
           environment: ctx.environment,
           instanceType: opts.instanceType,
           dockerfilePath: opts.dockerfile,
@@ -252,8 +237,8 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
     async prepareDeploy(opts) {
       return prepareDeployFn(
         {
-          privateKey,
-          rpcUrl: ctx.rpcUrl,
+          walletClient,
+          publicClient,
           environment: ctx.environment,
           appName: opts.name,
           instanceType: opts.instanceType,
@@ -271,8 +256,8 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
     async prepareDeployFromVerifiableBuild(opts) {
       return prepareDeployFromVerifiableBuildFn(
         {
-          privateKey,
-          rpcUrl: ctx.rpcUrl,
+          walletClient,
+          publicClient,
           environment: ctx.environment,
           appName: opts.name,
           instanceType: opts.instanceType,
@@ -323,8 +308,8 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
       return prepareUpgradeFn(
         {
           appId,
-          privateKey,
-          rpcUrl: ctx.rpcUrl,
+          walletClient,
+          publicClient,
           environment: ctx.environment,
           instanceType: opts.instanceType,
           dockerfilePath: opts.dockerfile,
@@ -342,8 +327,8 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
       return prepareUpgradeFromVerifiableBuildFn(
         {
           appId,
-          privateKey,
-          rpcUrl: ctx.rpcUrl,
+          walletClient,
+          publicClient,
           environment: ctx.environment,
           instanceType: opts.instanceType,
           envFilePath: opts.envFile,

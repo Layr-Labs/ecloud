@@ -5,16 +5,14 @@
  * (privateKeyToAccount) and external signers (MetaMask, etc.).
  */
 
-import { createWalletClient, http, type WalletClient } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import type { WalletClient } from "viem";
 
 import { BillingApiClient } from "../../common/utils/billingapi";
 import { getBillingEnvironmentConfig, getBuildType } from "../../common/config/environment";
-import { getLogger, isSubscriptionActive, addHexPrefix } from "../../common/utils";
-import { getAddressFromPrivateKey } from "../../common/auth";
+import { getLogger, isSubscriptionActive } from "../../common/utils";
 import { withSDKTelemetry } from "../../common/telemetry/wrapper";
 
-import type { Address, Hex } from "viem";
+import type { Address } from "viem";
 import type {
   ProductID,
   SubscriptionOpts,
@@ -32,26 +30,23 @@ export interface BillingModule {
 
 export interface BillingModuleConfig {
   verbose?: boolean;
-  privateKey: Hex;
+  walletClient: WalletClient;
   skipTelemetry?: boolean; // Skip telemetry when called from CLI
 }
 
 export function createBillingModule(config: BillingModuleConfig): BillingModule {
-  const { verbose = false, skipTelemetry = false } = config;
-  const privateKey = addHexPrefix(config.privateKey) as `0x${string}`;
-  const address = getAddressFromPrivateKey(privateKey) as Address;
+  const { verbose = false, skipTelemetry = false, walletClient } = config;
+
+  // Get address from wallet client's account
+  if (!walletClient.account) {
+    throw new Error("WalletClient must have an account attached");
+  }
+  const address = walletClient.account.address as Address;
 
   const logger = getLogger(verbose);
 
   // Get billing environment configuration
   const billingEnvConfig = getBillingEnvironmentConfig(getBuildType());
-
-  // Create wallet client from private key
-  const account = privateKeyToAccount(privateKey);
-  const walletClient: WalletClient = createWalletClient({
-    account,
-    transport: http(),
-  });
 
   // Create billing API client
   const billingApi = new BillingApiClient(billingEnvConfig, walletClient);

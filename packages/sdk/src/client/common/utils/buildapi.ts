@@ -2,19 +2,6 @@
  * Build API Client to manage verifiable builds and provenance
  *
  * This is a standalone HTTP client that talks to the (compute) UserAPI host.
- *
- * Accepts viem's WalletClient which abstracts over both local accounts
- * (privateKeyToAccount) and external signers (MetaMask, etc.).
- *
- * @example
- * // CLI usage with private key
- * const { walletClient } = createClients({ privateKey, rpcUrl, chainId });
- * const client = new BuildApiClient({ baseUrl, walletClient });
- *
- * @example
- * // Browser usage with external wallet
- * const walletClient = createWalletClient({ chain, transport: custom(window.ethereum!) });
- * const client = new BuildApiClient({ baseUrl, walletClient });
  */
 
 import axios, { AxiosResponse } from "axios";

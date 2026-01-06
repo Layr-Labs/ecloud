@@ -5,12 +5,11 @@
  * (privateKeyToAccount) and external signers (MetaMask, etc.).
  */
 
-import { createWalletClient, http, type WalletClient } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import { type WalletClient } from "viem";
 
 import { getEnvironmentConfig } from "../../common/config/environment";
 import { withSDKTelemetry } from "../../common/telemetry/wrapper";
-import { getLogger, addHexPrefix } from "../../common/utils";
+import { getLogger } from "../../common/utils";
 import { BuildApiClient } from "../../common/utils/buildapi";
 
 import { BUILD_STATUS } from "./types";
@@ -26,7 +25,8 @@ import type {
 import { AuthRequiredError, BuildFailedError, TimeoutError } from "./errors";
 
 export interface BuildModuleConfig {
-  privateKey?: string;
+  /** Wallet client for signing requests (optional - only needed for authenticated endpoints) */
+  walletClient?: WalletClient;
   environment?: string;
   verbose?: boolean;
   clientId?: string;
@@ -69,22 +69,11 @@ const DEFAULT_POLL_INTERVAL = 2000;
 const DEFAULT_TIMEOUT = 30 * 60 * 1000;
 
 export function createBuildModule(config: BuildModuleConfig): BuildModule {
-  const { verbose = false, skipTelemetry = false } = config;
+  const { verbose = false, skipTelemetry = false, walletClient } = config;
   const logger = getLogger(verbose);
 
   const environment = config.environment || "sepolia";
   const environmentConfig = getEnvironmentConfig(environment);
-
-  // Create wallet client from private key if provided
-  let walletClient: WalletClient | undefined;
-  if (config.privateKey) {
-    const privateKey = addHexPrefix(config.privateKey) as `0x${string}`;
-    const account = privateKeyToAccount(privateKey);
-    walletClient = createWalletClient({
-      account,
-      transport: http(),
-    });
-  }
 
   // NOTE: build endpoints are served from the compute UserAPI host
   const api = new BuildApiClient({
@@ -102,7 +91,7 @@ export function createBuildModule(config: BuildModuleConfig): BuildModule {
           properties: { environment, repoUrl: request.repoUrl },
         },
         async () => {
-          if (!config.privateKey) throw new AuthRequiredError("Private key required for submit()");
+          if (!walletClient) throw new AuthRequiredError("walletClient required for submit()");
 
           const data = await api.submitBuild({
             repo_url: request.repoUrl,
@@ -168,7 +157,7 @@ export function createBuildModule(config: BuildModuleConfig): BuildModule {
       return withSDKTelemetry(
         { functionName: "build.getLogs", skipTelemetry, properties: { environment, buildId } },
         async () => {
-          if (!config.privateKey) throw new AuthRequiredError("Private key required for getLogs()");
+          if (!walletClient) throw new AuthRequiredError("walletClient required for getLogs()");
           return api.getLogs(buildId);
         },
       );

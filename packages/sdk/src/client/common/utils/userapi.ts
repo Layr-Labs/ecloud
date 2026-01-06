@@ -134,20 +134,6 @@ function getDefaultClientId(): string {
 
 /**
  * UserAPI Client for interacting with the EigenCloud UserAPI service.
- *
- * Accepts viem's WalletClient and PublicClient, which abstract over both local accounts
- * (privateKeyToAccount) and external signers (MetaMask, etc.).
- *
- * @example
- * // CLI usage with private key
- * const { walletClient, publicClient } = createClients({ privateKey, rpcUrl, chainId });
- * const client = new UserApiClient(config, walletClient, publicClient);
- *
- * @example
- * // Browser usage with external wallet
- * const walletClient = createWalletClient({ chain, transport: custom(window.ethereum!) });
- * const publicClient = createPublicClient({ chain, transport: custom(window.ethereum!) });
- * const client = new UserApiClient(config, walletClient, publicClient);
  */
 export class UserApiClient {
   private readonly clientId: string;

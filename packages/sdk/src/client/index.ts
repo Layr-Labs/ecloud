@@ -11,6 +11,7 @@ import {
 import { createBillingModule, type BillingModule } from "./modules/billing";
 import { createBuildModule, type BuildModule, type BuildModuleConfig } from "./modules/build";
 import { addHexPrefix } from "./common/utils";
+import { createClients } from "./common/utils/helpers";
 import { Hex } from "viem";
 
 // Export all types
@@ -164,16 +165,23 @@ export function createECloudClient(cfg: ClientConfig): ECloudClient {
     );
   }
 
+  // Create viem clients for modules
+  const { walletClient, publicClient } = createClients({
+    privateKey: cfg.privateKey,
+    rpcUrl,
+    chainId: environmentConfig.chainID,
+  });
+
   return {
     compute: createComputeModule({
-      rpcUrl,
       verbose: cfg.verbose,
-      privateKey: cfg.privateKey,
+      walletClient,
+      publicClient,
       environment: cfg.environment,
     }),
     billing: createBillingModule({
       verbose: cfg.verbose,
-      privateKey: cfg.privateKey,
+      walletClient,
     }),
   };
 }

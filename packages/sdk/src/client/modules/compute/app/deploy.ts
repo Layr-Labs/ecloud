@@ -45,12 +45,15 @@ import { withSDKTelemetry } from "../../../common/telemetry/wrapper";
 
 /**
  * Required deploy options for SDK (non-interactive)
+ *
+ * Accepts viem's WalletClient and PublicClient for transaction signing.
+ * The caller is responsible for creating these clients (e.g., from a private key).
  */
 export interface SDKDeployOptions {
-  /** Private key for signing transactions (hex string with or without 0x prefix) */
-  privateKey: string;
-  /** RPC URL for blockchain connection - optional, uses environment default if not provided */
-  rpcUrl?: string;
+  /** Wallet client for signing transactions */
+  walletClient: WalletClient;
+  /** Public client for reading blockchain state */
+  publicClient: PublicClient;
   /** Environment name (e.g., 'sepolia', 'mainnet-alpha') - defaults to 'sepolia' */
   environment?: string;
   /** Path to Dockerfile (if building from Dockerfile) - either this or imageRef is required */
@@ -97,6 +100,37 @@ export interface ExecuteDeployOptions {
 }
 
 /**
+ * Options for verifiable build deployment
+ *
+ * Similar to SDKDeployOptions but uses a pre-built image with known digest
+ * instead of building from Dockerfile.
+ */
+export interface VerifiableBuildOptions {
+  /** Wallet client for signing transactions */
+  walletClient: WalletClient;
+  /** Public client for reading blockchain state */
+  publicClient: PublicClient;
+  /** Environment name (e.g., 'sepolia', 'mainnet-alpha') - defaults to 'sepolia' */
+  environment?: string;
+  /** Image reference (registry/path:tag) - required */
+  imageRef: string;
+  /** Image digest (sha256:...) - required */
+  imageDigest: string;
+  /** Path to .env file - optional */
+  envFilePath?: string;
+  /** App name - required */
+  appName: string;
+  /** Instance type SKU - required */
+  instanceType: string;
+  /** Log visibility setting - required */
+  logVisibility: LogVisibility;
+  /** Resource usage monitoring setting - optional, defaults to 'enable' */
+  resourceUsageMonitoring?: ResourceUsageMonitoring;
+  /** Skip telemetry (used when called from CLI) - optional */
+  skipTelemetry?: boolean;
+}
+
+/**
  * Prepare a deployment from a pre-built image (already layered) without using Docker locally.
  *
  * This is intended for verifiable builds where the build service outputs:
@@ -109,11 +143,7 @@ export interface ExecuteDeployOptions {
  * - Uses provided imageDigest + derived registry name to construct the Release struct
  */
 export async function prepareDeployFromVerifiableBuild(
-  options: Omit<SDKDeployOptions, "gas" | "dockerfilePath" | "imageRef"> & {
-    imageRef: string;
-    imageDigest: string; // sha256:...
-    skipTelemetry?: boolean;
-  },
+  options: VerifiableBuildOptions,
   logger: Logger = defaultLogger,
 ): Promise<PrepareDeployResult> {
   return withSDKTelemetry(
@@ -125,8 +155,10 @@ export async function prepareDeployFromVerifiableBuild(
       },
     },
     async () => {
-      // Validate required parameters (no dockerfilePath in this mode)
-      if (!options.privateKey) throw new Error("privateKey is required for deployment");
+      // Validate required parameters
+      if (!options.walletClient.account) {
+        throw new Error("WalletClient must have an account attached");
+      }
       if (!options.imageRef) throw new Error("imageRef is required for deployment");
       if (!options.imageDigest) throw new Error("imageDigest is required for deployment");
 
@@ -151,8 +183,8 @@ export async function prepareDeployFromVerifiableBuild(
       logger.debug("Performing preflight checks...");
       const preflightCtx = await doPreflightChecks(
         {
-          privateKey: options.privateKey,
-          rpcUrl: options.rpcUrl,
+          walletClient: options.walletClient,
+          publicClient: options.publicClient,
           environment: options.environment,
         },
         logger,
@@ -236,9 +268,9 @@ export async function prepareDeployFromVerifiableBuild(
  * Validate deploy options and throw descriptive errors for missing/invalid params
  */
 function validateDeployOptions(options: SDKDeployOptions): void {
-  // Private key is required
-  if (!options.privateKey) {
-    throw new Error("privateKey is required for deployment");
+  // Validate wallet client has an account
+  if (!options.walletClient.account) {
+    throw new Error("WalletClient must have an account attached");
   }
 
   // Must have either dockerfilePath or imageRef
@@ -321,8 +353,8 @@ export async function deploy(
       logger.debug("Performing preflight checks...");
       const preflightCtx = await doPreflightChecks(
         {
-          privateKey: options.privateKey,
-          rpcUrl: options.rpcUrl,
+          walletClient: options.walletClient,
+          publicClient: options.publicClient,
           environment: options.environment,
         },
         logger,
@@ -495,8 +527,8 @@ export async function prepareDeploy(
       logger.debug("Performing preflight checks...");
       const preflightCtx = await doPreflightChecks(
         {
-          privateKey: options.privateKey,
-          rpcUrl: options.rpcUrl,
+          walletClient: options.walletClient,
+          publicClient: options.publicClient,
           environment: options.environment,
         },
         logger,

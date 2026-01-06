@@ -2,10 +2,6 @@
  * EIP-7702 transaction handling
  *
  * This module handles EIP-7702 delegation and batch execution.
- *
- * Supports two modes:
- * 1. Private key mode (CLI): Pass privateKey for direct signing
- * 2. Wallet client mode: Use walletClient.signAuthorization() for external wallets
  */
 
 import { Address, Hex, encodeFunctionData, encodeAbiParameters, decodeErrorResult } from "viem";

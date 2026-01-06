@@ -48,10 +48,10 @@ import { withSDKTelemetry } from "../../../common/telemetry/wrapper";
 export interface SDKUpgradeOptions {
   /** App ID to upgrade - required */
   appId: string | Address;
-  /** Private key for signing transactions (hex string with or without 0x prefix) */
-  privateKey: string;
-  /** RPC URL for blockchain connection - optional, uses environment default if not provided */
-  rpcUrl?: string;
+  /** Wallet client for signing transactions */
+  walletClient: WalletClient;
+  /** Public client for reading blockchain state */
+  publicClient: PublicClient;
   /** Environment name (e.g., 'sepolia', 'mainnet-alpha') - defaults to 'sepolia' */
   environment?: string;
   /** Path to Dockerfile (if building from Dockerfile) - either this or imageRef is required */
@@ -133,8 +133,8 @@ export async function prepareUpgradeFromVerifiableBuild(
       logger.debug("Performing preflight checks...");
       const preflightCtx = await doPreflightChecks(
         {
-          privateKey: options.privateKey,
-          rpcUrl: options.rpcUrl,
+          walletClient: options.walletClient,
+          publicClient: options.publicClient,
           environment: options.environment,
         },
         logger,
@@ -214,9 +214,9 @@ export async function prepareUpgradeFromVerifiableBuild(
  * Validate upgrade options and throw descriptive errors for missing/invalid params
  */
 function validateUpgradeOptions(options: SDKUpgradeOptions): Address {
-  // Private key is required
-  if (!options.privateKey) {
-    throw new Error("privateKey is required for upgrade");
+  // Wallet client with account is required
+  if (!options.walletClient?.account) {
+    throw new Error("walletClient with account is required for upgrade");
   }
 
   // App ID is required
@@ -292,8 +292,8 @@ export async function upgrade(
       logger.debug("Performing preflight checks...");
       const preflightCtx = await doPreflightChecks(
         {
-          privateKey: options.privateKey,
-          rpcUrl: options.rpcUrl,
+          walletClient: options.walletClient,
+          publicClient: options.publicClient,
           environment: options.environment,
         },
         logger,
@@ -402,8 +402,8 @@ export async function prepareUpgrade(
       logger.debug("Performing preflight checks...");
       const preflightCtx = await doPreflightChecks(
         {
-          privateKey: options.privateKey,
-          rpcUrl: options.rpcUrl,
+          walletClient: options.walletClient,
+          publicClient: options.publicClient,
           environment: options.environment,
         },
         logger,

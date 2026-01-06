@@ -2,7 +2,7 @@
  * Main Compute namespace entry point
  */
 
-import { Hex } from "viem";
+import { type WalletClient, type PublicClient } from "viem";
 import { createAppModule, type AppModule } from "./app";
 
 export interface ComputeModule {
@@ -11,8 +11,8 @@ export interface ComputeModule {
 
 export interface ComputeModuleConfig {
   verbose?: boolean;
-  privateKey: Hex;
-  rpcUrl: string;
+  walletClient: WalletClient;
+  publicClient: PublicClient;
   environment: string;
   clientId?: string;
   skipTelemetry?: boolean;
