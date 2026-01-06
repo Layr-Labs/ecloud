@@ -58,10 +58,6 @@ export async function watchUntilRunning(
 ): Promise<string | undefined> {
   const { environmentConfig, appId, privateKey, rpcUrl, clientId } = options;
 
-  // Create UserAPI client
-  // const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl, clientId);
-  // const { environmentConfig, appId, rpcUrl } = options;
-
   // Create UserAPI client based on mode
   let userApiClient: UserApiClient | UserApiClientWithSigner;
   if ("signMessage" in options && options.signMessage) {
@@ -146,13 +142,6 @@ export async function watchUntilRunning(
   }
 }
 
-// export interface WatchUntilUpgradeCompleteOptions {
-//   privateKey: string;
-//   rpcUrl: string;
-//   environmentConfig: EnvironmentConfig;
-//   appId: Address;
-//   clientId?: string;
-// }
 export type WatchUntilUpgradeCompleteOptions =
   | WatchPrivateKeyOptions
   | (WatchWithSignerModeOptions & { clientId?: string });
@@ -174,10 +163,6 @@ export async function watchUntilUpgradeComplete(
 ): Promise<void> {
   const { environmentConfig, appId, privateKey, rpcUrl, clientId } = options;
 
-  // Create UserAPI client
-  // const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl, clientId);
-  // const { environmentConfig, appId, rpcUrl } = options;
-
   // Create UserAPI client based on mode
   let userApiClient: UserApiClient | UserApiClientWithSigner;
   if ("signMessage" in options && options.signMessage) {
@@ -187,7 +172,6 @@ export async function watchUntilUpgradeComplete(
       options.signMessage,
       options.address,
       rpcUrl,
-      clientId,
     );
   } else {
     // Private key mode

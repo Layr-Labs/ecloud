@@ -6,7 +6,6 @@ import {
   getOrPromptAppID,
   getAppProfileInteractive,
   validateAppProfile,
-  imagePathToBlob,
 } from "../../../../utils/prompts";
 import { createAppResolver } from "../../../../utils/appResolver";
 import { invalidateProfileCache } from "../../../../utils/globalConfig";
