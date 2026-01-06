@@ -6,7 +6,7 @@
 
 import { Address, Hex, encodeFunctionData, encodeAbiParameters, decodeErrorResult } from "viem";
 
-import type { WalletClient, PublicClient } from "viem";
+import type { WalletClient, PublicClient, SendTransactionParameters } from "viem";
 import { EnvironmentConfig, Logger } from "../types";
 
 import ERC7702DelegatorABI from "../abis/ERC7702Delegator.json";
@@ -186,8 +186,7 @@ export async function executeBatch(options: ExecuteBatchOptions, logger: Logger)
     logger.info(pendingMessage);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const txRequest: any = {
+  const txRequest: SendTransactionParameters = {
     account: walletClient.account!,
     chain,
     to: account.address,
