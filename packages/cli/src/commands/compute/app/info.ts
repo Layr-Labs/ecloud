@@ -9,7 +9,8 @@ import { commonFlags, validateCommonFlags } from "../../../flags";
 import { getOrPromptAppID } from "../../../utils/prompts";
 import { formatAppDisplay, printAppDisplay } from "../../../utils/format";
 import { getClientId } from "../../../utils/version";
-import { Address } from "viem";
+import { createViemClients } from "../../../utils/viemClients";
+import { Address, type PublicClient } from "viem";
 import chalk from "chalk";
 
 export default class AppInfo extends Command {
@@ -56,16 +57,21 @@ export default class AppInfo extends Command {
       action: "view info for",
     });
 
-    // Create UserAPI client
-    const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl, getClientId());
+    // Create viem clients and UserAPI client
+    const { publicClient, walletClient } = createViemClients({
+      privateKey,
+      rpcUrl,
+      environment,
+    });
+    const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, getClientId());
 
     if (flags.watch) {
-      await this.watchMode(appID, userApiClient, rpcUrl, environmentConfig, flags["address-count"]);
+      await this.watchMode(appID, userApiClient, publicClient, environmentConfig, flags["address-count"]);
     } else {
       await this.displayAppInfo(
         appID,
         userApiClient,
-        rpcUrl,
+        publicClient,
         environmentConfig,
         flags["address-count"],
       );
@@ -75,7 +81,7 @@ export default class AppInfo extends Command {
   private async displayAppInfo(
     appID: Address,
     userApiClient: UserApiClient,
-    rpcUrl: string,
+    publicClient: PublicClient,
     environmentConfig: ReturnType<typeof getEnvironmentConfig>,
     addressCount: number,
     clearScreen = false,
@@ -86,7 +92,7 @@ export default class AppInfo extends Command {
         this.warn(`Could not fetch app info: ${err}`);
         return [];
       }),
-      getAppLatestReleaseBlockNumbers(rpcUrl, environmentConfig, [appID]).catch((err) => {
+      getAppLatestReleaseBlockNumbers(publicClient, environmentConfig, [appID]).catch((err) => {
         this.warn(`Could not fetch release block numbers: ${err}`);
         return new Map<Address, number>();
       }) as Promise<Map<Address, number>>,
@@ -101,7 +107,7 @@ export default class AppInfo extends Command {
     const releaseBlockNumber = releaseBlockNumbers.get(appID);
     let releaseTimestamp: number | undefined;
     if (releaseBlockNumber && releaseBlockNumber > 0) {
-      const blockTimestamps = await getBlockTimestamps(rpcUrl, environmentConfig, [
+      const blockTimestamps = await getBlockTimestamps(publicClient, [
         releaseBlockNumber,
       ]).catch(() => new Map<number, number>());
       releaseTimestamp = blockTimestamps.get(releaseBlockNumber);
@@ -137,14 +143,14 @@ export default class AppInfo extends Command {
   private async watchMode(
     appID: Address,
     userApiClient: UserApiClient,
-    rpcUrl: string,
+    publicClient: PublicClient,
     environmentConfig: ReturnType<typeof getEnvironmentConfig>,
     addressCount: number,
   ) {
     const REFRESH_INTERVAL_SECONDS = 5;
 
     // Initial display
-    await this.displayAppInfo(appID, userApiClient, rpcUrl, environmentConfig, addressCount, true);
+    await this.displayAppInfo(appID, userApiClient, publicClient, environmentConfig, addressCount, true);
 
     while (true) {
       await showCountdown(REFRESH_INTERVAL_SECONDS);
@@ -153,7 +159,7 @@ export default class AppInfo extends Command {
       await this.displayAppInfo(
         appID,
         userApiClient,
-        rpcUrl,
+        publicClient,
         environmentConfig,
         addressCount,
         true,

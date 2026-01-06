@@ -17,7 +17,6 @@ import {
   PreparedUpgradeData,
   EnvironmentConfig,
 } from "../../../common/types";
-import { getEnvironmentConfig } from "../../../common/config/environment";
 import { ensureDockerIsRunning } from "../../../common/docker/build";
 import { prepareRelease } from "../../../common/release/prepare";
 import { createReleaseFromImageDigest } from "../../../common/release/prebuilt";
@@ -67,11 +66,8 @@ export interface SDKUpgradeOptions {
   logVisibility: LogVisibility;
   /** Resource usage monitoring setting - optional, defaults to 'enable' */
   resourceUsageMonitoring?: ResourceUsageMonitoring;
-  /** Optional gas params from estimation */
-  gas?: {
-    maxFeePerGas?: bigint;
-    maxPriorityFeePerGas?: bigint;
-  };
+  /** Optional gas params from estimation (use result from prepareUpgrade) */
+  gas?: GasEstimate;
   /** Skip telemetry (used when called from CLI) - optional */
   skipTelemetry?: boolean;
 }
@@ -103,7 +99,7 @@ export interface ExecuteUpgradeOptions {
     publicClient: PublicClient;
     environmentConfig: EnvironmentConfig;
   };
-  gas?: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint };
+  gas?: GasEstimate;
   logger?: Logger;
   skipTelemetry?: boolean;
 }
@@ -179,13 +175,14 @@ export async function prepareUpgradeFromVerifiableBuild(
       // Prepare upgrade batch (no send)
       logger.debug("Preparing upgrade batch...");
       const batch = await prepareUpgradeBatch({
-        privateKey: preflightCtx.privateKey,
-        rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
+        walletClient: preflightCtx.walletClient,
+        publicClient: preflightCtx.publicClient,
         environmentConfig: preflightCtx.environmentConfig,
-        appId: appID,
+        appID: appID,
         release,
         publicLogs,
         needsPermissionChange,
+        imageRef: options.imageRef,
       });
 
       logger.debug("Estimating gas...");
@@ -346,10 +343,10 @@ export async function upgrade(
       logger.info("Upgrading on-chain...");
       const txHash = await upgradeApp(
         {
-          privateKey: preflightCtx.privateKey,
-          rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
+          walletClient: preflightCtx.walletClient,
+          publicClient: preflightCtx.publicClient,
           environmentConfig: preflightCtx.environmentConfig,
-          appId: appID,
+          appID: appID,
           release,
           publicLogs,
           needsPermissionChange,
@@ -363,8 +360,8 @@ export async function upgrade(
       logger.info("Waiting for upgrade to complete...");
       await watchUntilUpgradeComplete(
         {
-          privateKey: preflightCtx.privateKey,
-          rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
+          walletClient: preflightCtx.walletClient,
+          publicClient: preflightCtx.publicClient,
           environmentConfig: preflightCtx.environmentConfig,
           appId: appID,
         },
@@ -455,13 +452,14 @@ export async function prepareUpgrade(
       // 6. Prepare the upgrade batch (creates executions without sending)
       logger.debug("Preparing upgrade batch...");
       const batch = await prepareUpgradeBatch({
-        privateKey: preflightCtx.privateKey,
-        rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
+        walletClient: preflightCtx.walletClient,
+        publicClient: preflightCtx.publicClient,
         environmentConfig: preflightCtx.environmentConfig,
-        appId: appID,
+        appID: appID,
         release,
         publicLogs,
         needsPermissionChange,
+        imageRef: finalImageRef,
       });
 
       // 7. Estimate gas for the batch
@@ -527,11 +525,10 @@ export async function executeUpgrade(options: ExecuteUpgradeOptions): Promise<Up
  */
 export async function watchUpgrade(
   appId: string,
-  privateKey: string,
-  rpcUrl: string,
-  environment: string,
+  walletClient: WalletClient,
+  publicClient: PublicClient,
+  environmentConfig: EnvironmentConfig,
   logger: Logger = defaultLogger,
-  clientId?: string,
   skipTelemetry?: boolean,
 ): Promise<void> {
   return withSDKTelemetry(
@@ -539,20 +536,17 @@ export async function watchUpgrade(
       functionName: "watchUpgrade",
       skipTelemetry: skipTelemetry,
       properties: {
-        environment,
+        environment: environmentConfig.name,
       },
     },
     async () => {
-      const environmentConfig = getEnvironmentConfig(environment);
-
       logger.info("Waiting for upgrade to complete...");
       await watchUntilUpgradeComplete(
         {
-          privateKey,
-          rpcUrl,
+          walletClient,
+          publicClient,
           environmentConfig,
           appId: appId as Address,
-          clientId,
         },
         logger,
       );

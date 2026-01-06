@@ -47,7 +47,6 @@ import type {
   AppProfileResponse,
   ExecuteDeployResult,
   ExecuteUpgradeResult,
-  GasOpts,
   PrepareDeployOpts,
   PrepareDeployFromVerifiableBuildOpts,
   PrepareUpgradeOpts,
@@ -123,7 +122,7 @@ export interface AppModule {
     prepared: PreparedDeploy;
     gasEstimate: GasEstimate;
   }>;
-  executeDeploy: (prepared: PreparedDeploy, gas?: GasOpts) => Promise<ExecuteDeployResult>;
+  executeDeploy: (prepared: PreparedDeploy, gas?: GasEstimate) => Promise<ExecuteDeployResult>;
   watchDeployment: (appId: AppId) => Promise<string | undefined>;
 
   // Granular upgrade control
@@ -141,7 +140,7 @@ export interface AppModule {
     prepared: PreparedUpgrade;
     gasEstimate: GasEstimate;
   }>;
-  executeUpgrade: (prepared: PreparedUpgrade, gas?: GasOpts) => Promise<ExecuteUpgradeResult>;
+  executeUpgrade: (prepared: PreparedUpgrade, gas?: GasEstimate) => Promise<ExecuteUpgradeResult>;
   watchUpgrade: (appId: AppId) => Promise<void>;
 
   // Profile management
@@ -178,6 +177,19 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
 
   // Get logger that respects verbose setting
   const logger = getLogger(ctx.verbose);
+
+  // Create viem clients once for reuse
+  const account = privateKeyToAccount(privateKey);
+  const chain = getChainFromID(environment.chainID);
+  const publicClient = createPublicClient({
+    chain,
+    transport: http(ctx.rpcUrl),
+  });
+  const walletClient = createWalletClient({
+    account,
+    chain,
+    transport: http(ctx.rpcUrl),
+  });
 
   return {
     async create(opts) {
@@ -276,19 +288,6 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
     },
 
     async executeDeploy(prepared, gas) {
-      // Create clients from module context
-      const account = privateKeyToAccount(privateKey);
-      const chain = getChainFromID(environment.chainID);
-      const publicClient = createPublicClient({
-        chain,
-        transport: http(ctx.rpcUrl),
-      });
-      const walletClient = createWalletClient({
-        account,
-        chain,
-        transport: http(ctx.rpcUrl),
-      });
-
       const result = await executeDeployFn({
         prepared,
         context: {
@@ -311,11 +310,10 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
     async watchDeployment(appId) {
       return watchDeploymentFn(
         appId,
-        privateKey,
-        ctx.rpcUrl,
-        ctx.environment,
+        walletClient,
+        publicClient,
+        environment,
         logger,
-        ctx.clientId,
         skipTelemetry,
       );
     },
@@ -360,19 +358,6 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
     },
 
     async executeUpgrade(prepared, gas) {
-      // Create clients from module context
-      const account = privateKeyToAccount(privateKey);
-      const chain = getChainFromID(environment.chainID);
-      const publicClient = createPublicClient({
-        chain,
-        transport: http(ctx.rpcUrl),
-      });
-      const walletClient = createWalletClient({
-        account,
-        chain,
-        transport: http(ctx.rpcUrl),
-      });
-
       const result = await executeUpgradeFn({
         prepared,
         context: {
@@ -394,11 +379,10 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
     async watchUpgrade(appId) {
       return watchUpgradeFn(
         appId,
-        privateKey,
-        ctx.rpcUrl,
-        ctx.environment,
+        walletClient,
+        publicClient,
+        environment,
         logger,
-        ctx.clientId,
         skipTelemetry,
       );
     },
@@ -414,18 +398,16 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
         async () => {
           const userApiClient = new UserApiClient(
             environment,
-            privateKey,
-            ctx.rpcUrl,
+            walletClient,
+            publicClient,
             ctx.clientId,
           );
-          return userApiClient.uploadAppProfile(
-            appId,
-            profile.name,
-            profile.website,
-            profile.description,
-            profile.xURL,
-            profile.imagePath,
-          );
+          return userApiClient.uploadAppProfile(appId, profile.name, {
+            website: profile.website,
+            description: profile.description,
+            xURL: profile.xURL,
+            // Note: imagePath conversion to Blob should be handled by caller (CLI)
+          });
         },
       );
     },
@@ -433,14 +415,15 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
     async logs(opts) {
       return logs(
         {
-          privateKey,
           appID: opts.appID,
           watch: opts.watch,
-          environment: ctx.environment,
           clientId: ctx.clientId,
         },
+        walletClient,
+        publicClient,
+        environment,
         logger,
-        skipTelemetry, // Skip if called from CLI
+        skipTelemetry,
       );
     },
 
@@ -462,8 +445,8 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
 
           const tx = await sendAndWaitForTransaction(
             {
-              privateKey,
-              rpcUrl: ctx.rpcUrl,
+              walletClient,
+              publicClient,
               environmentConfig: environment,
               to: environment.appControllerAddress,
               data,
@@ -496,8 +479,8 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
 
           const tx = await sendAndWaitForTransaction(
             {
-              privateKey,
-              rpcUrl: ctx.rpcUrl,
+              walletClient,
+              publicClient,
               environmentConfig: environment,
               to: environment.appControllerAddress,
               data,
@@ -530,8 +513,8 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
 
           const tx = await sendAndWaitForTransaction(
             {
-              privateKey,
-              rpcUrl: ctx.rpcUrl,
+              walletClient,
+              publicClient,
               environmentConfig: environment,
               to: environment.appControllerAddress,
               data,
@@ -548,9 +531,9 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
 
     async isDelegated() {
       return isDelegated({
-        privateKey,
-        rpcUrl: ctx.rpcUrl,
+        publicClient,
         environmentConfig: environment,
+        address: account.address,
       });
     },
 
@@ -565,8 +548,8 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           // perform the undelegate EIP7702 tx (sets delegated to zero address)
           const tx = await undelegate(
             {
-              privateKey,
-              rpcUrl: ctx.rpcUrl,
+              walletClient,
+              publicClient,
               environmentConfig: environment,
             },
             logger,

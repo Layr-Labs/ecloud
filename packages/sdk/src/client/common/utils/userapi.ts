@@ -1,9 +1,8 @@
 import axios, { AxiosResponse } from "axios";
-import { Address, Hex, createPublicClient, http } from "viem";
-import { calculatePermissionSignature, calculatePermissionSignatureWithSigner } from "./auth";
-import { privateKeyToAccount } from "viem/accounts";
+import { Address, Hex, type PublicClient, type WalletClient } from "viem";
+import { calculatePermissionSignature } from "./auth";
 import { EnvironmentConfig } from "../types";
-import { addHexPrefix, stripHexPrefix, getChainFromID } from "./helpers";
+import { stripHexPrefix } from "./helpers";
 
 export interface AppProfileInfo {
   name: string;
@@ -133,23 +132,44 @@ function getDefaultClientId(): string {
   return `ecloud-sdk/v${version}`;
 }
 
+/**
+ * UserAPI Client for interacting with the EigenCloud UserAPI service.
+ *
+ * Accepts viem's WalletClient and PublicClient, which abstract over both local accounts
+ * (privateKeyToAccount) and external signers (MetaMask, etc.).
+ *
+ * @example
+ * // CLI usage with private key
+ * const { walletClient, publicClient } = createClients({ privateKey, rpcUrl, chainId });
+ * const client = new UserApiClient(config, walletClient, publicClient);
+ *
+ * @example
+ * // Browser usage with external wallet
+ * const walletClient = createWalletClient({ chain, transport: custom(window.ethereum!) });
+ * const publicClient = createPublicClient({ chain, transport: custom(window.ethereum!) });
+ * const client = new UserApiClient(config, walletClient, publicClient);
+ */
 export class UserApiClient {
-  private readonly account?: ReturnType<typeof privateKeyToAccount>;
-  private readonly rpcUrl?: string;
   private readonly clientId: string;
 
   constructor(
     private readonly config: EnvironmentConfig,
-    privateKey?: string | Hex,
-    rpcUrl?: string,
+    private readonly walletClient: WalletClient,
+    private readonly publicClient: PublicClient,
     clientId?: string,
   ) {
-    if (privateKey) {
-      const privateKeyHex = addHexPrefix(privateKey);
-      this.account = privateKeyToAccount(privateKeyHex);
-    }
-    this.rpcUrl = rpcUrl;
     this.clientId = clientId || getDefaultClientId();
+  }
+
+  /**
+   * Get the address of the connected wallet
+   */
+  get address(): Address {
+    const account = this.walletClient.account;
+    if (!account) {
+      throw new Error("WalletClient must have an account attached");
+    }
+    return account.address;
   }
 
   async getInfos(appIDs: Address[], addressCount = 1): Promise<AppInfo[]> {
@@ -328,11 +348,9 @@ export class UserApiClient {
     };
 
     // Add auth headers (Authorization and X-eigenx-expiry)
-    if (this.account) {
-      const expiry = BigInt(Math.floor(Date.now() / 1000) + 5 * 60); // 5 minutes
-      const authHeaders = await this.generateAuthHeaders(CanUpdateAppProfilePermission, expiry);
-      Object.assign(headers, authHeaders);
-    }
+    const expiry = BigInt(Math.floor(Date.now() / 1000) + 5 * 60); // 5 minutes
+    const authHeaders = await this.generateAuthHeaders(CanUpdateAppProfilePermission, expiry);
+    Object.assign(headers, authHeaders);
 
     try {
       // Use axios to post req
@@ -392,7 +410,7 @@ export class UserApiClient {
       "x-client-id": this.clientId,
     };
     // Add auth headers if permission is specified
-    if (permission && this.account) {
+    if (permission) {
       const expiry = BigInt(Math.floor(Date.now() / 1000) + 5 * 60); // 5 minutes
       const authHeaders = await this.generateAuthHeaders(permission, expiry);
       Object.assign(headers, authHeaders);
@@ -450,28 +468,13 @@ export class UserApiClient {
     permission: Hex,
     expiry: bigint,
   ): Promise<Record<string, string>> {
-    if (!this.account) {
-      throw new Error("Private key required for authenticated requests");
-    }
-
-    if (!this.rpcUrl) {
-      throw new Error("RPC URL required for authenticated requests");
-    }
-
-    const chain = getChainFromID(this.config.chainID);
-
-    const publicClient = createPublicClient({
-      chain,
-      transport: http(this.rpcUrl),
-    });
-
     // Calculate permission signature using shared auth utility
     const { signature } = await calculatePermissionSignature({
       permission,
       expiry,
       appControllerAddress: this.config.appControllerAddress,
-      publicClient,
-      account: this.account,
+      publicClient: this.publicClient,
+      walletClient: this.walletClient,
     });
 
     // Return auth headers
@@ -530,165 +533,4 @@ function transformAppRelease(raw: unknown): AppRelease | undefined {
     createdAtBlock: readString(raw, "createdAtBlock") ?? readString(raw, "created_at_block"),
     build: raw.build ? transformAppReleaseBuild(raw.build) : undefined,
   };
-}
-/**
- * UserAPI Client with external signer
- * Uses a signMessage callback instead of a private key for signing
- */
-export class UserApiClientWithSigner {
-  constructor(
-    private readonly config: EnvironmentConfig,
-    private readonly signMessage: (message: { raw: Hex }) => Promise<Hex>,
-    private readonly address: Address,
-    private readonly rpcUrl: string,
-  ) {}
-
-  async getInfos(appIDs: Address[], addressCount = 1): Promise<AppInfo[]> {
-    const count = Math.min(addressCount, MAX_ADDRESS_COUNT);
-
-    const endpoint = `${this.config.userApiServerURL}/info`;
-    const url = `${endpoint}?${new URLSearchParams({ apps: appIDs.join(",") })}`;
-
-    const res = await this.makeAuthenticatedRequest(url, CanViewSensitiveAppInfoPermission);
-    const result = (await res.json()) as AppInfoResponse;
-
-    return result.apps.map((app, i) => {
-      // TODO: Implement signature verification
-      // const valid = await verifyKMSSignature(appInfo.addresses, signingKey);
-      // if (!valid) {
-      //   throw new Error(`Invalid signature for app ${appIDs[i]}`);
-      // }
-
-      // Slice derived addresses to requested count
-      const evmAddresses = app.addresses?.data?.evmAddresses?.slice(0, count) || [];
-      const solanaAddresses = app.addresses?.data?.solanaAddresses?.slice(0, count) || [];
-
-      return {
-        address: appIDs[i] as Address,
-        status: app.app_status,
-        ip: app.ip,
-        machineType: app.machine_type,
-        profile: app.profile,
-        metrics: app.metrics,
-        evmAddresses,
-        solanaAddresses,
-      };
-    });
-  }
-
-  async getSKUs(): Promise<{
-    skus: Array<{ sku: string; description: string }>;
-  }> {
-    const endpoint = `${this.config.userApiServerURL}/skus`;
-    const response = await this.makeAuthenticatedRequest(endpoint);
-    const result = (await response.json()) as {
-      skus?: Array<{ sku: string; description: string }>;
-      SKUs?: Array<{ sku: string; description: string }>;
-    };
-    return {
-      skus: result.skus || result.SKUs || [],
-    };
-  }
-
-  async getLogs(appID: Address): Promise<string> {
-    const endpoint = `${this.config.userApiServerURL}/logs/${appID}`;
-    const response = await this.makeAuthenticatedRequest(endpoint, CanViewAppLogsPermission);
-    return await response.text();
-  }
-
-  async getStatuses(appIDs: Address[]): Promise<Array<{ address: Address; status: string }>> {
-    const endpoint = `${this.config.userApiServerURL}/status`;
-    const url = `${endpoint}?${new URLSearchParams({ apps: appIDs.join(",") })}`;
-    const response = await this.makeAuthenticatedRequest(url);
-    const result = (await response.json()) as {
-      apps?: Array<{ address?: string; status?: string; Status?: string }>;
-      Apps?: Array<{ address?: string; status?: string; Status?: string }>;
-    };
-    const apps = result.apps || result.Apps || [];
-    return apps.map((app, i: number) => ({
-      address: (app.address || appIDs[i]) as Address,
-      status: app.status || app.Status || "",
-    }));
-  }
-
-  private async makeAuthenticatedRequest(
-    url: string,
-    permission?: Hex,
-  ): Promise<{ json: () => Promise<unknown>; text: () => Promise<string> }> {
-    const headers: Record<string, string> = {
-      "x-client-id": "ecloud-dashboard/v0.0.1",
-    };
-
-    if (permission) {
-      const expiry = BigInt(Math.floor(Date.now() / 1000) + 5 * 60);
-      const authHeaders = await this.generateAuthHeaders(permission, expiry);
-      Object.assign(headers, authHeaders);
-    }
-
-    try {
-      const response: AxiosResponse = await axios.get(url, {
-        headers,
-        maxRedirects: 0,
-        validateStatus: () => true,
-      });
-
-      const status = response.status;
-      const statusText = status >= 200 && status < 300 ? "OK" : "Error";
-
-      if (status < 200 || status >= 300) {
-        const body =
-          typeof response.data === "string" ? response.data : JSON.stringify(response.data);
-        throw new Error(`UserAPI request failed: ${status} ${statusText} - ${body}`);
-      }
-
-      return {
-        json: async (): Promise<unknown> => response.data,
-        text: async () =>
-          typeof response.data === "string" ? response.data : JSON.stringify(response.data),
-      };
-    } catch (error: unknown) {
-      const err = error as Error & { cause?: { message?: string } };
-      if (
-        err.message?.includes("fetch failed") ||
-        err.message?.includes("ECONNREFUSED") ||
-        err.message?.includes("ENOTFOUND") ||
-        err.cause
-      ) {
-        const cause = err.cause?.message || err.cause || err.message;
-        throw new Error(
-          `Failed to connect to UserAPI at ${url}: ${cause}\n` +
-            `Please check:\n` +
-            `1. Your internet connection\n` +
-            `2. The API server is accessible: ${this.config.userApiServerURL}\n` +
-            `3. Firewall/proxy settings`,
-        );
-      }
-      throw error;
-    }
-  }
-
-  private async generateAuthHeaders(
-    permission: Hex,
-    expiry: bigint,
-  ): Promise<Record<string, string>> {
-    const chain = getChainFromID(this.config.chainID);
-
-    const publicClient = createPublicClient({
-      chain,
-      transport: http(this.rpcUrl),
-    });
-
-    const { signature } = await calculatePermissionSignatureWithSigner({
-      permission,
-      expiry,
-      appControllerAddress: this.config.appControllerAddress as Address,
-      publicClient,
-      signMessage: this.signMessage,
-    });
-
-    return {
-      Authorization: `Bearer ${stripHexPrefix(signature)}`,
-      "X-eigenx-expiry": expiry.toString(),
-    };
-  }
 }

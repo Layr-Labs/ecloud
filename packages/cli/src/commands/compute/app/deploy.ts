@@ -3,6 +3,7 @@ import { getEnvironmentConfig, UserApiClient, isMainnet } from "@layr-labs/eclou
 import { withTelemetry } from "../../../telemetry";
 import { commonFlags } from "../../../flags";
 import { createComputeClient } from "../../../client";
+import { createViemClients } from "../../../utils/viemClients";
 import {
   getDockerfileInteractive,
   getImageReferenceInteractive,
@@ -393,10 +394,7 @@ export default class AppDeploy extends Command {
       }
 
       // 10. Execute the deployment
-      const res = await compute.app.executeDeploy(prepared, {
-        maxFeePerGas: gasEstimate.maxFeePerGas,
-        maxPriorityFeePerGas: gasEstimate.maxPriorityFeePerGas,
-      });
+      const res = await compute.app.executeDeploy(prepared, gasEstimate);
 
       // 11. Collect app profile while deployment is in progress (optional)
       if (!flags["skip-profile"]) {
@@ -478,11 +476,16 @@ export default class AppDeploy extends Command {
  */
 async function fetchAvailableInstanceTypes(
   environmentConfig: any,
-  privateKey?: string,
-  rpcUrl?: string,
+  privateKey: string,
+  rpcUrl: string,
 ): Promise<Array<{ sku: string; description: string }>> {
   try {
-    const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl, getClientId());
+    const { publicClient, walletClient } = createViemClients({
+      privateKey,
+      rpcUrl,
+      environment: environmentConfig.name,
+    });
+    const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, getClientId());
 
     const skuList = await userApiClient.getSKUs();
     if (skuList.skus.length === 0) {

@@ -8,16 +8,14 @@
  * provided explicitly. Use the CLI for interactive parameter collection.
  */
 
-import type { WalletClient, PublicClient } from "viem";
+import type { WalletClient, PublicClient, Address } from "viem";
 import {
   DeployResult,
   Logger,
-  AppId,
   PreparedDeploy,
   PreparedDeployData,
   EnvironmentConfig,
 } from "../../../common/types";
-import { getEnvironmentConfig } from "../../../common/config/environment";
 import { ensureDockerIsRunning } from "../../../common/docker/build";
 import { prepareRelease } from "../../../common/release/prepare";
 import { createReleaseFromImageDigest } from "../../../common/release/prebuilt";
@@ -69,11 +67,8 @@ export interface SDKDeployOptions {
   logVisibility: LogVisibility;
   /** Resource usage monitoring setting - optional, defaults to 'enable' */
   resourceUsageMonitoring?: ResourceUsageMonitoring;
-  /** Optional gas params from estimation */
-  gas?: {
-    maxFeePerGas?: bigint;
-    maxPriorityFeePerGas?: bigint;
-  };
+  /** Optional gas params from estimation (use result from prepareDeploy) */
+  gas?: GasEstimate;
   /** Skip telemetry (used when called from CLI) - optional */
   skipTelemetry?: boolean;
 }
@@ -96,7 +91,7 @@ export interface ExecuteDeployOptions {
     publicClient: PublicClient;
     environmentConfig: EnvironmentConfig;
   };
-  gas?: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint };
+  gas?: GasEstimate;
   logger?: Logger;
   skipTelemetry?: boolean;
 }
@@ -172,12 +167,12 @@ export async function prepareDeployFromVerifiableBuild(
 
       // Calculate app ID
       logger.debug("Calculating app ID...");
-      const appIDToBeDeployed = await calculateAppID(
-        preflightCtx.privateKey,
-        options.rpcUrl || preflightCtx.rpcUrl,
-        preflightCtx.environmentConfig,
+      const appIDToBeDeployed = await calculateAppID({
+        publicClient: preflightCtx.publicClient,
+        environmentConfig: preflightCtx.environmentConfig,
+        ownerAddress: preflightCtx.selfAddress,
         salt,
-      );
+      });
       logger.info(``);
       logger.info(`App ID: ${appIDToBeDeployed}`);
       logger.info(``);
@@ -199,12 +194,13 @@ export async function prepareDeployFromVerifiableBuild(
       logger.debug("Preparing deploy batch...");
       const batch = await prepareDeployBatch(
         {
-          privateKey: preflightCtx.privateKey,
-          rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
+          walletClient: preflightCtx.walletClient,
+          publicClient: preflightCtx.publicClient,
           environmentConfig: preflightCtx.environmentConfig,
           salt,
           release,
           publicLogs,
+          imageRef: options.imageRef,
         },
         logger,
       );
@@ -353,12 +349,12 @@ export async function deploy(
 
       // 6. Get app ID (calculate from salt and address)
       logger.debug("Calculating app ID...");
-      const appIDToBeDeployed = await calculateAppID(
-        preflightCtx.privateKey,
-        options.rpcUrl || preflightCtx.rpcUrl,
-        preflightCtx.environmentConfig,
+      const appIDToBeDeployed = await calculateAppID({
+        publicClient: preflightCtx.publicClient,
+        environmentConfig: preflightCtx.environmentConfig,
+        ownerAddress: preflightCtx.selfAddress,
         salt,
-      );
+      });
       logger.info(``);
       logger.info(`App ID: ${appIDToBeDeployed}`);
       logger.info(``);
@@ -383,8 +379,8 @@ export async function deploy(
       logger.info("Deploying on-chain...");
       const deployResult = await deployApp(
         {
-          privateKey: preflightCtx.privateKey,
-          rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
+          walletClient: preflightCtx.walletClient,
+          publicClient: preflightCtx.publicClient,
           environmentConfig: preflightCtx.environmentConfig,
           salt,
           release,
@@ -399,8 +395,8 @@ export async function deploy(
       logger.info("Waiting for app to start...");
       const ipAddress = await watchUntilRunning(
         {
-          privateKey: preflightCtx.privateKey,
-          rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
+          walletClient: preflightCtx.walletClient,
+          publicClient: preflightCtx.publicClient,
           environmentConfig: preflightCtx.environmentConfig,
           appId: deployResult.appId,
         },
@@ -423,14 +419,12 @@ export async function deploy(
  * by checking their allowlist status on the contract
  */
 async function checkQuotaAvailable(preflightCtx: PreflightContext): Promise<void> {
-  const rpcUrl = preflightCtx.rpcUrl;
-  const environmentConfig = preflightCtx.environmentConfig;
-  const userAddress = preflightCtx.selfAddress;
+  const { publicClient, environmentConfig, selfAddress: userAddress } = preflightCtx;
 
   // Check user's quota limit from contract
   let maxQuota: number;
   try {
-    maxQuota = await getMaxActiveAppsPerUser(rpcUrl, environmentConfig, userAddress);
+    maxQuota = await getMaxActiveAppsPerUser(publicClient, environmentConfig, userAddress);
   } catch (err: any) {
     throw new Error(`failed to get quota limit: ${err.message}`);
   }
@@ -445,7 +439,7 @@ async function checkQuotaAvailable(preflightCtx: PreflightContext): Promise<void
   // Check current active app count from contract
   let activeCount: number;
   try {
-    activeCount = await getActiveAppCount(rpcUrl, environmentConfig, userAddress);
+    activeCount = await getActiveAppCount(publicClient, environmentConfig, userAddress);
   } catch (err: any) {
     throw new Error(`failed to get active app count: ${err.message}`);
   }
@@ -529,12 +523,12 @@ export async function prepareDeploy(
 
       // 6. Get app ID (calculate from salt and address)
       logger.debug("Calculating app ID...");
-      const appIDToBeDeployed = await calculateAppID(
-        preflightCtx.privateKey,
-        options.rpcUrl || preflightCtx.rpcUrl,
-        preflightCtx.environmentConfig,
+      const appIDToBeDeployed = await calculateAppID({
+        publicClient: preflightCtx.publicClient,
+        environmentConfig: preflightCtx.environmentConfig,
+        ownerAddress: preflightCtx.selfAddress,
         salt,
-      );
+      });
       logger.info(``);
       logger.info(`App ID: ${appIDToBeDeployed}`);
       logger.info(``);
@@ -559,12 +553,13 @@ export async function prepareDeploy(
       logger.debug("Preparing deploy batch...");
       const batch = await prepareDeployBatch(
         {
-          privateKey: preflightCtx.privateKey,
-          rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
+          walletClient: preflightCtx.walletClient,
+          publicClient: preflightCtx.publicClient,
           environmentConfig: preflightCtx.environmentConfig,
           salt,
           release,
           publicLogs,
+          imageRef: finalImageRef,
         },
         logger,
       );
@@ -634,11 +629,10 @@ export async function executeDeploy(options: ExecuteDeployOptions): Promise<Depl
  */
 export async function watchDeployment(
   appId: string,
-  privateKey: string,
-  rpcUrl: string,
-  environment: string,
+  walletClient: WalletClient,
+  publicClient: PublicClient,
+  environmentConfig: EnvironmentConfig,
   logger: Logger = defaultLogger,
-  clientId?: string,
   skipTelemetry?: boolean,
 ): Promise<string | undefined> {
   return withSDKTelemetry(
@@ -646,20 +640,17 @@ export async function watchDeployment(
       functionName: "watchDeployment",
       skipTelemetry: skipTelemetry,
       properties: {
-        environment,
+        environment: environmentConfig.name,
       },
     },
     async () => {
-      const environmentConfig = getEnvironmentConfig(environment);
-
       logger.info("Waiting for app to start...");
       return watchUntilRunning(
         {
-          privateKey,
-          rpcUrl,
+          walletClient,
+          publicClient,
           environmentConfig,
-          appId: appId as AppId,
-          clientId,
+          appId: appId as Address,
         },
         logger,
       );

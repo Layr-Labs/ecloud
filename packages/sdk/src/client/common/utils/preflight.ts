@@ -1,43 +1,115 @@
 /**
  * Preflight checks
+ *
+ * Performs early validation of authentication and network connectivity.
+ *
+ * Accepts viem's WalletClient which abstracts over both local accounts
+ * (privateKeyToAccount) and external signers (MetaMask, etc.).
+ *
+ * @example
+ * // CLI usage with private key
+ * const { walletClient, publicClient } = createClients({ privateKey, rpcUrl, chainId });
+ * const ctx = await doPreflightChecks({ walletClient, publicClient, environment }, logger);
+ *
+ * @example
+ * // Browser usage with external wallet
+ * const walletClient = createWalletClient({ chain, transport: custom(window.ethereum!) });
+ * const publicClient = createPublicClient({ chain, transport: custom(window.ethereum!) });
+ * const ctx = await doPreflightChecks({ walletClient, publicClient, environment }, logger);
  */
 
-import { Address, createPublicClient, http, PrivateKeyAccount } from "viem";
+import {
+  Address,
+  createPublicClient,
+  createWalletClient,
+  http,
+  type PublicClient,
+  type WalletClient,
+} from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
 import { getEnvironmentConfig } from "../config/environment";
-import { addHexPrefix, stripHexPrefix } from "./helpers";
+import { addHexPrefix, stripHexPrefix, getChainFromID } from "./helpers";
 
 import { Logger, EnvironmentConfig } from "../types";
 
 export interface PreflightContext {
-  privateKey: string;
-  rpcUrl: string;
+  walletClient: WalletClient;
+  publicClient: PublicClient;
   environmentConfig: EnvironmentConfig;
-  account: PrivateKeyAccount;
   selfAddress: Address;
 }
 
 /**
- * Do preflight checks - performs early validation of authentication and network connectivity
+ * Options for preflight checks with WalletClient (browser/external signer mode)
+ */
+export interface PreflightOptionsWithWalletClient {
+  walletClient: WalletClient;
+  publicClient: PublicClient;
+  environment?: string;
+}
+
+/**
+ * Options for preflight checks with private key (CLI mode)
+ */
+export interface PreflightOptionsWithPrivateKey {
+  privateKey?: string;
+  rpcUrl?: string;
+  environment?: string;
+}
+
+export type PreflightOptions = PreflightOptionsWithWalletClient | PreflightOptionsWithPrivateKey;
+
+function hasWalletClient(
+  options: PreflightOptions,
+): options is PreflightOptionsWithWalletClient {
+  return "walletClient" in options && options.walletClient !== undefined;
+}
+
+/**
+ * Do preflight checks - performs early validation of authentication and network connectivity.
+ *
+ * Supports two modes:
+ * 1. CLI mode: Pass privateKey and optional rpcUrl - clients are created internally
+ * 2. Browser mode: Pass walletClient and publicClient directly
  */
 export async function doPreflightChecks(
-  options: Partial<{
-    privateKey?: string;
-    rpcUrl?: string;
-    environment?: string;
-  }>,
+  options: PreflightOptions,
   logger: Logger,
 ): Promise<PreflightContext> {
-  // 1. Get and validate private key first (fail fast)
-  logger.debug("Checking authentication...");
-  const privateKey = await getPrivateKeyOrFail(options.privateKey);
-
-  // 2. Get environment configuration
+  // Get environment configuration
   logger.debug("Determining environment...");
   const environmentConfig = getEnvironmentConfig(options.environment || "sepolia");
 
-  // 3. Get RPC URL (from option, env var, or environment default)
+  if (hasWalletClient(options)) {
+    // Browser/external signer mode - use provided clients
+    const { walletClient, publicClient } = options;
+
+    const account = walletClient.account;
+    if (!account) {
+      throw new Error("WalletClient must have an account attached");
+    }
+
+    // Validate chain ID
+    logger.debug("Validating chain ID...");
+    const chainID = await publicClient.getChainId();
+    if (BigInt(chainID) !== environmentConfig.chainID) {
+      throw new Error(`Chain ID mismatch: expected ${environmentConfig.chainID}, got ${chainID}`);
+    }
+
+    return {
+      walletClient,
+      publicClient,
+      environmentConfig,
+      selfAddress: account.address,
+    };
+  }
+
+  // CLI mode - create clients from private key
+  logger.debug("Checking authentication...");
+  const privateKey = await getPrivateKeyOrFail(options.privateKey);
+
+  // Get RPC URL (from option, env var, or environment default)
   let rpcUrl = options.rpcUrl;
   if (!rpcUrl) {
     rpcUrl = process.env.RPC_URL ?? environmentConfig.defaultRPCURL;
@@ -48,14 +120,16 @@ export async function doPreflightChecks(
     );
   }
 
-  // 4. Test network connectivity
+  // Test network connectivity
   logger.debug("Testing network connectivity...");
+  const chain = getChainFromID(environmentConfig.chainID);
   const publicClient = createPublicClient({
+    chain,
     transport: http(rpcUrl),
   });
 
   try {
-    // 5. Get chain ID
+    // Get chain ID
     const chainID = await publicClient.getChainId();
     if (BigInt(chainID) !== environmentConfig.chainID) {
       throw new Error(`Chain ID mismatch: expected ${environmentConfig.chainID}, got ${chainID}`);
@@ -64,17 +138,20 @@ export async function doPreflightChecks(
     throw new Error(`Cannot connect to ${environmentConfig.name} RPC at ${rpcUrl}: ${err.message}`);
   }
 
-  // 6. Create account from private key
-  const privateKeyHex = addHexPrefix(privateKey);
+  // Create account and wallet client from private key
+  const privateKeyHex = addHexPrefix(privateKey) as `0x${string}`;
   const account = privateKeyToAccount(privateKeyHex);
-  const selfAddress = account.address;
+  const walletClient = createWalletClient({
+    account,
+    chain,
+    transport: http(rpcUrl),
+  }) as WalletClient;
 
   return {
-    privateKey: privateKeyHex,
-    rpcUrl,
+    walletClient,
+    publicClient: publicClient as PublicClient,
     environmentConfig,
-    account,
-    selfAddress,
+    selfAddress: account.address,
   };
 }
 

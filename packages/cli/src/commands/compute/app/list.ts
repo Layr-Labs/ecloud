@@ -17,6 +17,8 @@ import {
 } from "../../../utils/prompts";
 import { getAppInfosChunked } from "../../../utils/appResolver";
 import { formatAppDisplay, printAppDisplay } from "../../../utils/format";
+import { createViemClients } from "../../../utils/viemClients";
+import { getClientId } from "../../../utils/version";
 import chalk from "chalk";
 import { withTelemetry } from "../../../telemetry";
 
@@ -53,12 +55,19 @@ export default class AppList extends Command {
       const account = privateKeyToAccount(privateKey as Hex);
       const developerAddr = account.address;
 
+      // Create viem clients and UserAPI client
+      const { publicClient, walletClient } = createViemClients({
+        privateKey,
+        rpcUrl,
+        environment,
+      });
+
       if (flags.verbose) {
         this.log(`Fetching apps for developer: ${developerAddr}`);
       }
 
       // List apps from contract
-      const result = await getAllAppsByDeveloper(rpcUrl, environmentConfig, developerAddr);
+      const result = await getAllAppsByDeveloper(publicClient, environmentConfig, developerAddr);
 
       if (result.apps.length === 0) {
         this.log(`\nNo apps found for developer ${developerAddr}`);
@@ -89,8 +98,8 @@ export default class AppList extends Command {
         return;
       }
 
-      // Create UserAPI client to get additional info
-      const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl);
+      // Create UserAPI client
+      const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, getClientId());
 
       // Fetch all data in parallel
       const [appInfos, releaseBlockNumbers] = await Promise.all([
@@ -100,7 +109,7 @@ export default class AppList extends Command {
           }
           return [];
         }),
-        getAppLatestReleaseBlockNumbers(rpcUrl, environmentConfig, filteredApps).catch((err) => {
+        getAppLatestReleaseBlockNumbers(publicClient, environmentConfig, filteredApps).catch((err) => {
           if (flags.verbose) {
             this.warn(`Could not fetch release block numbers: ${err}`);
           }
@@ -112,7 +121,7 @@ export default class AppList extends Command {
       const blockNumbers = Array.from(releaseBlockNumbers.values()).filter((n) => n > 0);
       const blockTimestamps =
         blockNumbers.length > 0
-          ? await getBlockTimestamps(rpcUrl, environmentConfig, blockNumbers).catch((err) => {
+          ? await getBlockTimestamps(publicClient, blockNumbers).catch((err) => {
               if (flags.verbose) {
                 this.warn(`Could not fetch block timestamps: ${err}`);
               }

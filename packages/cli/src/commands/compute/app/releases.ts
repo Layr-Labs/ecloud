@@ -4,6 +4,7 @@ import { commonFlags, validateCommonFlags } from "../../../flags";
 import { getOrPromptAppID } from "../../../utils/prompts";
 import { withTelemetry } from "../../../telemetry";
 import { getClientId } from "../../../utils/version";
+import { createViemClients } from "../../../utils/viemClients";
 import chalk from "chalk";
 import { formatAppRelease } from "../../../utils/releases";
 import { Address, isAddress } from "viem";
@@ -106,7 +107,16 @@ export default class AppReleases extends Command {
         action: "view releases for",
       });
 
-      const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl, getClientId());
+      // Create viem clients and UserAPI client
+      if (!privateKey) {
+        this.error("Private key is required to fetch releases. Please provide --private-key.");
+      }
+      const { publicClient, walletClient } = createViemClients({
+        privateKey,
+        rpcUrl,
+        environment,
+      });
+      const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, getClientId());
 
       const data = await userApiClient.getApp(appID as Address);
       const releases = sortReleasesOldestFirst(data.releases);

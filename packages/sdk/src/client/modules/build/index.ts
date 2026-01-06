@@ -1,6 +1,12 @@
 /**
  * Build module entry point (verifiable builds + provenance)
+ *
+ * Accepts viem's WalletClient which abstracts over both local accounts
+ * (privateKeyToAccount) and external signers (MetaMask, etc.).
  */
+
+import { createWalletClient, http, type WalletClient } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 
 import { getEnvironmentConfig } from "../../common/config/environment";
 import { withSDKTelemetry } from "../../common/telemetry/wrapper";
@@ -69,10 +75,21 @@ export function createBuildModule(config: BuildModuleConfig): BuildModule {
   const environment = config.environment || "sepolia";
   const environmentConfig = getEnvironmentConfig(environment);
 
+  // Create wallet client from private key if provided
+  let walletClient: WalletClient | undefined;
+  if (config.privateKey) {
+    const privateKey = addHexPrefix(config.privateKey) as `0x${string}`;
+    const account = privateKeyToAccount(privateKey);
+    walletClient = createWalletClient({
+      account,
+      transport: http(),
+    });
+  }
+
   // NOTE: build endpoints are served from the compute UserAPI host
   const api = new BuildApiClient({
     baseUrl: environmentConfig.userApiServerURL,
-    privateKey: config.privateKey ? addHexPrefix(config.privateKey) : undefined,
+    walletClient,
     clientId: config.clientId,
   });
 

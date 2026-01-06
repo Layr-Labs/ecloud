@@ -8,8 +8,9 @@
  * provided explicitly. Use the CLI for interactive parameter collection.
  */
 
+import type { PublicClient, WalletClient } from "viem";
+
 import { DeployResult, Logger, EnvironmentConfig } from "../../common/types";
-import { getEnvironmentConfig } from "../../common/config/environment";
 import { ensureDockerIsRunning } from "../../common/docker/build";
 import { prepareRelease } from "../../common/release/prepare";
 import {
@@ -75,11 +76,7 @@ export interface PreparedDeploy {
   /** Final image reference */
   imageRef: string;
   /** Preflight context for post-deploy operations */
-  preflightCtx: {
-    privateKey: string;
-    rpcUrl: string;
-    environmentConfig: EnvironmentConfig;
-  };
+  preflightCtx: PreflightContext;
 }
 
 /**
@@ -201,9 +198,9 @@ export async function deploy(
   // 6. Get app ID (calculate from salt and address)
   logger.debug("Calculating app ID...");
   const appIDToBeDeployed = await calculateAppID({
-    privateKey: preflightCtx.privateKey,
-    rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
+    publicClient: preflightCtx.publicClient,
     environmentConfig: preflightCtx.environmentConfig,
+    ownerAddress: preflightCtx.selfAddress,
     salt,
   });
   logger.info(``);
@@ -230,8 +227,8 @@ export async function deploy(
   logger.info("Deploying on-chain...");
   const deployResult = await deployApp(
     {
-      privateKey: preflightCtx.privateKey,
-      rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
+      walletClient: preflightCtx.walletClient,
+      publicClient: preflightCtx.publicClient,
       environmentConfig: preflightCtx.environmentConfig,
       salt,
       release,
@@ -246,8 +243,8 @@ export async function deploy(
   logger.info("Waiting for app to start...");
   const ipAddress = await watchUntilRunning(
     {
-      privateKey: preflightCtx.privateKey,
-      rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
+      walletClient: preflightCtx.walletClient,
+      publicClient: preflightCtx.publicClient,
       environmentConfig: preflightCtx.environmentConfig,
       appId: deployResult.appId,
     },
@@ -268,14 +265,12 @@ export async function deploy(
  * by checking their allowlist status on the contract
  */
 async function checkQuotaAvailable(preflightCtx: PreflightContext): Promise<void> {
-  const rpcUrl = preflightCtx.rpcUrl;
-  const environmentConfig = preflightCtx.environmentConfig;
-  const userAddress = preflightCtx.selfAddress;
+  const { publicClient, environmentConfig, selfAddress: userAddress } = preflightCtx;
 
   // Check user's quota limit from contract
   let maxQuota: number;
   try {
-    maxQuota = await getMaxActiveAppsPerUser(rpcUrl, environmentConfig, userAddress);
+    maxQuota = await getMaxActiveAppsPerUser(publicClient, environmentConfig, userAddress);
   } catch (err: any) {
     throw new Error(`failed to get quota limit: ${err.message}`);
   }
@@ -290,7 +285,7 @@ async function checkQuotaAvailable(preflightCtx: PreflightContext): Promise<void
   // Check current active app count from contract
   let activeCount: number;
   try {
-    activeCount = await getActiveAppCount(rpcUrl, environmentConfig, userAddress);
+    activeCount = await getActiveAppCount(publicClient, environmentConfig, userAddress);
   } catch (err: any) {
     throw new Error(`failed to get active app count: ${err.message}`);
   }
@@ -366,9 +361,9 @@ export async function prepareDeploy(
   // 6. Get app ID (calculate from salt and address)
   logger.debug("Calculating app ID...");
   const appIDToBeDeployed = await calculateAppID({
-    privateKey: preflightCtx.privateKey,
-    rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
+    publicClient: preflightCtx.publicClient,
     environmentConfig: preflightCtx.environmentConfig,
+    ownerAddress: preflightCtx.selfAddress,
     salt,
   });
   logger.info(``);
@@ -395,8 +390,8 @@ export async function prepareDeploy(
   logger.debug("Preparing deploy batch...");
   const batch = await prepareDeployBatch(
     {
-      privateKey: preflightCtx.privateKey,
-      rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
+      walletClient: preflightCtx.walletClient,
+      publicClient: preflightCtx.publicClient,
       environmentConfig: preflightCtx.environmentConfig,
       salt,
       release,
@@ -408,9 +403,13 @@ export async function prepareDeploy(
 
   // 9. Estimate gas for the batch
   logger.debug("Estimating gas...");
+  const account = batch.walletClient.account;
+  if (!account) {
+    throw new Error("WalletClient must have an account attached");
+  }
   const gasEstimate = await estimateBatchGas({
     publicClient: batch.publicClient,
-    environmentConfig: batch.environmentConfig,
+    account: account.address,
     executions: batch.executions,
   });
 
@@ -419,11 +418,7 @@ export async function prepareDeploy(
       batch,
       appName,
       imageRef: finalImageRef,
-      preflightCtx: {
-        privateKey: preflightCtx.privateKey,
-        rpcUrl: preflightCtx.rpcUrl,
-        environmentConfig: preflightCtx.environmentConfig,
-      },
+      preflightCtx,
     },
     gasEstimate,
   };
@@ -443,7 +438,20 @@ export async function executeDeploy(
 ): Promise<DeployResult> {
   // Execute the batch transaction
   logger.info("Deploying on-chain...");
-  const { appId, txHash } = await executeDeployBatch(prepared.batch, gas, logger);
+  const { appId, txHash } = await executeDeployBatch(
+    {
+      appId: prepared.batch.appId,
+      salt: prepared.batch.salt,
+      executions: prepared.batch.executions,
+    },
+    {
+      walletClient: prepared.batch.walletClient,
+      publicClient: prepared.batch.publicClient,
+      environmentConfig: prepared.batch.environmentConfig,
+    },
+    gas,
+    logger,
+  );
 
   return {
     appId,
@@ -461,22 +469,18 @@ export async function executeDeploy(
  */
 export async function watchDeployment(
   appId: string,
-  privateKey: string,
-  rpcUrl: string,
-  environment: string,
+  walletClient: WalletClient,
+  publicClient: PublicClient,
+  environmentConfig: EnvironmentConfig,
   logger: Logger = defaultLogger,
-  clientId?: string,
 ): Promise<string | undefined> {
-  const environmentConfig = getEnvironmentConfig(environment);
-
   logger.info("Waiting for app to start...");
   return watchUntilRunning(
     {
-      privateKey,
-      rpcUrl,
+      walletClient,
+      publicClient,
       environmentConfig,
       appId: appId as `0x${string}`,
-      clientId,
     },
     logger,
   );

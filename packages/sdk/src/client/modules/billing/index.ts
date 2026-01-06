@@ -1,6 +1,12 @@
 /**
  * Main Billing namespace entry point
+ *
+ * Accepts viem's WalletClient which abstracts over both local accounts
+ * (privateKeyToAccount) and external signers (MetaMask, etc.).
  */
+
+import { createWalletClient, http, type WalletClient } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 
 import { BillingApiClient } from "../../common/utils/billingapi";
 import { getBillingEnvironmentConfig, getBuildType } from "../../common/config/environment";
@@ -32,7 +38,7 @@ export interface BillingModuleConfig {
 
 export function createBillingModule(config: BillingModuleConfig): BillingModule {
   const { verbose = false, skipTelemetry = false } = config;
-  const privateKey = addHexPrefix(config.privateKey);
+  const privateKey = addHexPrefix(config.privateKey) as `0x${string}`;
   const address = getAddressFromPrivateKey(privateKey) as Address;
 
   const logger = getLogger(verbose);
@@ -40,8 +46,15 @@ export function createBillingModule(config: BillingModuleConfig): BillingModule 
   // Get billing environment configuration
   const billingEnvConfig = getBillingEnvironmentConfig(getBuildType());
 
+  // Create wallet client from private key
+  const account = privateKeyToAccount(privateKey);
+  const walletClient: WalletClient = createWalletClient({
+    account,
+    transport: http(),
+  });
+
   // Create billing API client
-  const billingApi = new BillingApiClient(billingEnvConfig, privateKey);
+  const billingApi = new BillingApiClient(billingEnvConfig, walletClient);
 
   return {
     address,

@@ -3,42 +3,35 @@
  *
  * Watches app status until it reaches Running state using UserAPI.
  *
- * Supports two modes:
- * 1. Private key mode: Pass privateKey + rpcUrl
- * 2. WithSigner mode: Pass signMessage callback + address
+ * Accepts viem's WalletClient and PublicClient which abstract over both local accounts
+ * (privateKeyToAccount) and external signers (MetaMask, etc.).
+ *
+ * @example
+ * // CLI usage with private key
+ * const { walletClient, publicClient } = createClients({ privateKey, rpcUrl, chainId });
+ * await watchUntilRunning({ walletClient, publicClient, environmentConfig, appId }, logger);
+ *
+ * @example
+ * // Browser usage with external wallet
+ * const walletClient = createWalletClient({ chain, transport: custom(window.ethereum!) });
+ * const publicClient = createPublicClient({ chain, transport: custom(window.ethereum!) });
+ * await watchUntilRunning({ walletClient, publicClient, environmentConfig, appId }, logger);
  */
 
-import { Address, Hex } from "viem";
+import { Address } from "viem";
+import type { WalletClient, PublicClient } from "viem";
 import { EnvironmentConfig, Logger } from "../types";
-import { UserApiClient, UserApiClientWithSigner } from "../utils/userapi";
+import { UserApiClient } from "../utils/userapi";
 
 /**
- * Private key mode options
+ * Options for watching app status
  */
-interface WatchPrivateKeyOptions {
-  privateKey: string;
-  rpcUrl: string;
+export interface WatchUntilRunningOptions {
+  walletClient: WalletClient;
+  publicClient: PublicClient;
   environmentConfig: EnvironmentConfig;
   appId: Address;
-  clientId?: string;
-  signMessage?: never;
-  address?: never;
 }
-
-/**
- * WithSigner mode options - pass signMessage callback instead of privateKey
- */
-interface WatchWithSignerModeOptions {
-  signMessage: (message: { raw: Hex }) => Promise<Hex>;
-  address: Address;
-  rpcUrl: string;
-  environmentConfig: EnvironmentConfig;
-  appId: Address;
-  privateKey?: never;
-  clientId?: string;
-}
-
-export type WatchUntilRunningOptions = WatchPrivateKeyOptions | WatchWithSignerModeOptions;
 
 const WATCH_POLL_INTERVAL_SECONDS = 5;
 const APP_STATUS_RUNNING = "Running";
@@ -47,31 +40,15 @@ const APP_STATUS_FAILED = "Failed";
 
 /**
  * Watch app until it reaches Running status with IP address
- *
- * Supports two modes:
- * - Private key mode: Pass { privateKey, rpcUrl, ... }
- * - WithSigner mode: Pass { signMessage, address, rpcUrl, ... }
  */
 export async function watchUntilRunning(
   options: WatchUntilRunningOptions,
   logger: Logger,
 ): Promise<string | undefined> {
-  const { environmentConfig, appId, privateKey, rpcUrl, clientId } = options;
+  const { walletClient, publicClient, environmentConfig, appId } = options;
 
-  // Create UserAPI client based on mode
-  let userApiClient: UserApiClient | UserApiClientWithSigner;
-  if ("signMessage" in options && options.signMessage) {
-    // WithSigner mode
-    userApiClient = new UserApiClientWithSigner(
-      environmentConfig,
-      options.signMessage,
-      options.address,
-      rpcUrl,
-    );
-  } else {
-    // Private key mode
-    userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl, clientId);
-  }
+  // Create UserAPI client
+  const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient);
 
   // Track initial status and whether we've seen a change
   let initialStatus: string | undefined;
@@ -142,9 +119,15 @@ export async function watchUntilRunning(
   }
 }
 
-export type WatchUntilUpgradeCompleteOptions =
-  | WatchPrivateKeyOptions
-  | (WatchWithSignerModeOptions & { clientId?: string });
+/**
+ * Options for watching upgrade completion
+ */
+export interface WatchUntilUpgradeCompleteOptions {
+  walletClient: WalletClient;
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+  appId: Address;
+}
 
 const APP_STATUS_STOPPED = "Stopped";
 
@@ -152,31 +135,15 @@ const APP_STATUS_STOPPED = "Stopped";
  * Watch app until upgrade completes
  * For upgrades, we watch until the app reaches Stopped status (upgrade complete)
  * or Running status (if it was running before upgrade)
- *
- * Supports two modes:
- * - Private key mode: Pass { privateKey, rpcUrl, ... }
- * - WithSigner mode: Pass { signMessage, address, rpcUrl, ... }
  */
 export async function watchUntilUpgradeComplete(
   options: WatchUntilUpgradeCompleteOptions,
   logger: Logger,
 ): Promise<void> {
-  const { environmentConfig, appId, privateKey, rpcUrl, clientId } = options;
+  const { walletClient, publicClient, environmentConfig, appId } = options;
 
-  // Create UserAPI client based on mode
-  let userApiClient: UserApiClient | UserApiClientWithSigner;
-  if ("signMessage" in options && options.signMessage) {
-    // WithSigner mode
-    userApiClient = new UserApiClientWithSigner(
-      environmentConfig,
-      options.signMessage,
-      options.address,
-      rpcUrl,
-    );
-  } else {
-    // Private key mode
-    userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl, clientId);
-  }
+  // Create UserAPI client
+  const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient);
 
   // Track initial status and whether we've seen a change
   let initialStatus: string | undefined;

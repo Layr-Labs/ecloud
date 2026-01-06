@@ -30,7 +30,7 @@ export {
   PRIMARY_LANGUAGES,
   getAvailableTemplates,
 } from "./modules/compute/app/create";
-export { logs, LogsOptions, SDKLogsOptions } from "./modules/compute/app/logs";
+export { logs, LogsOptions } from "./modules/compute/app/logs";
 export {
   SDKDeployOptions,
   prepareDeploy,
@@ -108,6 +108,9 @@ export {
 // Export instance type utilities
 export { getCurrentInstanceType } from "./common/utils/instance";
 
+// Export viem client creation utilities (for CLI and server applications)
+export { getChainFromID, createClients as createViemClients } from "./common/utils/helpers";
+
 // Export user API client
 export {
   UserApiClient,
@@ -119,7 +122,7 @@ export {
   type AppResponse,
 } from "./common/utils/userapi";
 
-export { BillingApiClientWithSigner } from "./common/utils/billingapi";
+export { BillingApiClient } from "./common/utils/billingapi";
 
 export type Environment = "sepolia" | "sepolia-dev" | "mainnet-alpha";
 

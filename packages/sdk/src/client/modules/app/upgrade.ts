@@ -8,9 +8,9 @@
  * provided explicitly. Use the CLI for interactive parameter collection.
  */
 
-import { Address } from "viem";
+import type { Address, PublicClient, WalletClient } from "viem";
 import { Logger, EnvironmentConfig } from "../../common/types";
-import { getEnvironmentConfig } from "../../common/config/environment";
+import type { PreflightContext } from "../../common/utils/preflight";
 import { ensureDockerIsRunning } from "../../common/docker/build";
 import { prepareRelease } from "../../common/release/prepare";
 import {
@@ -83,11 +83,7 @@ export interface PreparedUpgrade {
   /** Final image reference */
   imageRef: string;
   /** Preflight context for post-upgrade operations */
-  preflightCtx: {
-    privateKey: string;
-    rpcUrl: string;
-    environmentConfig: EnvironmentConfig;
-  };
+  preflightCtx: PreflightContext;
 }
 
 /**
@@ -210,7 +206,7 @@ export async function upgrade(
       resourceUsageAllow,
       instanceType,
       environmentConfig: preflightCtx.environmentConfig,
-      appId: appID as string,
+      appId: appID,
     },
     logger,
   );
@@ -224,8 +220,8 @@ export async function upgrade(
   logger.info("Upgrading on-chain...");
   const txHash = await upgradeApp(
     {
-      privateKey: preflightCtx.privateKey,
-      rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
+      walletClient: preflightCtx.walletClient,
+      publicClient: preflightCtx.publicClient,
       environmentConfig: preflightCtx.environmentConfig,
       appID,
       release,
@@ -241,8 +237,8 @@ export async function upgrade(
   logger.info("Waiting for upgrade to complete...");
   await watchUntilUpgradeComplete(
     {
-      privateKey: preflightCtx.privateKey,
-      rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
+      walletClient: preflightCtx.walletClient,
+      publicClient: preflightCtx.publicClient,
       environmentConfig: preflightCtx.environmentConfig,
       appId: appID,
     },
@@ -250,7 +246,7 @@ export async function upgrade(
   );
 
   return {
-    appId: appID as string,
+    appId: appID,
     imageRef: finalImageRef,
     txHash,
   };
@@ -309,7 +305,7 @@ export async function prepareUpgrade(
       resourceUsageAllow,
       instanceType,
       environmentConfig: preflightCtx.environmentConfig,
-      appId: appID as string,
+      appId: appID,
     },
     logger,
   );
@@ -322,8 +318,8 @@ export async function prepareUpgrade(
   // 6. Prepare the upgrade batch (creates executions without sending)
   logger.debug("Preparing upgrade batch...");
   const batch = await prepareUpgradeBatch({
-    privateKey: preflightCtx.privateKey,
-    rpcUrl: options.rpcUrl || preflightCtx.rpcUrl,
+    walletClient: preflightCtx.walletClient,
+    publicClient: preflightCtx.publicClient,
     environmentConfig: preflightCtx.environmentConfig,
     appID,
     release,
@@ -334,22 +330,22 @@ export async function prepareUpgrade(
 
   // 7. Estimate gas for the batch
   logger.debug("Estimating gas...");
+  const account = batch.walletClient.account;
+  if (!account) {
+    throw new Error("WalletClient must have an account attached");
+  }
   const gasEstimate = await estimateBatchGas({
     publicClient: batch.publicClient,
-    environmentConfig: batch.environmentConfig,
+    account: account.address,
     executions: batch.executions,
   });
 
   return {
     prepared: {
       batch,
-      appId: appID as string,
+      appId: appID,
       imageRef: finalImageRef,
-      preflightCtx: {
-        privateKey: preflightCtx.privateKey,
-        rpcUrl: preflightCtx.rpcUrl,
-        environmentConfig: preflightCtx.environmentConfig,
-      },
+      preflightCtx,
     },
     gasEstimate,
   };
@@ -369,7 +365,19 @@ export async function executeUpgrade(
 ): Promise<UpgradeResult> {
   // Execute the batch transaction
   logger.info("Upgrading on-chain...");
-  const txHash = await executeUpgradeBatch(prepared.batch, gas, logger);
+  const txHash = await executeUpgradeBatch(
+    {
+      appId: prepared.batch.appId,
+      executions: prepared.batch.executions,
+    },
+    {
+      walletClient: prepared.batch.walletClient,
+      publicClient: prepared.batch.publicClient,
+      environmentConfig: prepared.batch.environmentConfig,
+    },
+    gas,
+    logger,
+  );
 
   return {
     appId: prepared.appId,
@@ -386,22 +394,18 @@ export async function executeUpgrade(
  */
 export async function watchUpgrade(
   appId: string,
-  privateKey: string,
-  rpcUrl: string,
-  environment: string,
+  walletClient: WalletClient,
+  publicClient: PublicClient,
+  environmentConfig: EnvironmentConfig,
   logger: Logger = defaultLogger,
-  clientId?: string,
 ): Promise<void> {
-  const environmentConfig = getEnvironmentConfig(environment);
-
   logger.info("Waiting for upgrade to complete...");
   await watchUntilUpgradeComplete(
     {
-      privateKey,
-      rpcUrl,
+      walletClient,
+      publicClient,
       environmentConfig,
       appId: appId as Address,
-      clientId,
     },
     logger,
   );

@@ -3,6 +3,7 @@ import { getEnvironmentConfig, UserApiClient, isMainnet } from "@layr-labs/eclou
 import { withTelemetry } from "../../../telemetry";
 import { commonFlags } from "../../../flags";
 import { createBuildClient, createComputeClient } from "../../../client";
+import { createViemClients } from "../../../utils/viemClients";
 import {
   getDockerfileInteractive,
   getImageReferenceInteractive,
@@ -281,10 +282,15 @@ export default class AppUpgrade extends Command {
       // 5. Get current instance type (best-effort, used as default)
       let currentInstanceType = "";
       try {
-        const userApiClient = new UserApiClient(
-          environmentConfig,
+        const { publicClient, walletClient } = createViemClients({
           privateKey,
           rpcUrl,
+          environment: environmentConfig.name,
+        });
+        const userApiClient = new UserApiClient(
+          environmentConfig,
+          walletClient,
+          publicClient,
           getClientId(),
         );
         const infos = await userApiClient.getInfos([appID], 1);
@@ -354,10 +360,7 @@ export default class AppUpgrade extends Command {
       }
 
       // 11. Execute the upgrade
-      const res = await compute.app.executeUpgrade(prepared, {
-        maxFeePerGas: gasEstimate.maxFeePerGas,
-        maxPriorityFeePerGas: gasEstimate.maxPriorityFeePerGas,
-      });
+      const res = await compute.app.executeUpgrade(prepared, gasEstimate);
 
       // 12. Watch until upgrade completes
       await compute.app.watchUpgrade(res.appId);
@@ -381,11 +384,16 @@ export default class AppUpgrade extends Command {
  */
 async function fetchAvailableInstanceTypes(
   environmentConfig: any,
-  privateKey?: string,
-  rpcUrl?: string,
+  privateKey: string,
+  rpcUrl: string,
 ): Promise<Array<{ sku: string; description: string }>> {
   try {
-    const userApiClient = new UserApiClient(environmentConfig, privateKey, rpcUrl, getClientId());
+    const { publicClient, walletClient } = createViemClients({
+      privateKey,
+      rpcUrl,
+      environment: environmentConfig.name,
+    });
+    const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, getClientId());
 
     const skuList = await userApiClient.getSKUs();
     if (skuList.skus.length === 0) {

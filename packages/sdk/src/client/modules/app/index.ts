@@ -2,14 +2,22 @@
  * Main App namespace entry point
  */
 
-import { encodeFunctionData, parseAbi } from "viem";
+import {
+  createPublicClient,
+  createWalletClient,
+  encodeFunctionData,
+  http,
+  parseAbi,
+  type PublicClient,
+  type WalletClient,
+} from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import { deploy as deployApp } from "./deploy";
 import { upgrade as upgradeApp } from "./upgrade";
-import { createApp, CreateAppOpts } from "./create";
-import { logs, LogsOptions } from "./logs";
 
 import { getEnvironmentConfig } from "../../common/config/environment";
 import { sendAndWaitForTransaction, undelegate } from "../../common/contract/caller";
+import { getChainFromID } from "../../common/utils/helpers";
 
 import type { AppId, DeployAppOpts, LifecycleOpts, UpgradeAppOpts } from "../../common/types";
 import { getLogger, addHexPrefix } from "../../common/utils";
@@ -29,7 +37,6 @@ const CONTROLLER_ABI = parseAbi([
 ]);
 
 export interface AppModule {
-  create: (opts: CreateAppOpts) => Promise<void>;
   deploy: (opts: DeployAppOpts) => Promise<{
     appId: AppId;
     tx: `0x${string}`;
@@ -41,7 +48,6 @@ export interface AppModule {
     appId: AppId,
     opts: UpgradeAppOpts,
   ) => Promise<{ tx: `0x${string}`; appId: string; imageRef: string }>;
-  logs: (opts: LogsOptions) => Promise<void>;
   start: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: `0x${string}` | false }>;
   stop: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: `0x${string}` | false }>;
   terminate: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: `0x${string}` | false }>;
@@ -57,24 +63,36 @@ export interface AppModuleConfig {
 }
 
 export function createAppModule(ctx: AppModuleConfig): AppModule {
-  const privateKey = addHexPrefix(ctx.privateKey);
+  const privateKeyHex = addHexPrefix(ctx.privateKey) as `0x${string}`;
 
   // Pull config for selected Environment
-  const environment = getEnvironmentConfig(ctx.environment);
+  const environmentConfig = getEnvironmentConfig(ctx.environment);
 
   // Get logger that respects verbose setting
   const logger = getLogger(ctx.verbose);
 
+  // Create viem clients from privateKey and rpcUrl
+  const chain = getChainFromID(environmentConfig.chainID);
+  const account = privateKeyToAccount(privateKeyHex);
+
+  const walletClient = createWalletClient({
+    account,
+    chain,
+    transport: http(ctx.rpcUrl),
+  }) as WalletClient;
+
+  const publicClient = createPublicClient({
+    chain,
+    transport: http(ctx.rpcUrl),
+  }) as PublicClient;
+
   return {
-    async create(opts) {
-      return createApp(opts, logger);
-    },
     // Write operations
     async deploy(opts) {
       // Map DeployAppOpts to SDKDeployOptions and call the deploy function
       const result = await deployApp(
         {
-          privateKey,
+          privateKey: privateKeyHex,
           rpcUrl: ctx.rpcUrl,
           environment: ctx.environment,
           appName: opts.name,
@@ -102,7 +120,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
       const result = await upgradeApp(
         {
           appId: appId,
-          privateKey,
+          privateKey: privateKeyHex,
           rpcUrl: ctx.rpcUrl,
           environment: ctx.environment,
           instanceType: opts.instanceType,
@@ -122,19 +140,6 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
       };
     },
 
-    async logs(opts) {
-      return logs(
-        {
-          privateKey,
-          appID: opts.appID,
-          watch: opts.watch,
-          environment: ctx.environment,
-          clientId: ctx.clientId,
-        },
-        logger,
-      );
-    },
-
     async start(appId, opts) {
       const pendingMessage = `Starting app ${appId}...`;
 
@@ -146,10 +151,10 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
 
       const tx = await sendAndWaitForTransaction(
         {
-          privateKey,
-          rpcUrl: ctx.rpcUrl,
-          environmentConfig: environment,
-          to: environment.appControllerAddress as `0x${string}`,
+          walletClient,
+          publicClient,
+          environmentConfig,
+          to: environmentConfig.appControllerAddress as `0x${string}`,
           data,
           pendingMessage,
           txDescription: "StartApp",
@@ -171,10 +176,10 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
 
       const tx = await sendAndWaitForTransaction(
         {
-          privateKey,
-          rpcUrl: ctx.rpcUrl,
-          environmentConfig: environment,
-          to: environment.appControllerAddress as `0x${string}`,
+          walletClient,
+          publicClient,
+          environmentConfig,
+          to: environmentConfig.appControllerAddress as `0x${string}`,
           data,
           pendingMessage,
           txDescription: "StopApp",
@@ -196,10 +201,10 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
 
       const tx = await sendAndWaitForTransaction(
         {
-          privateKey,
-          rpcUrl: ctx.rpcUrl,
-          environmentConfig: environment,
-          to: environment.appControllerAddress as `0x${string}`,
+          walletClient,
+          publicClient,
+          environmentConfig,
+          to: environmentConfig.appControllerAddress as `0x${string}`,
           data,
           pendingMessage,
           txDescription: "TerminateApp",
@@ -214,9 +219,9 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
       // perform the undelegate EIP7702 tx (sets delegated to zero address)
       const tx = await undelegate(
         {
-          privateKey,
-          rpcUrl: ctx.rpcUrl,
-          environmentConfig: environment,
+          walletClient,
+          publicClient,
+          environmentConfig,
         },
         logger,
       );

@@ -30,6 +30,7 @@ import {
   UserApiClient,
 } from "@layr-labs/ecloud-sdk";
 import { getAppInfosChunked } from "./appResolver";
+import { createViemClients } from "./viemClients";
 import {
   getDefaultEnvironment,
   getProfileCache,
@@ -1018,8 +1019,15 @@ async function getAppIDInteractive(options: GetAppIDOptions): Promise<Address> {
   const account = privateKeyToAccount(privateKeyHex);
   const developerAddr = account.address;
 
+  // Create viem clients for API calls
+  const { publicClient, walletClient } = createViemClients({
+    privateKey: options.privateKey!,
+    rpcUrl: options.rpcUrl!,
+    environment,
+  });
+
   const { apps, appConfigs } = await getAllAppsByDeveloper(
-    options.rpcUrl,
+    publicClient,
     environmentConfig,
     developerAddr,
   );
@@ -1039,8 +1047,8 @@ async function getAppIDInteractive(options: GetAppIDOptions): Promise<Address> {
     try {
       const userApiClient = new UserApiClient(
         environmentConfig,
-        options.privateKey,
-        options.rpcUrl,
+        walletClient,
+        publicClient,
         getClientId(),
       );
       const appInfos = await getAppInfosChunked(userApiClient, apps);
