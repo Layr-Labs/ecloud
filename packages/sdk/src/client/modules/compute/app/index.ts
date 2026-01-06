@@ -362,14 +362,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
     },
 
     async watchUpgrade(appId) {
-      return watchUpgradeFn(
-        appId,
-        walletClient,
-        publicClient,
-        environment,
-        logger,
-        skipTelemetry,
-      );
+      return watchUpgradeFn(appId, walletClient, publicClient, environment, logger, skipTelemetry);
     },
 
     // Profile management
@@ -391,7 +384,8 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
             website: profile.website,
             description: profile.description,
             xURL: profile.xURL,
-            // Note: imagePath conversion to Blob should be handled by caller (CLI)
+            image: profile.image,
+            imageName: profile.imageName,
           });
         },
       );

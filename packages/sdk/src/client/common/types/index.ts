@@ -280,7 +280,9 @@ export interface AppProfile {
   /** X (Twitter) URL (optional) */
   xURL?: string;
   /** Path to image file (optional) */
-  imagePath?: string;
+  image?: Blob | File;
+  /** Image name (optional) */
+  imageName?: string;
 }
 
 /**

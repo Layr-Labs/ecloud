@@ -626,7 +626,9 @@ async function getAvailableAppNameInteractive(
   suggestedBaseName?: string,
   skipDefaultName?: boolean,
 ): Promise<string> {
-  const baseName = skipDefaultName ? undefined : suggestedBaseName || extractAppNameFromImage(imageRef);
+  const baseName = skipDefaultName
+    ? undefined
+    : suggestedBaseName || extractAppNameFromImage(imageRef);
   const suggestedName = baseName ? findAvailableName(environment, baseName) : undefined;
 
   while (true) {
@@ -670,7 +672,12 @@ export async function getOrPromptAppName(
       return appName;
     }
     console.log(`Warning: App name '${appName}' is already taken.`);
-    return getAvailableAppNameInteractive(environment, imageRef, suggestedBaseName, skipDefaultName);
+    return getAvailableAppNameInteractive(
+      environment,
+      imageRef,
+      suggestedBaseName,
+      skipDefaultName,
+    );
   }
 
   return getAvailableAppNameInteractive(environment, imageRef, suggestedBaseName, skipDefaultName);
@@ -1645,13 +1652,15 @@ export async function getAppProfileInteractive(
     const description = await getAppDescriptionInteractive();
     const xURL = await getAppXURLInteractive();
     const imagePath = await getAppImageInteractive();
+    const { image, imageName } = imagePathToBlob(imagePath);
 
     const profile: AppProfile = {
       name,
       website,
       description,
       xURL,
-      imagePath,
+      image,
+      imageName,
     };
 
     console.log("\n" + formatProfileForDisplay(profile));
@@ -1807,8 +1816,8 @@ function formatProfileForDisplay(profile: AppProfile): string {
   if (profile.xURL) {
     output += `  X URL:       ${profile.xURL}\n`;
   }
-  if (profile.imagePath) {
-    output += `  Image:       ${profile.imagePath}\n`;
+  if (profile.imageName) {
+    output += `  Image:       ${profile.imageName}\n`;
   }
   return output;
 }

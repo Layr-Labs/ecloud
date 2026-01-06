@@ -20,6 +20,7 @@ import {
   promptVerifiableSourceType,
   promptVerifiableGitSourceInputs,
   promptVerifiablePrebuiltImageRef,
+  imagePathToBlob,
 } from "../../../utils/prompts";
 import { invalidateProfileCache, setLinkedAppForDirectory } from "../../../utils/globalConfig";
 import { getClientId } from "../../../utils/version";
@@ -406,17 +407,20 @@ export default class AppDeploy extends Command {
           website?: string;
           description?: string;
           xURL?: string;
-          imagePath?: string;
+          image?: Blob | File;
+          imageName?: string;
         } | null = null;
 
         if (hasProfileFlags) {
           // Use flags directly if any were provided
+          const { image, imageName } = imagePathToBlob(flags.image);
           profile = {
             name: appName,
             website: flags.website,
             description: flags.description,
             xURL: flags["x-url"],
-            imagePath: flags.image,
+            image,
+            imageName,
           };
         } else {
           // Otherwise prompt interactively
@@ -485,7 +489,12 @@ async function fetchAvailableInstanceTypes(
       rpcUrl,
       environment: environmentConfig.name,
     });
-    const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, getClientId());
+    const userApiClient = new UserApiClient(
+      environmentConfig,
+      walletClient,
+      publicClient,
+      getClientId(),
+    );
 
     const skuList = await userApiClient.getSKUs();
     if (skuList.skus.length === 0) {
