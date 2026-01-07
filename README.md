@@ -361,7 +361,24 @@ ecloud-sdk/
 └── pnpm-workspace.yaml
 ```
 
+### Build System
+
+This project uses a Makefile for consistent build and release workflows. The Makefile provides a standardized interface that works both locally and in CI/CD.
+
+**Quick commands:**
+
+```bash
+make help          # Show all available commands
+make dev           # Install dependencies, run checks, and build
+make build         # Build all packages
+make check         # Run all checks (lint, format, typecheck, test)
+```
+
+**For complete documentation, see [MAKEFILE.md](./MAKEFILE.md)**
+
 ### Scripts
+
+You can also use pnpm scripts directly:
 
 - `pnpm build` - Build all packages
 - `pnpm lint` - Lint all packages
@@ -369,6 +386,8 @@ ecloud-sdk/
 - `pnpm format:fix` - Fix code formatting
 - `pnpm test` - Run tests (when implemented)
 - `pnpm ecloud` - Run the CLI
+
+**Note:** The Makefile is the recommended way to build and test, as it matches the CI/CD pipeline exactly.
 
 ### Adding New Commands
 
@@ -393,6 +412,97 @@ The deployment process involves several steps:
 5. **On-Chain Deployment**: Deploy smart contract with app configuration
 6. **Status Monitoring**: Watch until application is running
 
+## Release Process
+
+This repository uses a two-stage release process with automated CI/CD via GitHub Actions:
+
+### Dev Release (Testing)
+
+1. Create a dev tag with format `v<major>.<minor>.<patch>-dev<iteration>`:
+   ```bash
+   git tag v0.2.0-dev.1
+   git push origin v0.2.0-dev.1
+   ```
+
+2. The CI pipeline automatically:
+   - Validates the tag format
+   - Runs all checks (lint, format, typecheck, test)
+   - Builds SDK and CLI packages with `BUILD_TYPE=dev`
+   - Publishes to npm with `dev` tag
+
+3. Test the dev release:
+   ```bash
+   npm install -g @layr-labs/ecloud-cli@dev
+   ```
+
+### Production Release
+
+1. After testing the dev release, create a production tag:
+   ```bash
+   # Must use the same base version as the dev tag
+   git tag v0.2.0
+   git push origin v0.2.0
+   ```
+
+2. The CI pipeline automatically:
+   - Verifies a corresponding dev tag exists (e.g., `v0.2.0-dev*`)
+   - Verifies the dev and prod tags point to the same commit
+   - Runs all checks
+   - Builds SDK and CLI packages with `BUILD_TYPE=prod`
+   - Publishes to npm with `latest` tag
+
+3. Install the production release:
+   ```bash
+   npm install -g @layr-labs/ecloud-cli@latest
+   ```
+
+### Release Candidate (Optional)
+
+For additional testing before final production release, you can use release candidate tags:
+
+```bash
+# After dev testing, create an RC
+git tag v0.2.0-rc.1
+git push origin v0.2.0-rc.1
+
+# This publishes to 'latest' with version 0.2.0-rc.1
+# Test thoroughly, then create final production tag
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+### Local Release Testing
+
+To test the release process locally before pushing tags:
+
+```bash
+# Test a dev build
+make release \
+  BUILD_TYPE=dev \
+  PACKAGE_VERSION=0.2.0-dev.1 \
+  SHORT_SHA=$(git rev-parse --short HEAD) \
+  NPM_TAG=dev
+
+# Test a prod build
+make release \
+  BUILD_TYPE=prod \
+  PACKAGE_VERSION=0.2.0 \
+  SHORT_SHA=$(git rev-parse --short HEAD) \
+  NPM_TAG=latest
+```
+
+**Note:** Local testing won't actually publish to npm unless you set `NODE_AUTH_TOKEN`.
+
+### Pull Request Testing
+
+The CI pipeline automatically runs checks and builds on all pull requests to `main` or `develop` branches:
+
+- Runs all linting, formatting, and type checking
+- Builds packages with `BUILD_TYPE=dev`
+- Reports any failures before merge
+
+For more details on the Makefile commands used in releases, see [MAKEFILE.md](./MAKEFILE.md).
+
 ## Security
 
 - Private keys are never stored or logged
@@ -402,11 +512,60 @@ The deployment process involves several steps:
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests and linting
-5. Submit a pull request
+We welcome contributions! Here's how to get started:
+
+1. **Fork and Clone**
+   ```bash
+   git clone <your-fork>
+   cd ecloud
+   ```
+
+2. **Setup Development Environment**
+   ```bash
+   make install    # Install dependencies
+   make check      # Run all checks
+   make build      # Build packages
+   ```
+
+3. **Make Your Changes**
+   ```bash
+   git checkout -b feature/my-feature
+   # Make your changes...
+   make pre-commit  # Format and check before committing
+   ```
+
+4. **Submit Pull Request**
+   - Push your branch and create a PR
+   - Automated tests will run on your PR
+   - Address any feedback from reviewers
+
+### Development Documentation
+
+For detailed development and release workflows:
+
+- **[Workflow Guide](./WORKFLOW_GUIDE.md)** - Complete developer workflow guide
+- **[Release Architecture](./RELEASE_ARCHITECTURE.md)** - System architecture and flows
+- **[Build and Release](./BUILD_AND_RELEASE.md)** - Detailed build system documentation
+- **[Makefile Reference](./MAKEFILE.md)** - All Makefile commands explained
+- **[GitHub Workflows](./.github/workflows/README.md)** - CI/CD pipeline documentation
+
+### Quick Commands
+
+```bash
+# Development
+make dev          # Install, check, and build
+make quick-build  # Fast build without checks
+make pre-commit   # Format and check before commit
+
+# Testing
+make check        # Run all quality checks
+make lint         # Run linter
+make typecheck    # Run type checking
+
+# Information
+make info         # Show build system info
+make help         # List all commands
+```
 
 ## Support
 
