@@ -120,8 +120,6 @@ jobs:
 
       - name: Get short sha
         run: echo "SHORT_SHA=${DEV_COMMIT::7}" >> $GITHUB_ENV
-        env:
-          DEV_COMMIT: ${{ env.DEV_COMMIT }}
 
       - name: Generate SDK VERSION file
         working-directory: ./packages/sdk
