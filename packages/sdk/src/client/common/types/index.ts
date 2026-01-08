@@ -268,6 +268,16 @@ export interface Logger {
 }
 
 /**
+ * No-op logger for browser usage when logging is not needed
+ */
+export const noopLogger: Logger = {
+  debug: () => {},
+  info: () => {},
+  warn: () => {},
+  error: () => {},
+};
+
+/**
  * Profile information for an app
  */
 export interface AppProfile {

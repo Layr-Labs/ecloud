@@ -195,7 +195,7 @@ export async function logs(
         environmentConfig,
         walletClient,
         publicClient,
-        options.clientId,
+        options.clientId ? { clientId: options.clientId } : undefined,
       );
 
       // Fetch logs
