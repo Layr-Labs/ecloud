@@ -116,7 +116,9 @@ export default class AppReleases extends Command {
         rpcUrl,
         environment,
       });
-      const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, getClientId());
+      const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, {
+        clientId: getClientId(),
+      });
 
       const data = await userApiClient.getApp(appID as Address);
       const releases = sortReleasesOldestFirst(data.releases);

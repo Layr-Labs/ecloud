@@ -378,7 +378,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
             environment,
             walletClient,
             publicClient,
-            ctx.clientId,
+            ctx.clientId ? { clientId: ctx.clientId } : undefined,
           );
           return userApiClient.uploadAppProfile(appId, profile.name, {
             website: profile.website,
