@@ -109,6 +109,9 @@ export {
 // Export instance type utilities
 export { getCurrentInstanceType } from "./common/utils/instance";
 
+// Export headless deployment utilities
+export { fetchImageDigest } from "./common/registry/digest";
+
 // Export viem client creation utilities (for CLI and server applications)
 export { getChainFromID, createClients as createViemClients } from "./common/utils/helpers";
 

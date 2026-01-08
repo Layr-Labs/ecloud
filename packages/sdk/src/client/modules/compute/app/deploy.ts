@@ -60,6 +60,12 @@ export interface SDKDeployOptions {
   dockerfilePath?: string;
   /** Image reference (registry/path:tag) - either this or dockerfilePath is required */
   imageRef?: string;
+  /**
+   * Image digest in format "sha256:<64 hex chars>".
+   * When provided along with imageRef, enables HEADLESS MODE (no Docker required).
+   * Use fetchImageDigest() to get this value, or from `docker images --digests`.
+   */
+  imageDigest?: string;
   /** Path to .env file - optional */
   envFilePath?: string;
   /** App name - required */
@@ -331,6 +337,12 @@ export async function deploy(
   options: SDKDeployOptions,
   logger: Logger = defaultLogger,
 ): Promise<DeployResult> {
+  // HEADLESS MODE: When imageRef + imageDigest are both provided, skip Docker
+  if (options.imageRef && options.imageDigest) {
+    return deployWithDigest(options, logger);
+  }
+
+  // STANDARD MODE: Requires Docker
   return withSDKTelemetry(
     {
       functionName: "deploy",
@@ -692,3 +704,86 @@ export async function watchDeployment(
 
 // Re-export for convenience
 export { extractAppNameFromImage } from "../../../common/utils/validation";
+
+/**
+ * Internal: Deploy using pre-known imageDigest (headless mode, no Docker).
+ * Uses prepareDeployFromVerifiableBuild + executeDeploy + watchDeployment.
+ */
+async function deployWithDigest(
+  options: SDKDeployOptions,
+  logger: Logger,
+): Promise<DeployResult> {
+  return withSDKTelemetry(
+    {
+      functionName: "deploy",
+      skipTelemetry: options.skipTelemetry,
+      properties: {
+        environment: options.environment || "sepolia",
+        headless: "true",
+      },
+    },
+    async () => {
+      logger.info("Headless mode: using provided imageDigest, skipping Docker...");
+
+      // Preflight once (reuse for prepare, execute, and watch)
+      const preflightCtx = await doPreflightChecks(
+        {
+          walletClient: options.walletClient,
+          publicClient: options.publicClient,
+          environment: options.environment,
+        },
+        logger,
+      );
+
+      // Use the existing verifiable build path (no Docker required)
+      // Note: This does its own preflight internally, but that's acceptable for now.
+      // A future optimization could expose a lower-level prepare that accepts preflightCtx.
+      const prepareResult = await prepareDeployFromVerifiableBuild(
+        {
+          walletClient: options.walletClient,
+          publicClient: options.publicClient,
+          environment: options.environment,
+          imageRef: options.imageRef!,
+          imageDigest: options.imageDigest!,
+          envFilePath: options.envFilePath,
+          appName: options.appName,
+          instanceType: options.instanceType,
+          logVisibility: options.logVisibility,
+          resourceUsageMonitoring: options.resourceUsageMonitoring,
+          skipTelemetry: true, // Already in telemetry wrapper
+        },
+        logger,
+      );
+
+      // Execute the deployment
+      const deployResult = await executeDeploy({
+        prepared: prepareResult.prepared,
+        context: {
+          walletClient: preflightCtx.walletClient,
+          publicClient: preflightCtx.publicClient,
+          environmentConfig: preflightCtx.environmentConfig,
+        },
+        gas: options.gas ?? prepareResult.gasEstimate,
+        logger,
+        skipTelemetry: true,
+      });
+
+      // Watch until running
+      logger.info("Waiting for app to start...");
+      const ipAddress = await watchUntilRunning(
+        {
+          walletClient: preflightCtx.walletClient,
+          publicClient: preflightCtx.publicClient,
+          environmentConfig: preflightCtx.environmentConfig,
+          appId: deployResult.appId,
+        },
+        logger,
+      );
+
+      return {
+        ...deployResult,
+        ipAddress,
+      };
+    },
+  );
+}
