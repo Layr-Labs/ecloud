@@ -12,7 +12,7 @@ import type {
   SendTransactionParameters,
   SignAuthorizationReturnType,
 } from "viem";
-import { EnvironmentConfig, Logger } from "../types";
+import { EnvironmentConfig, Logger, noopLogger } from "../types";
 
 import ERC7702DelegatorABI from "../abis/ERC7702Delegator.json";
 
@@ -136,7 +136,7 @@ export async function checkERC7702Delegation(
 /**
  * Execute batch of operations via EIP-7702 delegator
  */
-export async function executeBatch(options: ExecuteBatchOptions, logger: Logger): Promise<Hex> {
+export async function executeBatch(options: ExecuteBatchOptions, logger: Logger = noopLogger): Promise<Hex> {
   const { walletClient, publicClient, environmentConfig, executions, pendingMessage, gas } =
     options;
 
