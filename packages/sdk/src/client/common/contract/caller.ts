@@ -28,7 +28,7 @@ import {
 } from "viem";
 import type { WalletClient, PublicClient } from "viem";
 
-import { EnvironmentConfig, Logger, PreparedDeployData, PreparedUpgradeData } from "../types";
+import { EnvironmentConfig, Logger, PreparedDeployData, PreparedUpgradeData, noopLogger } from "../types";
 import { Release } from "../types";
 import { getChainFromID } from "../utils/helpers";
 
@@ -211,7 +211,7 @@ export interface PrepareDeployBatchOptions {
  */
 export async function prepareDeployBatch(
   options: PrepareDeployBatchOptions,
-  logger: Logger,
+  logger: Logger = noopLogger,
 ): Promise<PreparedDeployBatch> {
   const { walletClient, publicClient, environmentConfig, salt, release, publicLogs } = options;
 
@@ -322,8 +322,8 @@ export async function executeDeployBatch(
     publicClient: PublicClient;
     environmentConfig: EnvironmentConfig;
   },
-  gas: GasEstimate | undefined,
-  logger: Logger,
+  gas?: GasEstimate,
+  logger: Logger = noopLogger,
 ): Promise<{ appId: Address; txHash: Hex }> {
   const pendingMessage = "Deploying new app...";
 
@@ -347,7 +347,7 @@ export async function executeDeployBatch(
  */
 export async function deployApp(
   options: DeployAppOptions,
-  logger: Logger,
+  logger: Logger = noopLogger,
 ): Promise<{ appId: Address; txHash: Hex }> {
   const prepared = await prepareDeployBatch(options, logger);
 
@@ -496,8 +496,8 @@ export async function executeUpgradeBatch(
     publicClient: PublicClient;
     environmentConfig: EnvironmentConfig;
   },
-  gas: GasEstimate | undefined,
-  logger: Logger,
+  gas?: GasEstimate,
+  logger: Logger = noopLogger,
 ): Promise<Hex> {
   const pendingMessage = `Upgrading app ${data.appId}...`;
 
@@ -519,7 +519,7 @@ export async function executeUpgradeBatch(
 /**
  * Upgrade app on-chain (convenience wrapper that prepares and executes)
  */
-export async function upgradeApp(options: UpgradeAppOptions, logger: Logger): Promise<Hex> {
+export async function upgradeApp(options: UpgradeAppOptions, logger: Logger = noopLogger): Promise<Hex> {
   const prepared = await prepareUpgradeBatch(options);
 
   // Extract data and context from prepared batch
@@ -553,7 +553,7 @@ export interface SendTransactionOptions {
 
 export async function sendAndWaitForTransaction(
   options: SendTransactionOptions,
-  logger: Logger,
+  logger: Logger = noopLogger,
 ): Promise<Hex> {
   const { walletClient, publicClient, environmentConfig, to, data, value = 0n, pendingMessage, txDescription, gas } = options;
 
@@ -856,7 +856,7 @@ export interface SuspendOptions {
 /**
  * Suspend apps for an account
  */
-export async function suspend(options: SuspendOptions, logger: Logger): Promise<Hex | false> {
+export async function suspend(options: SuspendOptions, logger: Logger = noopLogger): Promise<Hex | false> {
   const { walletClient, publicClient, environmentConfig, account, apps } = options;
 
   const suspendData = encodeFunctionData({
@@ -912,7 +912,7 @@ export interface UndelegateOptions {
 /**
  * Undelegate account (removes EIP-7702 delegation)
  */
-export async function undelegate(options: UndelegateOptions, logger: Logger): Promise<Hex> {
+export async function undelegate(options: UndelegateOptions, logger: Logger = noopLogger): Promise<Hex> {
   const { walletClient, publicClient, environmentConfig } = options;
 
   const account = walletClient.account;
