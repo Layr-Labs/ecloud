@@ -169,7 +169,7 @@ export {
   isSiweMessageExpired,
   isSiweMessageNotYetValid,
   type SiweMessageParams,
-  type SiweMessage,
+  type SiweMessageResult,
 } from "./client/common/auth/siwe";
 
 // =============================================================================
