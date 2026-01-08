@@ -3,6 +3,14 @@ import { Address, Hex, type PublicClient, type WalletClient } from "viem";
 import { calculatePermissionSignature } from "./auth";
 import { EnvironmentConfig } from "../types";
 import { stripHexPrefix } from "./helpers";
+import {
+  loginToComputeApi,
+  logoutFromComputeApi,
+  getComputeApiSession,
+  type LoginRequest,
+  type LoginResult,
+  type SessionInfo,
+} from "../auth/session";
 
 export interface AppProfileInfo {
   name: string;
@@ -492,6 +500,69 @@ export class UserApiClient {
       Authorization: `Bearer ${stripHexPrefix(signature)}`,
       "X-eigenx-expiry": expiry.toString(),
     };
+  }
+
+  // ==========================================================================
+  // SIWE Session Management
+  // ==========================================================================
+
+  /**
+   * Login to the compute API using SIWE (Sign-In with Ethereum)
+   *
+   * This establishes a session with the compute API by verifying the SIWE message
+   * and signature. On success, a session cookie is set in the browser.
+   *
+   * @param request - Login request containing SIWE message and signature
+   * @returns Login result with the authenticated address
+   *
+   * @example
+   * ```typescript
+   * import { createSiweMessage } from "@layr-labs/ecloud-sdk/browser";
+   *
+   * const { message } = createSiweMessage({
+   *   address: userAddress,
+   *   chainId: 11155111,
+   *   domain: window.location.host,
+   *   uri: window.location.origin,
+   * });
+   *
+   * const signature = await signMessageAsync({ message });
+   * const result = await client.siweLogin({ message, signature });
+   * ```
+   */
+  async siweLogin(request: LoginRequest): Promise<LoginResult> {
+    return loginToComputeApi({ baseUrl: this.config.userApiServerURL }, request);
+  }
+
+  /**
+   * Logout from the compute API
+   *
+   * This destroys the current session and clears the session cookie.
+   *
+   * @example
+   * ```typescript
+   * await client.siweLogout();
+   * ```
+   */
+  async siweLogout(): Promise<void> {
+    return logoutFromComputeApi({ baseUrl: this.config.userApiServerURL });
+  }
+
+  /**
+   * Get the current SIWE session status from the compute API
+   *
+   * @returns Session information including authentication status and address
+   *
+   * @example
+   * ```typescript
+   * const session = await client.getSiweSession();
+   * if (session.authenticated) {
+   *   console.log(`Logged in as ${session.address}`);
+   * }
+   * ```
+   */
+  async getSiweSession(): Promise<SessionInfo> {
+    return getComputeApiSession({ baseUrl: this.config.userApiServerURL });
   }
 }
 
