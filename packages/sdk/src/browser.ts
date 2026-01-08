@@ -121,6 +121,43 @@ export {
 } from "./client/common/contract/encoders";
 
 // =============================================================================
+// SIWE (Sign-In with Ethereum) Utilities (browser-safe)
+// =============================================================================
+export {
+  createSiweMessage,
+  parseSiweMessage,
+  generateNonce,
+  isSiweMessageExpired,
+  isSiweMessageNotYetValid,
+  type SiweMessageParams,
+  type SiweMessage,
+} from "./client/common/auth/siwe";
+
+// =============================================================================
+// Compute API Session Management (browser-safe)
+// =============================================================================
+export {
+  loginToComputeApi,
+  logoutFromComputeApi,
+  getComputeApiSession,
+  isSessionValid,
+  SessionError,
+  type ComputeApiConfig,
+  type SessionInfo,
+  type LoginResult,
+  type LoginRequest,
+} from "./client/common/auth/session";
+
+// =============================================================================
+// React Hooks (requires React 18+ as peer dependency)
+// =============================================================================
+export {
+  useComputeSession,
+  type UseComputeSessionConfig,
+  type UseComputeSessionReturn,
+} from "./client/common/hooks";
+
+// =============================================================================
 // Re-export common types
 // =============================================================================
 export type Environment = "sepolia" | "sepolia-dev" | "mainnet-alpha";
