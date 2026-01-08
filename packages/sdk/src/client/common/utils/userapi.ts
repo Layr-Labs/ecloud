@@ -165,16 +165,10 @@ export class UserApiClient {
     private readonly config: EnvironmentConfig,
     private readonly walletClient: WalletClient,
     private readonly publicClient: PublicClient,
-    options?: UserApiClientOptions | string,
+    options?: UserApiClientOptions,
   ) {
-    // Support legacy string clientId for backwards compatibility
-    if (typeof options === "string") {
-      this.clientId = options;
-      this.useSession = false;
-    } else {
-      this.clientId = options?.clientId || getDefaultClientId();
-      this.useSession = options?.useSession ?? false;
-    }
+    this.clientId = options?.clientId || getDefaultClientId();
+    this.useSession = options?.useSession ?? false;
   }
 
   /**

@@ -498,7 +498,7 @@ async function fetchAvailableInstanceTypes(
       environmentConfig,
       walletClient,
       publicClient,
-      getClientId(),
+      { clientId: getClientId() },
     );
 
     const skuList = await userApiClient.getSKUs();

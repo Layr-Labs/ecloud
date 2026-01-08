@@ -1056,7 +1056,7 @@ async function getAppIDInteractive(options: GetAppIDOptions): Promise<Address> {
         environmentConfig,
         walletClient,
         publicClient,
-        getClientId(),
+        { clientId: getClientId() },
       );
       const appInfos = await getAppInfosChunked(userApiClient, apps);
 

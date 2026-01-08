@@ -64,10 +64,18 @@ export default class AppInfo extends Command {
       rpcUrl,
       environment,
     });
-    const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, getClientId());
+    const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, {
+      clientId: getClientId(),
+    });
 
     if (flags.watch) {
-      await this.watchMode(appID, userApiClient, publicClient, environmentConfig, flags["address-count"]);
+      await this.watchMode(
+        appID,
+        userApiClient,
+        publicClient,
+        environmentConfig,
+        flags["address-count"],
+      );
     } else {
       await this.displayAppInfo(
         appID,
@@ -108,12 +116,12 @@ export default class AppInfo extends Command {
     const releaseBlockNumber = releaseBlockNumbers.get(appID);
     let releaseTimestamp: number | undefined;
     if (releaseBlockNumber && releaseBlockNumber > 0) {
-      const blockTimestamps = await getBlockTimestamps(publicClient, [
-        releaseBlockNumber,
-      ]).catch((err) => {
-        this.debug(`Could not fetch block timestamps: ${err}`);
-        return new Map<number, number>();
-      });
+      const blockTimestamps = await getBlockTimestamps(publicClient, [releaseBlockNumber]).catch(
+        (err) => {
+          this.debug(`Could not fetch block timestamps: ${err}`);
+          return new Map<number, number>();
+        },
+      );
       releaseTimestamp = blockTimestamps.get(releaseBlockNumber);
     }
 
@@ -180,7 +188,14 @@ export default class AppInfo extends Command {
     const REFRESH_INTERVAL_SECONDS = 5;
 
     // Initial display
-    await this.displayAppInfo(appID, userApiClient, publicClient, environmentConfig, addressCount, true);
+    await this.displayAppInfo(
+      appID,
+      userApiClient,
+      publicClient,
+      environmentConfig,
+      addressCount,
+      true,
+    );
 
     while (true) {
       await showCountdown(REFRESH_INTERVAL_SECONDS);
