@@ -81,6 +81,7 @@ export { generateNewPrivateKey, type GeneratedKey } from "./client/common/auth/g
 // =============================================================================
 export {
   UserApiClient,
+  type UserApiClientOptions,
   type AppInfo,
   type AppProfileInfo,
   type AppMetrics,

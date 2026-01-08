@@ -133,18 +133,40 @@ function getDefaultClientId(): string {
 }
 
 /**
+ * Options for UserApiClient
+ */
+export interface UserApiClientOptions {
+  /** Custom client ID for request tracking */
+  clientId?: string;
+  /**
+   * Use SIWE session authentication instead of per-request signatures.
+   * When true, requests rely on session cookies set by loginToComputeApi().
+   * When false (default), each request is signed individually.
+   */
+  useSession?: boolean;
+}
+
+/**
  * UserAPI Client for interacting with the EigenCloud UserAPI service.
  */
 export class UserApiClient {
   private readonly clientId: string;
+  private readonly useSession: boolean;
 
   constructor(
     private readonly config: EnvironmentConfig,
     private readonly walletClient: WalletClient,
     private readonly publicClient: PublicClient,
-    clientId?: string,
+    options?: UserApiClientOptions | string,
   ) {
-    this.clientId = clientId || getDefaultClientId();
+    // Support legacy string clientId for backwards compatibility
+    if (typeof options === "string") {
+      this.clientId = options;
+      this.useSession = false;
+    } else {
+      this.clientId = options?.clientId || getDefaultClientId();
+      this.useSession = options?.useSession ?? false;
+    }
   }
 
   /**
@@ -333,19 +355,21 @@ export class UserApiClient {
       "x-client-id": this.clientId,
     };
 
-    // Add auth headers (Authorization and X-eigenx-expiry)
-    const expiry = BigInt(Math.floor(Date.now() / 1000) + 5 * 60); // 5 minutes
-    const authHeaders = await this.generateAuthHeaders(CanUpdateAppProfilePermission, expiry);
-    Object.assign(headers, authHeaders);
+    // Add auth headers if not using session auth
+    if (!this.useSession) {
+      const expiry = BigInt(Math.floor(Date.now() / 1000) + 5 * 60); // 5 minutes
+      const authHeaders = await this.generateAuthHeaders(CanUpdateAppProfilePermission, expiry);
+      Object.assign(headers, authHeaders);
+    }
 
     try {
-      // Use axios to post req
       const response: AxiosResponse = await axios.post(endpoint, formData, {
         headers,
         maxRedirects: 0,
         validateStatus: () => true, // Don't throw on any status
         maxContentLength: Infinity, // Allow large file uploads
         maxBodyLength: Infinity, // Allow large file uploads
+        withCredentials: true, // Include cookies for session auth
       });
 
       const status = response.status;
@@ -395,19 +419,19 @@ export class UserApiClient {
     const headers: Record<string, string> = {
       "x-client-id": this.clientId,
     };
-    // Add auth headers if permission is specified
-    if (permission) {
+    // Add auth headers if permission is specified and not using session auth
+    if (permission && !this.useSession) {
       const expiry = BigInt(Math.floor(Date.now() / 1000) + 5 * 60); // 5 minutes
       const authHeaders = await this.generateAuthHeaders(permission, expiry);
       Object.assign(headers, authHeaders);
     }
 
     try {
-      // Use axios to match
       const response: AxiosResponse = await axios.get(url, {
         headers,
         maxRedirects: 0,
         validateStatus: () => true, // Don't throw on any status
+        withCredentials: true, // Include cookies for session auth
       });
 
       const status = response.status;
