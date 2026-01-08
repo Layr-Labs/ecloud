@@ -34,6 +34,7 @@ export {
 export { logs, LogsOptions } from "./modules/compute/app/logs";
 export {
   SDKDeployOptions,
+  deploy,
   prepareDeploy,
   prepareDeployFromVerifiableBuild,
   executeDeploy,
