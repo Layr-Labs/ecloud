@@ -4,9 +4,48 @@
  * This is a standalone HTTP client that talks to the (compute) UserAPI host.
  */
 
-import axios, { AxiosResponse } from "axios";
+import axios, { AxiosRequestConfig, AxiosResponse } from "axios";
 import { Address, type WalletClient } from "viem";
 import { calculateBillingAuthSignature } from "./auth";
+
+const MAX_RETRIES = 5;
+const INITIAL_BACKOFF_MS = 1000;
+const MAX_BACKOFF_MS = 30000;
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getRetryDelay(res: AxiosResponse, attempt: number): number {
+  const retryAfter = res.headers["retry-after"];
+  if (retryAfter) {
+    const seconds = parseInt(retryAfter, 10);
+    if (!isNaN(seconds)) {
+      return Math.min(seconds * 1000, MAX_BACKOFF_MS);
+    }
+  }
+  return Math.min(INITIAL_BACKOFF_MS * Math.pow(2, attempt), MAX_BACKOFF_MS);
+}
+
+async function requestWithRetry(config: AxiosRequestConfig): Promise<AxiosResponse> {
+  let lastResponse: AxiosResponse | undefined;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const res = await axios({ ...config, validateStatus: () => true });
+    lastResponse = res;
+
+    if (res.status !== 429) {
+      return res;
+    }
+
+    if (attempt < MAX_RETRIES) {
+      const delay = getRetryDelay(res, attempt);
+      await sleep(delay);
+    }
+  }
+
+  return lastResponse!;
+}
 
 export class BuildApiClient {
   private readonly baseUrl: string;
@@ -62,25 +101,23 @@ export class BuildApiClient {
     limit?: number;
     offset?: number;
   }): Promise<any[]> {
-    const res: AxiosResponse = await axios({
+    const res = await requestWithRetry({
       url: `${this.baseUrl}/builds`,
       method: "GET",
       params,
       headers: this.clientId ? { "x-client-id": this.clientId } : undefined,
       timeout: 60_000,
-      validateStatus: () => true,
     });
     if (res.status < 200 || res.status >= 300) throw buildApiHttpError(res);
     return res.data as any[];
   }
 
   private async publicJsonRequest(path: string): Promise<any> {
-    const res: AxiosResponse = await axios({
+    const res = await requestWithRetry({
       url: `${this.baseUrl}${path}`,
       method: "GET",
       headers: this.clientId ? { "x-client-id": this.clientId } : undefined,
       timeout: 60_000,
-      validateStatus: () => true,
     });
     if (res.status < 200 || res.status >= 300) throw buildApiHttpError(res);
     return res.data;
@@ -112,13 +149,12 @@ export class BuildApiClient {
     headers["X-eigenx-expiry"] = expiry.toString();
     headers["X-Account"] = this.address;
 
-    const res: AxiosResponse = await axios({
+    const res = await requestWithRetry({
       url: `${this.baseUrl}${path}`,
       method,
       headers,
       data: body,
       timeout: 60_000,
-      validateStatus: () => true,
     });
     if (res.status < 200 || res.status >= 300) throw buildApiHttpError(res);
     return res.data as T;
@@ -142,13 +178,12 @@ export class BuildApiClient {
     headers["X-eigenx-expiry"] = expiry.toString();
     headers["X-Account"] = this.address;
 
-    const res: AxiosResponse = await axios({
+    const res = await requestWithRetry({
       url: `${this.baseUrl}${path}`,
       method: "GET",
       headers,
       timeout: 60_000,
       responseType: "text",
-      validateStatus: () => true,
     });
     if (res.status < 200 || res.status >= 300) throw buildApiHttpError(res);
     return typeof res.data === "string" ? res.data : JSON.stringify(res.data);
