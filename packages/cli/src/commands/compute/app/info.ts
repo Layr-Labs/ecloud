@@ -126,7 +126,7 @@ export default class AppInfo extends Command {
         verifiabilityStatus = chalk.green("Verifiable ✓");
       } else {
         verifiabilityStatus = chalk.yellow(
-          "(dev image, not built verifiably, production workloads should always be verifiable)",
+          "(dev image, not built verifiably, we strongly recommend verifiable builds for production)",
         );
       }
     } catch (err) {
