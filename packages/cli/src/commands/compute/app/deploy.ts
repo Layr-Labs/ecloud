@@ -28,6 +28,7 @@ import chalk from "chalk";
 import { createBuildClient } from "../../../client";
 import { formatVerifiableBuildSummary } from "../../../utils/build";
 import { assertCommitSha40, runVerifiableBuildAndVerify } from "../../../utils/verifiableBuild";
+import { getDashboardUrl } from "../../../utils/dashboard";
 import {
   assertEigencloudContainersImageRef,
   resolveDockerHubImageDigest,
@@ -471,6 +472,10 @@ export default class AppDeploy extends Command {
       this.log(
         `\n✅ ${chalk.green(`App deployed successfully ${chalk.bold(`(id: ${res.appId}, ip: ${ipAddress})`)}`)}`,
       );
+
+      // Show dashboard link
+      const dashboardUrl = getDashboardUrl(environment, res.appId);
+      this.log(`\n${chalk.gray("View your app:")} ${chalk.blue.underline(dashboardUrl)}`);
     });
   }
 }

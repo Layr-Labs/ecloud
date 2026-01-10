@@ -18,6 +18,7 @@ import {
 import { getAppInfosChunked } from "../../../utils/appResolver";
 import { formatAppDisplay, printAppDisplay } from "../../../utils/format";
 import { createViemClients } from "../../../utils/viemClients";
+import { getDashboardUrl } from "../../../utils/dashboard";
 import { getClientId } from "../../../utils/version";
 import chalk from "chalk";
 import { withTelemetry } from "../../../telemetry";
@@ -206,6 +207,10 @@ export default class AppList extends Command {
           singleAddress: true,
           showProfile: false,
         });
+
+        // Show dashboard link
+        const dashboardUrl = getDashboardUrl(environment, appItems[i].appAddr);
+        this.log(`    Dashboard:      ${chalk.blue.underline(dashboardUrl)}`);
 
         // Add separator between apps
         if (i < appItems.length - 1) {

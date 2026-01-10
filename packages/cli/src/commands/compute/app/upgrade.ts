@@ -25,6 +25,7 @@ import { setLinkedAppForDirectory } from "../../../utils/globalConfig";
 import chalk from "chalk";
 import { formatVerifiableBuildSummary } from "../../../utils/build";
 import { assertCommitSha40, runVerifiableBuildAndVerify } from "../../../utils/verifiableBuild";
+import { getDashboardUrl } from "../../../utils/dashboard";
 import {
   assertEigencloudContainersImageRef,
   resolveDockerHubImageDigest,
@@ -375,6 +376,10 @@ export default class AppUpgrade extends Command {
       this.log(
         `\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${res.appId}, image: ${res.imageRef})`)}`)}`,
       );
+
+      // Show dashboard link
+      const dashboardUrl = getDashboardUrl(environment, res.appId);
+      this.log(`\n${chalk.gray("View your app:")} ${chalk.blue.underline(dashboardUrl)}`);
     });
   }
 }
