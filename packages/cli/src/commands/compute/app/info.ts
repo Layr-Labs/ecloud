@@ -9,6 +9,7 @@ import { commonFlags, validateCommonFlags } from "../../../flags";
 import { getOrPromptAppID } from "../../../utils/prompts";
 import { formatAppDisplay, printAppDisplay } from "../../../utils/format";
 import { getClientId } from "../../../utils/version";
+import { getDashboardUrl } from "../../../utils/dashboard";
 import { createViemClients } from "../../../utils/viemClients";
 import { Address, type PublicClient } from "viem";
 import chalk from "chalk";
@@ -109,8 +110,28 @@ export default class AppInfo extends Command {
     if (releaseBlockNumber && releaseBlockNumber > 0) {
       const blockTimestamps = await getBlockTimestamps(publicClient, [
         releaseBlockNumber,
-      ]).catch(() => new Map<number, number>());
+      ]).catch((err) => {
+        this.debug(`Could not fetch block timestamps: ${err}`);
+        return new Map<number, number>();
+      });
       releaseTimestamp = blockTimestamps.get(releaseBlockNumber);
+    }
+
+    // Check verifiability of deployed image
+    let verifiabilityStatus: string | undefined;
+    try {
+      const appResponse = await userApiClient.getApp(appID);
+      const latestRelease = appResponse.releases?.[0];
+      if (latestRelease?.build?.provenanceSignature) {
+        verifiabilityStatus = chalk.green("Verifiable ✓");
+      } else {
+        verifiabilityStatus = chalk.yellow(
+          "(dev image, not built verifiably, we strongly recommend verifiable builds for production)",
+        );
+      }
+    } catch (err) {
+      // Verifiability check is best-effort - log at debug level for troubleshooting
+      this.debug(`Could not determine verifiability status: ${err}`);
     }
 
     // Clear screen if in watch mode
@@ -136,6 +157,15 @@ export default class AppInfo extends Command {
       singleAddress: false,
       showProfile: true,
     });
+
+    // Show verifiability status
+    if (verifiabilityStatus) {
+      this.log(`  Build:          ${verifiabilityStatus}`);
+    }
+
+    // Show dashboard link
+    const dashboardUrl = getDashboardUrl(environmentConfig.name, appID);
+    this.log(`  Dashboard:      ${chalk.blue.underline(dashboardUrl)}`);
 
     console.log();
   }
