@@ -7,10 +7,8 @@ import { getClientId } from "../../../utils/version";
 import { createViemClients } from "../../../utils/viemClients";
 import chalk from "chalk";
 import { formatAppRelease } from "../../../utils/releases";
-import { Address, isAddress } from "viem";
-import Table from "cli-table3";
+import { Address } from "viem";
 import {
-  terminalWidth,
   formatRepoDisplay,
   extractRepoName,
   formatImageDisplay,
@@ -132,20 +130,8 @@ export default class AppReleases extends Command {
         return;
       }
 
-      type Row = {
-        rel: string;
-        block: string;
-        created: string;
-        repo: string;
-        commit: string;
-        digest: string;
-        image: string;
-        build: string;
-        prov: string;
-        deps: string;
-      };
-
-      const rows: Row[] = releases.map((r, i) => {
+      for (let i = 0; i < releases.length; i++) {
+        const r = releases[i]!;
         const rel = r.rmsReleaseId ?? String(i);
         const block = r.createdAtBlock ? String(r.createdAtBlock) : "-";
         const created = r.createdAt ? formatHumanTime(r.createdAt) : "-";
@@ -155,99 +141,20 @@ export default class AppReleases extends Command {
         const image = formatImageDisplay(r.build?.imageUrl ?? r.registryUrl ?? "-");
         const build = r.build?.buildId ?? "-";
         const prov = provenanceSummaryFromBuild(r.build);
-        const depCount = r.build?.dependencies ? Object.keys(r.build.dependencies).length : 0;
-        const deps = depCount > 0 ? `deps:${depCount}` : "-";
-        return { rel, block, created, repo, commit, digest, image, build, prov, deps };
-      });
 
-      const headers = {
-        rel: chalk.bold("Rel"),
-        block: chalk.bold("Block"),
-        created: chalk.bold("Created"),
-        repo: chalk.bold("Repo"),
-        commit: chalk.bold("Commit"),
-        digest: chalk.bold("Digest"),
-        image: chalk.bold("Image"),
-        build: chalk.bold("Build"),
-        prov: chalk.bold("Prov"),
-        deps: chalk.bold("Deps"),
-      };
-
-      const tw = terminalWidth();
-      // With 10 columns this gets unreadable on narrow terminals; fall back to stacked.
-      const shouldStack = tw < 140;
-
-      if (shouldStack) {
-        for (const r of rows) {
-          this.log(`${chalk.cyan(r.rel)}  ${r.created}  (block ${r.block})`);
-          this.log(`  Repo:   ${r.repo}`);
-          this.log(`  Commit: ${r.commit}`);
-          this.log(`  Digest: ${r.digest}`);
-          this.log(`  Image:  ${r.image}`);
-          this.log(`  Build:  ${r.build}`);
-          this.log(`  Provenance: ${r.prov}`);
-          const relObj = releases.find((x, idx) => (x.rmsReleaseId ?? String(idx)) === r.rel);
-          const depLines = formatDepLines(relObj?.build?.dependencies);
-          if (depLines.length) {
-            for (const l of depLines) this.log(l);
-          }
-          this.log(chalk.gray("  ───────────────────────────────────────────────────────────────"));
+        this.log(`${chalk.cyan(rel)}  ${created}  (block ${block})`);
+        this.log(`  Repo:   ${repo}`);
+        this.log(`  Commit: ${commit}`);
+        this.log(`  Digest: ${digest}`);
+        this.log(`  Image:  ${image}`);
+        this.log(`  Build:  ${build}`);
+        this.log(`  Provenance: ${prov}`);
+        const depLines = formatDepLines(r.build?.dependencies);
+        if (depLines.length) {
+          for (const l of depLines) this.log(l);
         }
-        this.log("");
-        this.log(
-          chalk.gray(
-            `Tip: use ${chalk.yellow("--full")} for detailed release output, ${chalk.yellow(
-              "--json",
-            )} to copy/paste, and ${chalk.yellow(
-              "ecloud compute build info <buildId>",
-            )} for full build/provenance details.`,
-          ),
-        );
-        return;
+        this.log(chalk.gray("  ───────────────────────────────────────────────────────────────"));
       }
-
-      // Allocate flexible width to the "wide" columns based on terminal width.
-      // Note: cli-table3 includes borders/padding; this is intentionally approximate.
-      const fixed = 6 + 10 + 20 + 36 + 12 + 8 + 10; // rel + block + created + build + prov + deps + commit(min-ish)
-      const remaining = Math.max(60, tw - fixed);
-      const repoW = Math.max(18, Math.floor(remaining * 0.25));
-      const digestW = Math.max(18, Math.floor(remaining * 0.35));
-      const imageW = Math.max(18, remaining - repoW - digestW);
-
-      const table = new Table({
-        head: [
-          headers.rel,
-          headers.block,
-          headers.created,
-          headers.repo,
-          headers.commit,
-          headers.digest,
-          headers.image,
-          headers.build,
-          headers.prov,
-          headers.deps,
-        ],
-        colWidths: [6, 10, 20, repoW, 10, digestW, imageW, 36, 12, 8],
-        wordWrap: true,
-        style: { "padding-left": 0, "padding-right": 1, head: [], border: [] },
-      });
-
-      for (const r of rows) {
-        table.push([
-          r.rel,
-          r.block,
-          r.created,
-          r.repo,
-          r.commit,
-          r.digest,
-          r.image,
-          r.build,
-          r.prov,
-          r.deps,
-        ]);
-      }
-
-      this.log(table.toString());
 
       this.log("");
       this.log(
