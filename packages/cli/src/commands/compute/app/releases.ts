@@ -86,18 +86,13 @@ export default class AppReleases extends Command {
     return withTelemetry(this, async () => {
       const { args, flags } = await this.parse(AppReleases);
 
-      // Releases endpoint is readable without auth; only require private key when we need to
-      // resolve app names interactively (or when the provided identifier isn't an address).
-      const rawAppId = args["app-id"];
-      const needsPrivateKey = !rawAppId || !isAddress(rawAppId);
-      const validatedFlags = await validateCommonFlags(flags, {
-        requirePrivateKey: needsPrivateKey,
-      });
+      // Auth is required to call the API (you can view any app's releases, not just your own)
+      const validatedFlags = await validateCommonFlags(flags);
 
       const environment = validatedFlags.environment || "sepolia";
       const environmentConfig = getEnvironmentConfig(environment);
       const rpcUrl = validatedFlags["rpc-url"] || environmentConfig.defaultRPCURL;
-      const privateKey = validatedFlags["private-key"];
+      const privateKey = validatedFlags["private-key"]!;
 
       const appID = await getOrPromptAppID({
         appID: args["app-id"],
@@ -106,11 +101,6 @@ export default class AppReleases extends Command {
         rpcUrl,
         action: "view releases for",
       });
-
-      // Create viem clients and UserAPI client
-      if (!privateKey) {
-        this.error("Private key is required to fetch releases. Please provide --private-key.");
-      }
       const { publicClient, walletClient } = createViemClients({
         privateKey,
         rpcUrl,
