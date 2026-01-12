@@ -28,7 +28,7 @@ import {
 } from "viem";
 import type { WalletClient, PublicClient } from "viem";
 
-import { EnvironmentConfig, Logger, PreparedDeployData, PreparedUpgradeData, noopLogger } from "../types";
+import { EnvironmentConfig, Logger, PreparedDeployData, PreparedUpgradeData, noopLogger, DeployProgressCallback, SequentialDeployResult, DeployStep } from "../types";
 import { Release } from "../types";
 import { getChainFromID } from "../utils/helpers";
 
@@ -364,6 +364,145 @@ export async function deployApp(
   };
 
   return executeDeployBatch(data, context, options.gas, logger);
+}
+
+/**
+ * Check if wallet account supports EIP-7702 signing
+ *
+ * Local accounts (from privateKeyToAccount) support signAuthorization.
+ * JSON-RPC accounts (browser wallets like MetaMask) do not.
+ */
+export function supportsEIP7702(walletClient: WalletClient): boolean {
+  const account = walletClient.account;
+  if (!account) return false;
+
+  // Local accounts have type "local", JSON-RPC accounts have type "json-rpc"
+  // Only local accounts support signAuthorization
+  return account.type === "local";
+}
+
+/**
+ * Options for sequential deployment (non-EIP-7702)
+ */
+export interface ExecuteDeploySequentialOptions {
+  walletClient: WalletClient;
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+  /** Prepared deployment data from prepareDeployBatch */
+  data: PreparedDeployData;
+  /** Whether to set public logs permission */
+  publicLogs: boolean;
+  /** Optional callback for progress updates */
+  onProgress?: DeployProgressCallback;
+}
+
+/**
+ * Execute deployment as sequential transactions (non-EIP-7702 fallback)
+ *
+ * Use this for browser wallets (JSON-RPC accounts) that don't support signAuthorization.
+ * This requires 2-3 wallet signatures instead of 1, but works with all wallet types.
+ *
+ * Steps:
+ * 1. createApp - Creates the app on-chain
+ * 2. acceptAdmin - Accepts admin role for the app
+ * 3. setAppointee (optional) - Sets public logs permission
+ */
+export async function executeDeploySequential(
+  options: ExecuteDeploySequentialOptions,
+  logger: Logger = noopLogger,
+): Promise<SequentialDeployResult> {
+  const { walletClient, publicClient, environmentConfig, data, publicLogs, onProgress } = options;
+
+  const account = walletClient.account;
+  if (!account) {
+    throw new Error("WalletClient must have an account attached");
+  }
+
+  const chain = getChainFromID(environmentConfig.chainID);
+  const txHashes: { createApp: Hex; acceptAdmin: Hex; setPublicLogs?: Hex } = {
+    createApp: "0x" as Hex,
+    acceptAdmin: "0x" as Hex,
+  };
+
+  // Step 1: Create App
+  logger.info("Step 1/3: Creating app...");
+  onProgress?.("createApp");
+
+  const createAppExecution = data.executions[0];
+  const createAppHash = await walletClient.sendTransaction({
+    account,
+    to: createAppExecution.target,
+    data: createAppExecution.callData,
+    value: createAppExecution.value,
+    chain,
+  });
+
+  logger.info(`createApp transaction sent: ${createAppHash}`);
+  const createAppReceipt = await publicClient.waitForTransactionReceipt({ hash: createAppHash });
+
+  if (createAppReceipt.status === "reverted") {
+    throw new Error(`createApp transaction reverted: ${createAppHash}`);
+  }
+
+  txHashes.createApp = createAppHash;
+  logger.info(`createApp confirmed in block ${createAppReceipt.blockNumber}`);
+
+  // Step 2: Accept Admin
+  logger.info("Step 2/3: Accepting admin role...");
+  onProgress?.("acceptAdmin", createAppHash);
+
+  const acceptAdminExecution = data.executions[1];
+  const acceptAdminHash = await walletClient.sendTransaction({
+    account,
+    to: acceptAdminExecution.target,
+    data: acceptAdminExecution.callData,
+    value: acceptAdminExecution.value,
+    chain,
+  });
+
+  logger.info(`acceptAdmin transaction sent: ${acceptAdminHash}`);
+  const acceptAdminReceipt = await publicClient.waitForTransactionReceipt({ hash: acceptAdminHash });
+
+  if (acceptAdminReceipt.status === "reverted") {
+    throw new Error(`acceptAdmin transaction reverted: ${acceptAdminHash}`);
+  }
+
+  txHashes.acceptAdmin = acceptAdminHash;
+  logger.info(`acceptAdmin confirmed in block ${acceptAdminReceipt.blockNumber}`);
+
+  // Step 3: Set Public Logs (if requested and present in executions)
+  if (publicLogs && data.executions.length > 2) {
+    logger.info("Step 3/3: Setting public logs permission...");
+    onProgress?.("setPublicLogs", acceptAdminHash);
+
+    const setAppointeeExecution = data.executions[2];
+    const setAppointeeHash = await walletClient.sendTransaction({
+      account,
+      to: setAppointeeExecution.target,
+      data: setAppointeeExecution.callData,
+      value: setAppointeeExecution.value,
+      chain,
+    });
+
+    logger.info(`setAppointee transaction sent: ${setAppointeeHash}`);
+    const setAppointeeReceipt = await publicClient.waitForTransactionReceipt({ hash: setAppointeeHash });
+
+    if (setAppointeeReceipt.status === "reverted") {
+      throw new Error(`setAppointee transaction reverted: ${setAppointeeHash}`);
+    }
+
+    txHashes.setPublicLogs = setAppointeeHash;
+    logger.info(`setAppointee confirmed in block ${setAppointeeReceipt.blockNumber}`);
+  }
+
+  onProgress?.("complete", txHashes.setPublicLogs || txHashes.acceptAdmin);
+
+  logger.info(`Deployment complete! App ID: ${data.appId}`);
+
+  return {
+    appId: data.appId,
+    txHashes,
+  };
 }
 
 /**

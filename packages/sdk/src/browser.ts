@@ -111,6 +111,9 @@ export {
   executeDeployBatch,
   deployApp,
   calculateAppID,
+  // Sequential deployment (non-EIP-7702 fallback for browser wallets)
+  executeDeploySequential,
+  supportsEIP7702,
   // Upgrade operations
   prepareUpgradeBatch,
   executeUpgradeBatch,
@@ -136,6 +139,7 @@ export {
   type SuspendOptions,
   type UndelegateOptions,
   type IsDelegatedOptions,
+  type ExecuteDeploySequentialOptions,
 } from "./client/common/contract/caller";
 
 // =============================================================================

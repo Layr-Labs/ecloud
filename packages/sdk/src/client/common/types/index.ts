@@ -396,3 +396,30 @@ export interface SubscriptionOpts {
 export interface BillingEnvironmentConfig {
   billingApiServerURL: string;
 }
+
+/**
+ * Progress callback for sequential deployment
+ * Called after each step completes
+ */
+export type DeployProgressCallback = (step: DeployStep, txHash?: Hex) => void;
+
+/**
+ * Steps in sequential deployment flow
+ */
+export type DeployStep =
+  | "createApp"
+  | "acceptAdmin"
+  | "setPublicLogs"
+  | "complete";
+
+/**
+ * Result from sequential deployment
+ */
+export interface SequentialDeployResult {
+  appId: AppId;
+  txHashes: {
+    createApp: Hex;
+    acceptAdmin: Hex;
+    setPublicLogs?: Hex;
+  };
+}
