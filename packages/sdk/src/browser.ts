@@ -220,6 +220,16 @@ export {
 export { noopLogger } from "./client/common/types";
 
 // =============================================================================
+// KMS Encryption Utilities (browser-safe - uses jose library)
+// =============================================================================
+export {
+  encryptRSAOAEPAndAES256GCM,
+  getAppProtectedHeaders,
+} from "./client/common/encryption/kms";
+
+export { getKMSKeysForEnvironment } from "./client/common/utils/keys";
+
+// =============================================================================
 // Re-export common types
 // =============================================================================
 export type Environment = "sepolia" | "sepolia-dev" | "mainnet-alpha";

@@ -547,7 +547,7 @@ export interface ExecuteDeployBatchedOptions {
 export async function supportsEIP5792(walletClient: WalletClient): Promise<boolean> {
   try {
     // Check if getCapabilities method exists
-    if (typeof (walletClient as any).getCapabilities !== "function") {
+    if (typeof walletClient.getCapabilities !== "function") {
       return false;
     }
 
@@ -555,7 +555,7 @@ export async function supportsEIP5792(walletClient: WalletClient): Promise<boole
     if (!account) return false;
 
     // Try to get capabilities - if this works, the wallet supports EIP-5792
-    const capabilities = await (walletClient as any).getCapabilities({
+    const capabilities = await walletClient.getCapabilities({
       account: account.address,
     });
 
@@ -610,7 +610,7 @@ export async function executeDeployBatched(
 
   try {
     // Send all calls in a single batch
-    const { id: batchId } = await (walletClient as any).sendCalls({
+    const { id: batchId } = await walletClient.sendCalls({
       account,
       chain,
       calls: filteredCalls,
@@ -627,7 +627,7 @@ export async function executeDeployBatched(
 
     while (attempts < maxAttempts) {
       try {
-        status = await (walletClient as any).getCallsStatus({ id: batchId });
+        status = await walletClient.getCallsStatus({ id: batchId });
 
         if (status.status === "success" || status.status === "confirmed") {
           logger.info(`Batch confirmed with ${status.receipts?.length || 0} receipts`);
