@@ -8,7 +8,7 @@
 
 import axios, { AxiosResponse } from "axios";
 import { Address, type WalletClient } from "viem";
-import { ProductID, CreateSubscriptionResponse, ProductSubscriptionResponse } from "../types";
+import { ProductID, CreateSubscriptionOptions, CreateSubscriptionResponse, ProductSubscriptionResponse } from "../types";
 import { calculateBillingAuthSignature } from "./auth";
 import { BillingEnvironmentConfig } from "../types";
 
@@ -32,9 +32,13 @@ export class BillingApiClient {
     return account.address;
   }
 
-  async createSubscription(productId: ProductID = "compute"): Promise<CreateSubscriptionResponse> {
+  async createSubscription(productId: ProductID = "compute", options?: CreateSubscriptionOptions): Promise<CreateSubscriptionResponse> {
     const endpoint = `${this.config.billingApiServerURL}/products/${productId}/subscription`;
-    const resp = await this.makeAuthenticatedRequest(endpoint, "POST", productId);
+    const body = options ? {
+      success_url: options.successUrl,
+      cancel_url: options.cancelUrl,
+    } : undefined;
+    const resp = await this.makeAuthenticatedRequest(endpoint, "POST", productId, body);
     return resp.json();
   }
 
@@ -56,6 +60,7 @@ export class BillingApiClient {
     url: string,
     method: "GET" | "POST" | "DELETE",
     productId: ProductID,
+    body?: Record<string, unknown>,
   ): Promise<{ json: () => Promise<any>; text: () => Promise<string> }> {
     // Calculate expiry (5 minutes from now)
     const expiry = BigInt(Math.floor(Date.now() / 1000) + 5 * 60);
@@ -74,12 +79,18 @@ export class BillingApiClient {
       "X-Expiry": expiry.toString(),
     };
 
+    // Add content-type header if body is present
+    if (body) {
+      headers["Content-Type"] = "application/json";
+    }
+
     try {
       // Use axios to make the request
       const response: AxiosResponse = await axios({
         method,
         url,
         headers,
+        data: body,
         timeout: 30_000,
         maxRedirects: 0,
         validateStatus: () => true, // Don't throw on any status

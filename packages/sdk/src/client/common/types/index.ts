@@ -329,6 +329,13 @@ export interface SubscriptionLineItem {
   subtotal: number;
 }
 
+export interface CreateSubscriptionOptions {
+  /** URL to redirect to after successful checkout */
+  successUrl?: string;
+  /** URL to redirect to if checkout is canceled */
+  cancelUrl?: string;
+}
+
 export interface CreateSubscriptionResponse {
   checkoutUrl: string;
 }
