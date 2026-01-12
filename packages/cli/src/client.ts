@@ -83,15 +83,19 @@ export async function createBuildClient(flags: CommonFlags) {
   const environmentConfig = getEnvironmentConfig(environment);
   const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
 
-  const { walletClient } = createViemClients({
-    privateKey: flags["private-key"] as Hex,
-    rpcUrl,
-    environment,
-  });
+  // Only create walletClient if we have a private key - createViemClients throws if privateKey is undefined
+  let walletClient;
+  if (flags["private-key"]) {
+    walletClient = createViemClients({
+      privateKey: flags["private-key"] as Hex,
+      rpcUrl,
+      environment,
+    }).walletClient;
+  }
 
   return createBuildModule({
     verbose: flags.verbose,
-    walletClient: flags["private-key"] ? walletClient : undefined,
+    walletClient,
     environment,
     clientId: getClientId(),
     skipTelemetry: true, // CLI already has telemetry, skip SDK telemetry
