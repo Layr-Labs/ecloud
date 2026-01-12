@@ -22,6 +22,7 @@ export * from "./client/common/types";
 // =============================================================================
 export {
   getEnvironmentConfig,
+  getBillingEnvironmentConfig,
   getAvailableEnvironments,
   isEnvironmentAvailable,
   getBuildType,
@@ -77,15 +78,20 @@ export { isSubscriptionActive } from "./client/common/utils/billing";
 export { generateNewPrivateKey, type GeneratedKey } from "./client/common/auth/generate";
 
 // =============================================================================
-// API Clients (browser-safe - use axios/fetch)
+// API Clients (browser-safe - use axios)
 // =============================================================================
 export {
   UserApiClient,
+  type UserApiClientOptions,
   type AppInfo,
   type AppProfileInfo,
   type AppMetrics,
   type AppInfoResponse,
 } from "./client/common/utils/userapi";
+
+export { BillingApiClient } from "./client/common/utils/billingapi";
+
+export { BuildApiClient } from "./client/common/utils/buildapi";
 
 // =============================================================================
 // Contract Read Operations (browser-safe)
@@ -100,16 +106,49 @@ export {
   // Gas estimation
   estimateTransactionGas,
   formatETH,
+  // Deploy operations
+  prepareDeployBatch,
+  executeDeployBatch,
+  deployApp,
+  calculateAppID,
+  // Upgrade operations
+  prepareUpgradeBatch,
+  executeUpgradeBatch,
+  upgradeApp,
+  // Transaction helpers
+  sendAndWaitForTransaction,
+  // Delegation
+  isDelegated,
+  suspend,
+  undelegate,
   // Types
   type GasEstimate,
   type EstimateGasOptions,
   type AppConfig,
+  type DeployAppOptions,
+  type UpgradeAppOptions,
+  type PrepareDeployBatchOptions,
+  type PrepareUpgradeBatchOptions,
+  type PreparedDeployBatch,
+  type PreparedUpgradeBatch,
+  type CalculateAppIDOptions,
+  type SendTransactionOptions,
+  type SuspendOptions,
+  type UndelegateOptions,
+  type IsDelegatedOptions,
 } from "./client/common/contract/caller";
 
 // =============================================================================
-// Batch Gas Estimation (browser-safe)
+// EIP-7702 Batch Execution (browser-safe)
 // =============================================================================
-export { estimateBatchGas, type EstimateBatchGasOptions } from "./client/common/contract/eip7702";
+export {
+  estimateBatchGas,
+  executeBatch,
+  checkERC7702Delegation,
+  type EstimateBatchGasOptions,
+  type ExecuteBatchOptions,
+  type Execution,
+} from "./client/common/contract/eip7702";
 
 // =============================================================================
 // App Action Encoders (browser-safe - pure viem encoding)
@@ -119,6 +158,57 @@ export {
   encodeStopAppData,
   encodeTerminateAppData,
 } from "./client/common/contract/encoders";
+
+// =============================================================================
+// SIWE (Sign-In with Ethereum) Utilities (browser-safe)
+// =============================================================================
+export {
+  createSiweMessage,
+  parseSiweMessage,
+  generateNonce,
+  isSiweMessageExpired,
+  isSiweMessageNotYetValid,
+  type SiweMessageParams,
+  type SiweMessageResult,
+} from "./client/common/auth/siwe";
+
+// =============================================================================
+// Compute API Session Management (browser-safe)
+// =============================================================================
+export {
+  loginToComputeApi,
+  logoutFromComputeApi,
+  getComputeApiSession,
+  isSessionValid,
+  SessionError,
+  type ComputeApiConfig,
+  type SessionInfo,
+  type LoginResult,
+  type LoginRequest,
+} from "./client/common/auth/session";
+
+// =============================================================================
+// React Hooks (requires React 18+ as peer dependency)
+// =============================================================================
+export {
+  useComputeSession,
+  type UseComputeSessionConfig,
+  type UseComputeSessionReturn,
+} from "./client/common/hooks";
+
+// =============================================================================
+// Helper Utilities (browser-safe)
+// =============================================================================
+export {
+  getChainFromID,
+  addHexPrefix,
+  stripHexPrefix,
+} from "./client/common/utils/helpers";
+
+// =============================================================================
+// No-op Logger (browser-safe)
+// =============================================================================
+export { noopLogger } from "./client/common/types";
 
 // =============================================================================
 // Re-export common types

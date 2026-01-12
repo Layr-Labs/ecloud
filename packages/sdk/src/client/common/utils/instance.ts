@@ -23,7 +23,7 @@ export async function getCurrentInstanceType(
       preflightCtx.environmentConfig,
       preflightCtx.walletClient,
       preflightCtx.publicClient,
-      clientId,
+      clientId ? { clientId } : undefined,
     );
 
     const infos = await userApiClient.getInfos([appID], 1);

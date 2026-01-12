@@ -292,7 +292,7 @@ export default class AppUpgrade extends Command {
           environmentConfig,
           walletClient,
           publicClient,
-          getClientId(),
+          { clientId: getClientId() },
         );
         const infos = await userApiClient.getInfos([appID], 1);
         if (infos.length > 0) {
@@ -398,7 +398,7 @@ async function fetchAvailableInstanceTypes(
       rpcUrl,
       environment: environmentConfig.name,
     });
-    const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, getClientId());
+    const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, { clientId: getClientId() });
 
     const skuList = await userApiClient.getSKUs();
     if (skuList.skus.length === 0) {

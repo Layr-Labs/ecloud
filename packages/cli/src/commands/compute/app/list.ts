@@ -100,7 +100,9 @@ export default class AppList extends Command {
       }
 
       // Create UserAPI client
-      const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, getClientId());
+      const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, {
+        clientId: getClientId(),
+      });
 
       // Fetch all data in parallel
       const [appInfos, releaseBlockNumbers] = await Promise.all([
@@ -110,12 +112,14 @@ export default class AppList extends Command {
           }
           return [];
         }),
-        getAppLatestReleaseBlockNumbers(publicClient, environmentConfig, filteredApps).catch((err) => {
-          if (flags.verbose) {
-            this.warn(`Could not fetch release block numbers: ${err}`);
-          }
-          return new Map<Address, number>();
-        }) as Promise<Map<Address, number>>,
+        getAppLatestReleaseBlockNumbers(publicClient, environmentConfig, filteredApps).catch(
+          (err) => {
+            if (flags.verbose) {
+              this.warn(`Could not fetch release block numbers: ${err}`);
+            }
+            return new Map<Address, number>();
+          },
+        ) as Promise<Map<Address, number>>,
       ]);
 
       // Get unique block numbers and fetch their timestamps
