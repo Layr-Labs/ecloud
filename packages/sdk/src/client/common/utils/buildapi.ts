@@ -79,6 +79,9 @@ export class BuildApiClient {
     return account.address;
   }
 
+  /**
+   * Submit a new build request. Requires signature auth for billing verification.
+   */
   async submitBuild(payload: {
     repo_url: string;
     git_ref: string;
@@ -87,7 +90,8 @@ export class BuildApiClient {
     build_context_path: string;
     dependencies: string[];
   }): Promise<{ build_id: string }> {
-    return this.authenticatedJsonRequest<{ build_id: string }>("/builds", "POST", payload);
+    // Always use signature auth - the server requires it to verify subscription via billing API
+    return this.signatureAuthJsonRequest<{ build_id: string }>("/builds", "POST", payload);
   }
 
   async getBuild(buildId: string): Promise<any> {
@@ -102,8 +106,11 @@ export class BuildApiClient {
     return this.publicJsonRequest(`/builds/verify/${encodeURIComponent(identifier)}`);
   }
 
+  /**
+   * Get build logs. Supports session auth (identity verification only, no billing check).
+   */
   async getLogs(buildId: string): Promise<string> {
-    return this.authenticatedTextRequest(`/builds/${encodeURIComponent(buildId)}/logs`);
+    return this.sessionOrSignatureTextRequest(`/builds/${encodeURIComponent(buildId)}/logs`);
   }
 
   async listBuilds(params: {
@@ -137,34 +144,35 @@ export class BuildApiClient {
     return res.data;
   }
 
-  private async authenticatedJsonRequest<T>(
+  /**
+   * Make a request that ALWAYS requires signature auth (for billing verification).
+   * Used for endpoints like POST /builds that need to verify subscription status.
+   */
+  private async signatureAuthJsonRequest<T>(
     path: string,
     method: "POST" | "GET",
     body?: unknown,
   ): Promise<T> {
+    if (!this.walletClient?.account) {
+      throw new Error("WalletClient with account required for authenticated requests");
+    }
+
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
     if (this.clientId) headers["x-client-id"] = this.clientId;
 
-    // When using session auth, rely on cookies instead of signature headers
-    if (!this.useSession) {
-      if (!this.walletClient?.account) {
-        throw new Error("WalletClient with account required for authenticated requests");
-      }
-
-      // Builds API uses BillingAuth signature format (same as Billing API).
-      // Keep expiry short to reduce replay window.
-      const expiry = BigInt(Math.floor(Date.now() / 1000) + 60);
-      const { signature } = await calculateBillingAuthSignature({
-        walletClient: this.walletClient,
-        product: "compute",
-        expiry,
-      });
-      headers.Authorization = `Bearer ${signature}`;
-      headers["X-eigenx-expiry"] = expiry.toString();
-      headers["X-Account"] = this.address;
-    }
+    // Builds API uses BillingAuth signature format (same as Billing API).
+    // Keep expiry short to reduce replay window.
+    const expiry = BigInt(Math.floor(Date.now() / 1000) + 60);
+    const { signature } = await calculateBillingAuthSignature({
+      walletClient: this.walletClient,
+      product: "compute",
+      expiry,
+    });
+    headers.Authorization = `Bearer ${signature}`;
+    headers["X-eigenx-expiry"] = expiry.toString();
+    headers["X-Account"] = this.address;
 
     const res = await requestWithRetry({
       url: `${this.baseUrl}${path}`,
@@ -179,7 +187,12 @@ export class BuildApiClient {
     return res.data as T;
   }
 
-  private async authenticatedTextRequest(path: string): Promise<string> {
+  /**
+   * Make an authenticated request that can use session OR signature auth.
+   * When useSession is true, relies on cookies for identity verification.
+   * Used for endpoints that only need identity verification (not billing).
+   */
+  private async sessionOrSignatureTextRequest(path: string): Promise<string> {
     const headers: Record<string, string> = {};
     if (this.clientId) headers["x-client-id"] = this.clientId;
 
