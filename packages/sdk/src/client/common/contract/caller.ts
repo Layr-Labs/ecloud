@@ -19,16 +19,19 @@
  */
 
 import { executeBatch, checkERC7702Delegation } from "./eip7702";
-import {
-  Address,
-  Hex,
-  encodeFunctionData,
-  decodeErrorResult,
-  bytesToHex,
-} from "viem";
+import { Address, Hex, encodeFunctionData, decodeErrorResult, bytesToHex } from "viem";
 import type { WalletClient, PublicClient } from "viem";
 
-import { EnvironmentConfig, Logger, PreparedDeployData, PreparedUpgradeData, noopLogger } from "../types";
+import {
+  EnvironmentConfig,
+  Logger,
+  PreparedDeployData,
+  PreparedUpgradeData,
+  noopLogger,
+  DeployProgressCallback,
+  SequentialDeployResult,
+  DeployStep,
+} from "../types";
 import { Release } from "../types";
 import { getChainFromID } from "../utils/helpers";
 
@@ -367,6 +370,324 @@ export async function deployApp(
 }
 
 /**
+ * Check if wallet account supports EIP-7702 signing
+ *
+ * Local accounts (from privateKeyToAccount) support signAuthorization.
+ * JSON-RPC accounts (browser wallets like MetaMask) do not.
+ */
+export function supportsEIP7702(walletClient: WalletClient): boolean {
+  const account = walletClient.account;
+  if (!account) return false;
+
+  // Local accounts have type "local", JSON-RPC accounts have type "json-rpc"
+  // Only local accounts support signAuthorization
+  return account.type === "local";
+}
+
+/**
+ * Options for sequential deployment (non-EIP-7702)
+ */
+export interface ExecuteDeploySequentialOptions {
+  walletClient: WalletClient;
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+  /** Prepared deployment data from prepareDeployBatch */
+  data: PreparedDeployData;
+  /** Whether to set public logs permission */
+  publicLogs: boolean;
+  /** Optional callback for progress updates */
+  onProgress?: DeployProgressCallback;
+}
+
+/**
+ * Execute deployment as sequential transactions (non-EIP-7702 fallback)
+ *
+ * Use this for browser wallets (JSON-RPC accounts) that don't support signAuthorization.
+ * This requires 2-3 wallet signatures instead of 1, but works with all wallet types.
+ *
+ * Steps:
+ * 1. createApp - Creates the app on-chain
+ * 2. acceptAdmin - Accepts admin role for the app
+ * 3. setAppointee (optional) - Sets public logs permission
+ */
+export async function executeDeploySequential(
+  options: ExecuteDeploySequentialOptions,
+  logger: Logger = noopLogger,
+): Promise<SequentialDeployResult> {
+  const { walletClient, publicClient, environmentConfig, data, publicLogs, onProgress } = options;
+
+  const account = walletClient.account;
+  if (!account) {
+    throw new Error("WalletClient must have an account attached");
+  }
+
+  const chain = getChainFromID(environmentConfig.chainID);
+  const txHashes: { createApp: Hex; acceptAdmin: Hex; setPublicLogs?: Hex } = {
+    createApp: "0x" as Hex,
+    acceptAdmin: "0x" as Hex,
+  };
+
+  // Step 1: Create App
+  logger.info("Step 1/3: Creating app...");
+  onProgress?.("createApp");
+
+  const createAppExecution = data.executions[0];
+  const createAppHash = await walletClient.sendTransaction({
+    account,
+    to: createAppExecution.target,
+    data: createAppExecution.callData,
+    value: createAppExecution.value,
+    chain,
+  });
+
+  logger.info(`createApp transaction sent: ${createAppHash}`);
+  const createAppReceipt = await publicClient.waitForTransactionReceipt({ hash: createAppHash });
+
+  if (createAppReceipt.status === "reverted") {
+    throw new Error(`createApp transaction reverted: ${createAppHash}`);
+  }
+
+  txHashes.createApp = createAppHash;
+  logger.info(`createApp confirmed in block ${createAppReceipt.blockNumber}`);
+
+  // Step 2: Accept Admin
+  logger.info("Step 2/3: Accepting admin role...");
+  onProgress?.("acceptAdmin", createAppHash);
+
+  const acceptAdminExecution = data.executions[1];
+  const acceptAdminHash = await walletClient.sendTransaction({
+    account,
+    to: acceptAdminExecution.target,
+    data: acceptAdminExecution.callData,
+    value: acceptAdminExecution.value,
+    chain,
+  });
+
+  logger.info(`acceptAdmin transaction sent: ${acceptAdminHash}`);
+  const acceptAdminReceipt = await publicClient.waitForTransactionReceipt({
+    hash: acceptAdminHash,
+  });
+
+  if (acceptAdminReceipt.status === "reverted") {
+    throw new Error(`acceptAdmin transaction reverted: ${acceptAdminHash}`);
+  }
+
+  txHashes.acceptAdmin = acceptAdminHash;
+  logger.info(`acceptAdmin confirmed in block ${acceptAdminReceipt.blockNumber}`);
+
+  // Step 3: Set Public Logs (if requested and present in executions)
+  if (publicLogs && data.executions.length > 2) {
+    logger.info("Step 3/3: Setting public logs permission...");
+    onProgress?.("setPublicLogs", acceptAdminHash);
+
+    const setAppointeeExecution = data.executions[2];
+    const setAppointeeHash = await walletClient.sendTransaction({
+      account,
+      to: setAppointeeExecution.target,
+      data: setAppointeeExecution.callData,
+      value: setAppointeeExecution.value,
+      chain,
+    });
+
+    logger.info(`setAppointee transaction sent: ${setAppointeeHash}`);
+    const setAppointeeReceipt = await publicClient.waitForTransactionReceipt({
+      hash: setAppointeeHash,
+    });
+
+    if (setAppointeeReceipt.status === "reverted") {
+      throw new Error(`setAppointee transaction reverted: ${setAppointeeHash}`);
+    }
+
+    txHashes.setPublicLogs = setAppointeeHash;
+    logger.info(`setAppointee confirmed in block ${setAppointeeReceipt.blockNumber}`);
+  }
+
+  onProgress?.("complete", txHashes.setPublicLogs || txHashes.acceptAdmin);
+
+  logger.info(`Deployment complete! App ID: ${data.appId}`);
+
+  return {
+    appId: data.appId,
+    txHashes,
+  };
+}
+
+/**
+ * Result from EIP-5792 batched deployment
+ */
+export interface BatchedDeployResult {
+  appId: Address;
+  /** Batch ID from sendCalls (can be used with getCallsStatus) */
+  batchId: string;
+  /** Transaction receipts from the batch */
+  receipts: Array<{ transactionHash: Hex }>;
+}
+
+/**
+ * Options for EIP-5792 batched deployment
+ */
+export interface ExecuteDeployBatchedOptions {
+  walletClient: WalletClient;
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+  /** Prepared deployment data from prepareDeployBatch */
+  data: PreparedDeployData;
+  /** Whether to set public logs permission */
+  publicLogs: boolean;
+  /** Optional callback for progress updates */
+  onProgress?: DeployProgressCallback;
+}
+
+/**
+ * Check if wallet supports EIP-5792 (sendCalls/wallet_sendCalls)
+ *
+ * This checks the wallet's capabilities to see if it supports atomic batch calls.
+ * MetaMask and other modern wallets are adding support for this standard.
+ */
+export async function supportsEIP5792(walletClient: WalletClient): Promise<boolean> {
+  try {
+    // Check if getCapabilities method exists
+    if (typeof walletClient.getCapabilities !== "function") {
+      return false;
+    }
+
+    const account = walletClient.account;
+    if (!account) return false;
+
+    // Try to get capabilities - if this works, the wallet supports EIP-5792
+    const capabilities = await walletClient.getCapabilities({
+      account: account.address,
+    });
+
+    // Check if we got any capabilities back
+    return (
+      capabilities !== null && capabilities !== undefined && Object.keys(capabilities).length > 0
+    );
+  } catch {
+    // If getCapabilities fails, the wallet doesn't support EIP-5792
+    return false;
+  }
+}
+
+/**
+ * Execute deployment using EIP-5792 sendCalls (batched wallet calls)
+ *
+ * This batches all deployment transactions (createApp, acceptAdmin, setPublicLogs)
+ * into a single wallet interaction. Better UX than sequential transactions.
+ *
+ * Use this for browser wallets that support EIP-5792 but not EIP-7702.
+ *
+ * @returns BatchedDeployResult with appId and batch receipts
+ */
+export async function executeDeployBatched(
+  options: ExecuteDeployBatchedOptions,
+  logger: Logger = noopLogger,
+): Promise<BatchedDeployResult> {
+  const { walletClient, environmentConfig, data, publicLogs, onProgress } = options;
+
+  const account = walletClient.account;
+  if (!account) {
+    throw new Error("WalletClient must have an account attached");
+  }
+
+  const chain = getChainFromID(environmentConfig.chainID);
+
+  // Build calls array for sendCalls
+  const calls: Array<{ to: Address; data: Hex; value: bigint }> = data.executions.map(
+    (execution) => ({
+      to: execution.target,
+      data: execution.callData,
+      value: execution.value,
+    }),
+  );
+
+  // If public logs is false but executions include the permission call, filter it out
+  // (This shouldn't happen if prepareDeployBatch was called correctly, but be safe)
+  const filteredCalls = publicLogs ? calls : calls.slice(0, 2);
+
+  logger.info(`Deploying with EIP-5792 sendCalls (${filteredCalls.length} calls)...`);
+  onProgress?.("createApp");
+
+  try {
+    // Send all calls in a single batch
+    const { id: batchId } = await walletClient.sendCalls({
+      account,
+      chain,
+      calls: filteredCalls,
+      forceAtomic: true,
+    });
+
+    logger.info(`Batch submitted with ID: ${batchId}`);
+    onProgress?.("acceptAdmin");
+
+    // Poll for batch completion using getCallsStatus
+    let status: any;
+    let attempts = 0;
+    const maxAttempts = 120; // 10 minutes max (5s intervals)
+
+    while (attempts < maxAttempts) {
+      try {
+        status = await walletClient.getCallsStatus({ id: batchId });
+
+        if (status.status === "success" || status.status === "confirmed") {
+          logger.info(`Batch confirmed with ${status.receipts?.length || 0} receipts`);
+          break;
+        }
+
+        if (status.status === "failed" || status.status === "reverted") {
+          throw new Error(`Batch transaction failed: ${status.status}`);
+        }
+      } catch (statusError: any) {
+        // Some wallets may not support getCallsStatus, wait and check chain
+        if (statusError.message?.includes("not supported")) {
+          logger.warn("getCallsStatus not supported, waiting for chain confirmation...");
+          // Fall back to waiting a fixed time
+          await new Promise((resolve) => setTimeout(resolve, 15000));
+          break;
+        }
+        throw statusError;
+      }
+
+      // Wait 5 seconds before next poll
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      attempts++;
+    }
+
+    if (attempts >= maxAttempts) {
+      throw new Error("Timeout waiting for batch confirmation");
+    }
+
+    if (publicLogs) {
+      onProgress?.("setPublicLogs");
+    }
+    onProgress?.("complete");
+
+    // Extract transaction hashes from receipts
+    const receipts = (status?.receipts || []).map((r: any) => ({
+      transactionHash: r.transactionHash || r.hash,
+    }));
+
+    logger.info(`Deployment complete! App ID: ${data.appId}`);
+
+    return {
+      appId: data.appId,
+      batchId,
+      receipts,
+    };
+  } catch (error: any) {
+    // Check if the error indicates sendCalls is not supported
+    if (
+      error.message?.includes("not supported") ||
+      error.message?.includes("wallet_sendCalls") ||
+      error.code === -32601 // Method not found
+    ) {
+      throw new Error("EIP5792_NOT_SUPPORTED");
+    }
+    throw error;
+  }
+}
+
+/**
  * Upgrade app options
  */
 export interface UpgradeAppOptions {
@@ -403,7 +724,15 @@ export interface PrepareUpgradeBatchOptions {
 export async function prepareUpgradeBatch(
   options: PrepareUpgradeBatchOptions,
 ): Promise<PreparedUpgradeBatch> {
-  const { walletClient, publicClient, environmentConfig, appID, release, publicLogs, needsPermissionChange } = options;
+  const {
+    walletClient,
+    publicClient,
+    environmentConfig,
+    appID,
+    release,
+    publicLogs,
+    needsPermissionChange,
+  } = options;
 
   // 1. Pack upgrade app call
   // Convert Release Uint8Array values to hex strings for viem
@@ -519,7 +848,10 @@ export async function executeUpgradeBatch(
 /**
  * Upgrade app on-chain (convenience wrapper that prepares and executes)
  */
-export async function upgradeApp(options: UpgradeAppOptions, logger: Logger = noopLogger): Promise<Hex> {
+export async function upgradeApp(
+  options: UpgradeAppOptions,
+  logger: Logger = noopLogger,
+): Promise<Hex> {
   const prepared = await prepareUpgradeBatch(options);
 
   // Extract data and context from prepared batch
@@ -555,7 +887,17 @@ export async function sendAndWaitForTransaction(
   options: SendTransactionOptions,
   logger: Logger = noopLogger,
 ): Promise<Hex> {
-  const { walletClient, publicClient, environmentConfig, to, data, value = 0n, pendingMessage, txDescription, gas } = options;
+  const {
+    walletClient,
+    publicClient,
+    environmentConfig,
+    to,
+    data,
+    value = 0n,
+    pendingMessage,
+    txDescription,
+    gas,
+  } = options;
 
   const account = walletClient.account;
   if (!account) {
@@ -762,7 +1104,13 @@ export async function getAllAppsByDeveloper(
   const allConfigs: AppConfig[] = [];
 
   while (true) {
-    const { apps, appConfigs } = await getAppsByDeveloper(publicClient, env, developer, offset, pageSize);
+    const { apps, appConfigs } = await getAppsByDeveloper(
+      publicClient,
+      env,
+      developer,
+      offset,
+      pageSize,
+    );
 
     if (apps.length === 0) break;
 
@@ -856,7 +1204,10 @@ export interface SuspendOptions {
 /**
  * Suspend apps for an account
  */
-export async function suspend(options: SuspendOptions, logger: Logger = noopLogger): Promise<Hex | false> {
+export async function suspend(
+  options: SuspendOptions,
+  logger: Logger = noopLogger,
+): Promise<Hex | false> {
   const { walletClient, publicClient, environmentConfig, account, apps } = options;
 
   const suspendData = encodeFunctionData({
@@ -867,15 +1218,18 @@ export async function suspend(options: SuspendOptions, logger: Logger = noopLogg
 
   const pendingMessage = `Suspending ${apps.length} app(s)...`;
 
-  return sendAndWaitForTransaction({
-    walletClient,
-    publicClient,
-    environmentConfig,
-    to: environmentConfig.appControllerAddress as Address,
-    data: suspendData,
-    pendingMessage,
-    txDescription: "Suspend",
-  }, logger);
+  return sendAndWaitForTransaction(
+    {
+      walletClient,
+      publicClient,
+      environmentConfig,
+      to: environmentConfig.appControllerAddress as Address,
+      data: suspendData,
+      pendingMessage,
+      txDescription: "Suspend",
+    },
+    logger,
+  );
 }
 
 /**
@@ -912,7 +1266,10 @@ export interface UndelegateOptions {
 /**
  * Undelegate account (removes EIP-7702 delegation)
  */
-export async function undelegate(options: UndelegateOptions, logger: Logger = noopLogger): Promise<Hex> {
+export async function undelegate(
+  options: UndelegateOptions,
+  logger: Logger = noopLogger,
+): Promise<Hex> {
   const { walletClient, publicClient, environmentConfig } = options;
 
   const account = walletClient.account;

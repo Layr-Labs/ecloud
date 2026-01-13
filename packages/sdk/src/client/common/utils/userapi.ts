@@ -294,7 +294,7 @@ export class UserApiClient {
     const apps = result.apps || result.Apps || [];
     return apps.map((app: any, i: number) => ({
       address: (app.address || appIDs[i]) as Address,
-      status: app.status || app.Status || "",
+      status: app.app_status || app.App_Status || "",
     }));
   }
 

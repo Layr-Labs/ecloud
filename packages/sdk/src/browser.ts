@@ -111,6 +111,12 @@ export {
   executeDeployBatch,
   deployApp,
   calculateAppID,
+  // Sequential deployment (non-EIP-7702 fallback for browser wallets)
+  executeDeploySequential,
+  supportsEIP7702,
+  // EIP-5792 batched deployment (sendCalls - single wallet popup for multiple calls)
+  executeDeployBatched,
+  supportsEIP5792,
   // Upgrade operations
   prepareUpgradeBatch,
   executeUpgradeBatch,
@@ -136,6 +142,9 @@ export {
   type SuspendOptions,
   type UndelegateOptions,
   type IsDelegatedOptions,
+  type ExecuteDeploySequentialOptions,
+  type ExecuteDeployBatchedOptions,
+  type BatchedDeployResult,
 } from "./client/common/contract/caller";
 
 // =============================================================================
@@ -209,6 +218,16 @@ export {
 // No-op Logger (browser-safe)
 // =============================================================================
 export { noopLogger } from "./client/common/types";
+
+// =============================================================================
+// KMS Encryption Utilities (browser-safe - uses jose library)
+// =============================================================================
+export {
+  encryptRSAOAEPAndAES256GCM,
+  getAppProtectedHeaders,
+} from "./client/common/encryption/kms";
+
+export { getKMSKeysForEnvironment } from "./client/common/utils/keys";
 
 // =============================================================================
 // Re-export common types
