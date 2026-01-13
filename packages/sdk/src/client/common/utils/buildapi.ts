@@ -47,15 +47,25 @@ async function requestWithRetry(config: AxiosRequestConfig): Promise<AxiosRespon
   return lastResponse!;
 }
 
+export interface BuildApiClientOptions {
+  baseUrl: string;
+  walletClient?: WalletClient;
+  clientId?: string;
+  /** Use session-based auth (cookies) instead of signature-based auth */
+  useSession?: boolean;
+}
+
 export class BuildApiClient {
   private readonly baseUrl: string;
   private readonly walletClient?: WalletClient;
   private readonly clientId?: string;
+  private readonly useSession: boolean;
 
-  constructor(options: { baseUrl: string; walletClient?: WalletClient; clientId?: string }) {
+  constructor(options: BuildApiClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
     this.clientId = options.clientId;
     this.walletClient = options.walletClient;
+    this.useSession = options.useSession ?? false;
   }
 
   /**
@@ -107,6 +117,8 @@ export class BuildApiClient {
       params,
       headers: this.clientId ? { "x-client-id": this.clientId } : undefined,
       timeout: 60_000,
+      validateStatus: () => true,
+      withCredentials: this.useSession,
     });
     if (res.status < 200 || res.status >= 300) throw buildApiHttpError(res);
     return res.data as any[];
@@ -118,6 +130,8 @@ export class BuildApiClient {
       method: "GET",
       headers: this.clientId ? { "x-client-id": this.clientId } : undefined,
       timeout: 60_000,
+      validateStatus: () => true,
+      withCredentials: this.useSession,
     });
     if (res.status < 200 || res.status >= 300) throw buildApiHttpError(res);
     return res.data;
@@ -128,26 +142,29 @@ export class BuildApiClient {
     method: "POST" | "GET",
     body?: unknown,
   ): Promise<T> {
-    if (!this.walletClient?.account) {
-      throw new Error("WalletClient with account required for authenticated requests");
-    }
-
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
     if (this.clientId) headers["x-client-id"] = this.clientId;
 
-    // Builds API uses BillingAuth signature format (same as Billing API).
-    // Keep expiry short to reduce replay window.
-    const expiry = BigInt(Math.floor(Date.now() / 1000) + 60);
-    const { signature } = await calculateBillingAuthSignature({
-      walletClient: this.walletClient,
-      product: "compute",
-      expiry,
-    });
-    headers.Authorization = `Bearer ${signature}`;
-    headers["X-eigenx-expiry"] = expiry.toString();
-    headers["X-Account"] = this.address;
+    // When using session auth, rely on cookies instead of signature headers
+    if (!this.useSession) {
+      if (!this.walletClient?.account) {
+        throw new Error("WalletClient with account required for authenticated requests");
+      }
+
+      // Builds API uses BillingAuth signature format (same as Billing API).
+      // Keep expiry short to reduce replay window.
+      const expiry = BigInt(Math.floor(Date.now() / 1000) + 60);
+      const { signature } = await calculateBillingAuthSignature({
+        walletClient: this.walletClient,
+        product: "compute",
+        expiry,
+      });
+      headers.Authorization = `Bearer ${signature}`;
+      headers["X-eigenx-expiry"] = expiry.toString();
+      headers["X-Account"] = this.address;
+    }
 
     const res = await requestWithRetry({
       url: `${this.baseUrl}${path}`,
@@ -155,28 +172,33 @@ export class BuildApiClient {
       headers,
       data: body,
       timeout: 60_000,
+      validateStatus: () => true,
+      withCredentials: this.useSession,
     });
     if (res.status < 200 || res.status >= 300) throw buildApiHttpError(res);
     return res.data as T;
   }
 
   private async authenticatedTextRequest(path: string): Promise<string> {
-    if (!this.walletClient?.account) {
-      throw new Error("WalletClient with account required for authenticated requests");
-    }
-
     const headers: Record<string, string> = {};
     if (this.clientId) headers["x-client-id"] = this.clientId;
 
-    const expiry = BigInt(Math.floor(Date.now() / 1000) + 60);
-    const { signature } = await calculateBillingAuthSignature({
-      walletClient: this.walletClient,
-      product: "compute",
-      expiry,
-    });
-    headers.Authorization = `Bearer ${signature}`;
-    headers["X-eigenx-expiry"] = expiry.toString();
-    headers["X-Account"] = this.address;
+    // When using session auth, rely on cookies instead of signature headers
+    if (!this.useSession) {
+      if (!this.walletClient?.account) {
+        throw new Error("WalletClient with account required for authenticated requests");
+      }
+
+      const expiry = BigInt(Math.floor(Date.now() / 1000) + 60);
+      const { signature } = await calculateBillingAuthSignature({
+        walletClient: this.walletClient,
+        product: "compute",
+        expiry,
+      });
+      headers.Authorization = `Bearer ${signature}`;
+      headers["X-eigenx-expiry"] = expiry.toString();
+      headers["X-Account"] = this.address;
+    }
 
     const res = await requestWithRetry({
       url: `${this.baseUrl}${path}`,
@@ -184,6 +206,8 @@ export class BuildApiClient {
       headers,
       timeout: 60_000,
       responseType: "text",
+      validateStatus: () => true,
+      withCredentials: this.useSession,
     });
     if (res.status < 200 || res.status >= 300) throw buildApiHttpError(res);
     return typeof res.data === "string" ? res.data : JSON.stringify(res.data);

@@ -390,6 +390,10 @@ export interface ProductSubscriptionResponse {
 
 export interface SubscriptionOpts {
   productId?: ProductID;
+  /** URL to redirect to after successful checkout */
+  successUrl?: string;
+  /** URL to redirect to if checkout is canceled */
+  cancelUrl?: string;
 }
 
 // Billing environment configuration

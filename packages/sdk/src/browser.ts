@@ -91,7 +91,7 @@ export {
 
 export { BillingApiClient } from "./client/common/utils/billingapi";
 
-export { BuildApiClient } from "./client/common/utils/buildapi";
+export { BuildApiClient, type BuildApiClientOptions } from "./client/common/utils/buildapi";
 
 // =============================================================================
 // Contract Read Operations (browser-safe)
