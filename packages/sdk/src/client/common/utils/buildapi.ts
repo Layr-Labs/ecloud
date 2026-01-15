@@ -62,7 +62,12 @@ export class BuildApiClient {
   private readonly useSession: boolean;
 
   constructor(options: BuildApiClientOptions) {
-    this.baseUrl = options.baseUrl.replace(/\/+$/, "");
+    // Strip trailing slashes without regex to avoid ReDoS
+    let url = options.baseUrl;
+    while (url.endsWith("/")) {
+      url = url.slice(0, -1);
+    }
+    this.baseUrl = url;
     this.clientId = options.clientId;
     this.walletClient = options.walletClient;
     this.useSession = options.useSession ?? false;
