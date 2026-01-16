@@ -91,7 +91,10 @@ export function createBillingModule(config: BillingModuleConfig): BillingModule 
 
           // Create new checkout session
           logger.debug(`Creating subscription for ${productId}...`);
-          const result = await billingApi.createSubscription(productId);
+          const result = await billingApi.createSubscription(productId, {
+            successUrl: opts?.successUrl,
+            cancelUrl: opts?.cancelUrl,
+          });
 
           logger.debug(`Checkout URL: ${result.checkoutUrl}`);
           return {
