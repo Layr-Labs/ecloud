@@ -129,6 +129,12 @@ export default class AppDeploy extends Command {
       description: "Dependency digests for verifiable build (git source mode) (sha256:...)",
       multiple: true,
     }),
+    "build-caddyfile": Flags.string({
+      description:
+        "Optional path to Caddyfile inside the repo (relative to build context). If omitted, auto-detected from env file TLS settings",
+      required: false,
+      env: "ECLOUD_BUILD_CADDYFILE",
+    }),
   };
 
   async run() {
@@ -228,7 +234,7 @@ export default class AppDeploy extends Command {
               repoUrl: flags.repo!,
               gitRef: flags.commit!,
               dockerfilePath: flags["build-dockerfile"],
-              caddyfilePath: undefined,
+              caddyfilePath: flags["build-caddyfile"],
               buildContextPath: flags["build-context"],
               dependencies: flags["build-dependencies"],
             }
