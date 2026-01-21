@@ -53,6 +53,13 @@ export interface BuildApiClientOptions {
   clientId?: string;
   /** Use session-based auth (cookies) instead of signature-based auth */
   useSession?: boolean;
+  /**
+   * Billing session ID (value of the billing_session cookie).
+   * When provided with useSession=true, this is sent via X-Billing-Session header
+   * to authenticate with the billing API for subscription verification.
+   * Required for submitBuild when using session auth.
+   */
+  billingSessionId?: string;
 }
 
 export class BuildApiClient {
@@ -60,6 +67,7 @@ export class BuildApiClient {
   private readonly walletClient?: WalletClient;
   private readonly clientId?: string;
   private readonly useSession: boolean;
+  private billingSessionId?: string;
 
   constructor(options: BuildApiClientOptions) {
     // Strip trailing slashes without regex to avoid ReDoS
@@ -71,6 +79,15 @@ export class BuildApiClient {
     this.clientId = options.clientId;
     this.walletClient = options.walletClient;
     this.useSession = options.useSession ?? false;
+    this.billingSessionId = options.billingSessionId;
+  }
+
+  /**
+   * Update the billing session ID.
+   * Call this after logging into the billing API to enable session-based auth for builds.
+   */
+  setBillingSessionId(sessionId: string | undefined): void {
+    this.billingSessionId = sessionId;
   }
 
   /**
@@ -85,7 +102,10 @@ export class BuildApiClient {
   }
 
   /**
-   * Submit a new build request. Requires signature auth for billing verification.
+   * Submit a new build request.
+   * Supports two auth modes (session auth is tried first when billingSessionId is available):
+   * 1. Session-based auth: X-Billing-Session header (forwarded billing_session cookie)
+   * 2. Signature-based auth: Authorization + X-Account + X-eigenx-expiry headers (requires walletClient)
    */
   async submitBuild(payload: {
     repo_url: string;
@@ -95,7 +115,11 @@ export class BuildApiClient {
     build_context_path: string;
     dependencies: string[];
   }): Promise<{ build_id: string }> {
-    // Always use signature auth - the server requires it to verify subscription via billing API
+    // Use session auth if billingSessionId is available and useSession is enabled
+    if (this.useSession && this.billingSessionId) {
+      return this.billingSessionAuthJsonRequest<{ build_id: string }>("/builds", "POST", payload);
+    }
+    // Fall back to signature auth (requires walletClient)
     return this.signatureAuthJsonRequest<{ build_id: string }>("/builds", "POST", payload);
   }
 
@@ -178,6 +202,39 @@ export class BuildApiClient {
     headers.Authorization = `Bearer ${signature}`;
     headers["X-eigenx-expiry"] = expiry.toString();
     headers["X-Account"] = this.address;
+
+    const res = await requestWithRetry({
+      url: `${this.baseUrl}${path}`,
+      method,
+      headers,
+      data: body,
+      timeout: 60_000,
+      validateStatus: () => true,
+      withCredentials: this.useSession,
+    });
+    if (res.status < 200 || res.status >= 300) throw buildApiHttpError(res);
+    return res.data as T;
+  }
+
+  /**
+   * Make a request using billing session auth (for billing verification without wallet signature).
+   * Forwards the billing_session cookie value via X-Billing-Session header.
+   * Used for endpoints that need to verify subscription status when using session-based auth.
+   */
+  private async billingSessionAuthJsonRequest<T>(
+    path: string,
+    method: "POST" | "GET",
+    body?: unknown,
+  ): Promise<T> {
+    if (!this.billingSessionId) {
+      throw new Error("billingSessionId required for session-based billing auth");
+    }
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "X-Billing-Session": this.billingSessionId,
+    };
+    if (this.clientId) headers["x-client-id"] = this.clientId;
 
     const res = await requestWithRetry({
       url: `${this.baseUrl}${path}`,
