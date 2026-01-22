@@ -9,3 +9,4 @@ export * from "./billing";
 export * from "./helpers";
 export * from "./billingapi";
 export * from "./auth";
+export * from "./apikey";
