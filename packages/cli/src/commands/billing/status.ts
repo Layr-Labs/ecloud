@@ -14,7 +14,7 @@ export default class BillingStatus extends Command {
       required: false,
       description: "Product ID",
       default: "compute",
-      options: ["compute"],
+      options: ["compute", "eigenai"],
       env: "ECLOUD_PRODUCT_ID",
     }),
   };
@@ -25,7 +25,7 @@ export default class BillingStatus extends Command {
       const billing = await createBillingClient(flags);
 
       const result = await billing.getStatus({
-        productId: flags.product as "compute",
+        productId: flags.product as "compute" | "eigenai",
       });
 
       const formatExpiry = (timestamp?: number) =>

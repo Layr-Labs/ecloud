@@ -19,11 +19,15 @@ import type {
   SubscribeResponse,
   CancelResponse,
   ProductSubscriptionResponse,
+  EigenAISubscriptionOpts,
+  EigenAISubscribeResponse,
 } from "../../common/types";
+import { generateApiKey } from "../../common/utils/apikey";
 
 export interface BillingModule {
   address: Address;
   subscribe: (opts?: SubscriptionOpts) => Promise<SubscribeResponse>;
+  subscribeEigenAI: (opts: EigenAISubscriptionOpts) => Promise<EigenAISubscribeResponse>;
   getStatus: (opts?: SubscriptionOpts) => Promise<ProductSubscriptionResponse>;
   cancel: (opts?: SubscriptionOpts) => Promise<CancelResponse>;
 }
@@ -100,6 +104,63 @@ export function createBillingModule(config: BillingModuleConfig): BillingModule 
           return {
             type: "checkout_created" as const,
             checkoutUrl: result.checkoutUrl,
+          };
+        },
+      );
+    },
+
+    async subscribeEigenAI(opts: EigenAISubscriptionOpts) {
+      return withSDKTelemetry(
+        {
+          functionName: "subscribeEigenAI",
+          skipTelemetry: skipTelemetry,
+          properties: { productId: "eigenai", chainId: opts.chainId },
+        },
+        async () => {
+          // Check existing subscription status first
+          logger.debug(`Checking existing subscription for eigenai...`);
+          const currentStatus = await billingApi.getSubscription("eigenai");
+
+          // If already active or trialing, don't create new checkout
+          if (isSubscriptionActive(currentStatus.subscriptionStatus)) {
+            logger.debug(`Subscription already active: ${currentStatus.subscriptionStatus}`);
+            return {
+              type: "already_active" as const,
+              status: currentStatus.subscriptionStatus,
+            };
+          }
+
+          // If subscription has payment issues, return portal URL instead
+          if (
+            currentStatus.subscriptionStatus === "past_due" ||
+            currentStatus.subscriptionStatus === "unpaid"
+          ) {
+            logger.debug(`Subscription has payment issue: ${currentStatus.subscriptionStatus}`);
+            return {
+              type: "payment_issue" as const,
+              status: currentStatus.subscriptionStatus,
+              portalUrl: currentStatus.portalUrl,
+            };
+          }
+
+          // Generate API key and hash
+          logger.debug(`Generating API key for EigenAI subscription...`);
+          const { apiKey, apiKeyHash } = generateApiKey();
+
+          // Create new checkout session with EigenAI-specific parameters
+          logger.debug(`Creating EigenAI subscription with chainId: ${opts.chainId}...`);
+          const result = await billingApi.createEigenAISubscription({
+            chainId: opts.chainId,
+            apiKeyHash,
+            successUrl: opts.successUrl,
+            cancelUrl: opts.cancelUrl,
+          });
+
+          logger.debug(`Checkout URL: ${result.checkoutUrl}`);
+          return {
+            type: "checkout_created" as const,
+            checkoutUrl: result.checkoutUrl,
+            apiKey, // Return the API key to the caller - only shown once!
           };
         },
       );
