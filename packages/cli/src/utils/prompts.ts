@@ -1052,12 +1052,9 @@ async function getAppIDInteractive(options: GetAppIDOptions): Promise<Address> {
   // If cache is empty/expired, fetch fresh profile names from API
   if (!cachedProfiles) {
     try {
-      const userApiClient = new UserApiClient(
-        environmentConfig,
-        walletClient,
-        publicClient,
-        { clientId: getClientId() },
-      );
+      const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, {
+        clientId: getClientId(),
+      });
       const appInfos = await getAppInfosChunked(userApiClient, apps);
 
       // Build and cache profile names

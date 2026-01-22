@@ -111,9 +111,13 @@ export default class BuildSubmit extends Command {
               `\nUse ${chalk.yellow(`ecloud compute build logs ${buildId} --follow`)} to watch progress`,
             );
             this.log("");
-            this.log(chalk.gray("After the build completes, deploy or upgrade your app with the digest:"));
+            this.log(
+              chalk.gray("After the build completes, deploy or upgrade your app with the digest:"),
+            );
             this.log(chalk.gray("  ecloud compute app deploy --verifiable --image-ref <digest>"));
-            this.log(chalk.gray("  ecloud compute app upgrade <app-id> --verifiable --image-ref <digest>"));
+            this.log(
+              chalk.gray("  ecloud compute app upgrade <app-id> --verifiable --image-ref <digest>"),
+            );
           }
           return;
         }
@@ -182,7 +186,9 @@ export default class BuildSubmit extends Command {
       this.log(`    ecloud compute app deploy --verifiable --image-ref ${build.imageDigest}`);
       this.log("");
       this.log(chalk.yellow("  Upgrade an existing app:"));
-      this.log(`    ecloud compute app upgrade <app-id> --verifiable --image-ref ${build.imageDigest}`);
+      this.log(
+        `    ecloud compute app upgrade <app-id> --verifiable --image-ref ${build.imageDigest}`,
+      );
     } else {
       this.log(chalk.red(`Build failed: ${build.errorMessage ?? "Unknown error"}`));
     }

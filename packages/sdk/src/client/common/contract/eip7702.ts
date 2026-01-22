@@ -136,7 +136,10 @@ export async function checkERC7702Delegation(
 /**
  * Execute batch of operations via EIP-7702 delegator
  */
-export async function executeBatch(options: ExecuteBatchOptions, logger: Logger = noopLogger): Promise<Hex> {
+export async function executeBatch(
+  options: ExecuteBatchOptions,
+  logger: Logger = noopLogger,
+): Promise<Hex> {
   const { walletClient, publicClient, environmentConfig, executions, pendingMessage, gas } =
     options;
 
