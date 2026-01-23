@@ -89,7 +89,7 @@ export {
   type AppInfoResponse,
 } from "./client/common/utils/userapi";
 
-export { BillingApiClient } from "./client/common/utils/billingapi";
+export { BillingApiClient, type BillingApiClientOptions } from "./client/common/utils/billingapi";
 
 export { BuildApiClient, type BuildApiClientOptions } from "./client/common/utils/buildapi";
 
@@ -195,6 +195,23 @@ export {
   type LoginResult,
   type LoginRequest,
 } from "./client/common/auth/session";
+
+// =============================================================================
+// Billing API Session Management (browser-safe)
+// =============================================================================
+export {
+  loginToBillingApi,
+  logoutFromBillingApi,
+  getBillingApiSession,
+  isBillingSessionValid,
+  loginToBothApis,
+  logoutFromBothApis,
+  BillingSessionError,
+  type BillingApiConfig,
+  type BillingSessionInfo,
+  type BillingLoginResult,
+  type BillingLoginRequest,
+} from "./client/common/auth/billingSession";
 
 // =============================================================================
 // React Hooks (requires React 18+ as peer dependency)
