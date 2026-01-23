@@ -494,12 +494,9 @@ async function fetchAvailableInstanceTypes(
       rpcUrl,
       environment: environmentConfig.name,
     });
-    const userApiClient = new UserApiClient(
-      environmentConfig,
-      walletClient,
-      publicClient,
-      { clientId: getClientId() },
-    );
+    const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, {
+      clientId: getClientId(),
+    });
 
     const skuList = await userApiClient.getSKUs();
     if (skuList.skus.length === 0) {

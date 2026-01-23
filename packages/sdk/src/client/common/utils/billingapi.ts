@@ -12,7 +12,13 @@
 
 import axios, { AxiosResponse } from "axios";
 import { Address, type WalletClient } from "viem";
-import { ProductID, CreateSubscriptionOptions, CreateSubscriptionResponse, ProductSubscriptionResponse } from "../types";
+import {
+  ProductID,
+  CreateSubscriptionOptions,
+  CreateEigenAISubscriptionOptions,
+  CreateSubscriptionResponse,
+  ProductSubscriptionResponse,
+} from "../types";
 import { calculateBillingAuthSignature } from "./auth";
 import { BillingEnvironmentConfig } from "../types";
 import {
@@ -138,10 +144,30 @@ export class BillingApiClient {
 
   async createSubscription(productId: ProductID = "compute", options?: CreateSubscriptionOptions): Promise<CreateSubscriptionResponse> {
     const endpoint = `${this.config.billingApiServerURL}/products/${productId}/subscription`;
-    const body = options ? {
+    const body = options
+      ? {
+          success_url: options.successUrl,
+          cancel_url: options.cancelUrl,
+        }
+      : undefined;
+    const resp = await this.makeAuthenticatedRequest(endpoint, "POST", productId, body);
+    return resp.json();
+  }
+
+  /**
+   * Create an EigenAI subscription with API key hash and chain ID
+   */
+  async createEigenAISubscription(
+    options: CreateEigenAISubscriptionOptions,
+  ): Promise<CreateSubscriptionResponse> {
+    const productId: ProductID = "eigenai";
+    const endpoint = `${this.config.billingApiServerURL}/products/${productId}/subscription`;
+    const body = {
+      chainId: options.chainId,
+      apiKeyHash: options.apiKeyHash,
       success_url: options.successUrl,
       cancel_url: options.cancelUrl,
-    } : undefined;
+    };
     const resp = await this.makeAuthenticatedRequest(endpoint, "POST", productId, body);
     return resp.json();
   }

@@ -16,7 +16,7 @@ export default class BillingCancel extends Command {
       required: false,
       description: "Product ID",
       default: "compute",
-      options: ["compute"],
+      options: ["compute", "eigenai"],
       env: "ECLOUD_PRODUCT_ID",
     }),
     force: Flags.boolean({
@@ -34,7 +34,7 @@ export default class BillingCancel extends Command {
       // Check subscription status first
       this.debug(`\nChecking subscription status for ${flags.product}...`);
       const status = await billing.getStatus({
-        productId: flags.product as "compute",
+        productId: flags.product as "compute" | "eigenai",
       });
 
       // Check if there's an active subscription to cancel
@@ -58,7 +58,7 @@ export default class BillingCancel extends Command {
       this.log(`\nCanceling subscription for ${flags.product}...`);
 
       const result = await billing.cancel({
-        productId: flags.product as "compute",
+        productId: flags.product as "compute" | "eigenai",
       });
 
       // Handle response (defensive - should always be canceled at this point)

@@ -288,12 +288,9 @@ export default class AppUpgrade extends Command {
           rpcUrl,
           environment: environmentConfig.name,
         });
-        const userApiClient = new UserApiClient(
-          environmentConfig,
-          walletClient,
-          publicClient,
-          { clientId: getClientId() },
-        );
+        const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, {
+          clientId: getClientId(),
+        });
         const infos = await userApiClient.getInfos([appID], 1);
         if (infos.length > 0) {
           currentInstanceType = infos[0].machineType || "";
@@ -398,7 +395,9 @@ async function fetchAvailableInstanceTypes(
       rpcUrl,
       environment: environmentConfig.name,
     });
-    const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, { clientId: getClientId() });
+    const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, {
+      clientId: getClientId(),
+    });
 
     const skuList = await userApiClient.getSKUs();
     if (skuList.skus.length === 0) {

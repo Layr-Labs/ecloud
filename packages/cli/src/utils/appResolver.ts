@@ -243,12 +243,9 @@ export class AppResolver {
       }
 
       // Fetch info for all apps to get profile names
-      const userApiClient = new UserApiClient(
-        this.environmentConfig,
-        walletClient,
-        publicClient,
-        { clientId: getClientId() },
-      );
+      const userApiClient = new UserApiClient(this.environmentConfig, walletClient, publicClient, {
+        clientId: getClientId(),
+      });
       const appInfos = await getAppInfosChunked(userApiClient, apps);
 
       // Build profile names map

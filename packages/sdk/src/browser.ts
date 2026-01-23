@@ -225,11 +225,7 @@ export {
 // =============================================================================
 // Helper Utilities (browser-safe)
 // =============================================================================
-export {
-  getChainFromID,
-  addHexPrefix,
-  stripHexPrefix,
-} from "./client/common/utils/helpers";
+export { getChainFromID, addHexPrefix, stripHexPrefix } from "./client/common/utils/helpers";
 
 // =============================================================================
 // No-op Logger (browser-safe)
@@ -239,10 +235,7 @@ export { noopLogger } from "./client/common/types";
 // =============================================================================
 // KMS Encryption Utilities (browser-safe - uses jose library)
 // =============================================================================
-export {
-  encryptRSAOAEPAndAES256GCM,
-  getAppProtectedHeaders,
-} from "./client/common/encryption/kms";
+export { encryptRSAOAEPAndAES256GCM, getAppProtectedHeaders } from "./client/common/encryption/kms";
 
 export { getKMSKeysForEnvironment } from "./client/common/utils/keys";
 

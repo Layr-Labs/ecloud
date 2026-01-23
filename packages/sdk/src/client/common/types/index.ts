@@ -307,7 +307,7 @@ export interface AppProfileResponse {
 }
 
 // Billing types
-export type ProductID = "compute";
+export type ProductID = "compute" | "eigenai";
 export type ChainID = "ethereum-mainnet" | "ethereum-sepolia";
 
 export type SubscriptionStatus =
@@ -334,6 +334,14 @@ export interface CreateSubscriptionOptions {
   successUrl?: string;
   /** URL to redirect to if checkout is canceled */
   cancelUrl?: string;
+}
+
+/** Options for creating an EigenAI subscription */
+export interface CreateEigenAISubscriptionOptions extends CreateSubscriptionOptions {
+  /** Chain ID for EigenAI subscription */
+  chainId: ChainID;
+  /** Keccak256 hash of the API key (hex string with 0x prefix) */
+  apiKeyHash: string;
 }
 
 export interface CreateSubscriptionResponse {
@@ -396,6 +404,26 @@ export interface SubscriptionOpts {
   cancelUrl?: string;
 }
 
+/** Options specific to EigenAI subscription */
+export interface EigenAISubscriptionOpts extends SubscriptionOpts {
+  productId: "eigenai";
+  /** Chain ID for EigenAI subscription (required) */
+  chainId: ChainID;
+}
+
+/** Response for EigenAI subscription that includes the API key */
+export interface EigenAICheckoutCreatedResponse {
+  type: "checkout_created";
+  checkoutUrl: string;
+  /** The generated API key - ONLY shown once, must be saved by user */
+  apiKey: string;
+}
+
+export type EigenAISubscribeResponse =
+  | EigenAICheckoutCreatedResponse
+  | AlreadyActiveResponse
+  | PaymentIssueResponse;
+
 // Billing environment configuration
 export interface BillingEnvironmentConfig {
   billingApiServerURL: string;
@@ -410,11 +438,7 @@ export type DeployProgressCallback = (step: DeployStep, txHash?: Hex) => void;
 /**
  * Steps in sequential deployment flow
  */
-export type DeployStep =
-  | "createApp"
-  | "acceptAdmin"
-  | "setPublicLogs"
-  | "complete";
+export type DeployStep = "createApp" | "acceptAdmin" | "setPublicLogs" | "complete";
 
 /**
  * Result from sequential deployment
