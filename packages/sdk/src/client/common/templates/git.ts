@@ -19,6 +19,39 @@ export interface GitFetcherConfig {
 }
 
 /**
+ * Basic validation to ensure the git repository URL or path cannot be
+ * interpreted as an option such as `--upload-pack`.
+ *
+ * This allows typical git/ssh/https URLs and local paths, but rejects
+ * values starting with a dash.
+ */
+function validateRepoURL(repoURL: string): void {
+  if (!repoURL || typeof repoURL !== "string") {
+    throw new Error("Invalid repository URL");
+  }
+
+  // Disallow anything that looks like a git option
+  if (repoURL.startsWith("-")) {
+    throw new Error("Repository URL must not start with '-'");
+  }
+}
+
+/**
+ * Validate the target directory used for cloning to ensure it cannot be
+ * interpreted by git as an option.
+ */
+function validateTargetDir(targetDir: string): void {
+  if (!targetDir || typeof targetDir !== "string") {
+    throw new Error("Invalid target directory");
+  }
+
+  // Disallow leading dashes so it cannot be parsed as an option
+  if (targetDir.startsWith("-")) {
+    throw new Error("Target directory must not start with '-'");
+  }
+}
+
+/**
  * Fetch full template repository
  */
 export async function fetchTemplate(
@@ -32,11 +65,15 @@ export async function fetchTemplate(
     throw new Error("repoURL is required");
   }
 
+  // Validate untrusted inputs before passing to git
+  validateRepoURL(repoURL);
+  validateTargetDir(targetDir);
+
   logger.info(`\nCloning repo: ${repoURL} → ${targetDir}\n`);
 
   try {
     // Clone with no checkout
-    await execAsync(`git clone --no-checkout --progress ${repoURL} ${targetDir}`, {
+    await execFileAsync("git", ["clone", "--no-checkout", "--progress", repoURL, targetDir], {
       maxBuffer: 10 * 1024 * 1024,
     });
 
