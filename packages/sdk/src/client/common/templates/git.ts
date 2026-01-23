@@ -36,7 +36,7 @@ export async function fetchTemplate(
 
   try {
     // Clone with no checkout
-    await execAsync(`git clone --no-checkout --progress ${repoURL} ${targetDir}`, {
+    await execFileAsync("git", ["clone", "--no-checkout", "--progress", repoURL, targetDir], {
       maxBuffer: 10 * 1024 * 1024,
     });
 
