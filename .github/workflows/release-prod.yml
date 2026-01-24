@@ -47,45 +47,43 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "PACKAGE_VERSION=$PACKAGE_VERSION" >> $GITHUB_ENV
           echo "BASE_VERSION=$BASE_VERSION" >> $GITHUB_ENV
+          echo "DEV_TAG=$BASE_VERSION-dev" >> $GITHUB_ENV
           echo "Building production version: $PACKAGE_VERSION"
 
-      - name: Verify dev testing occurred
+      - name: Verify dev tag and get commit
         run: |
-          DEV_TAGS=$(git tag -l "${{ env.BASE_VERSION }}-dev*" | head -10)
-          if [ -z "$DEV_TAGS" ]; then
-            echo "ERROR: No dev tag found for version ${{ env.BASE_VERSION }}"
-            echo "Available dev tags:"
-            git tag -l "*-dev*" | head -10 || echo "No dev tags found"
+          echo "Looking for dev tag: ${{ env.DEV_TAG }}"
+          if ! git rev-parse "${{ env.DEV_TAG }}" >/dev/null 2>&1; then
+            echo "ERROR: Dev tag '${{ env.DEV_TAG }}' does not exist"
             echo ""
-            echo "Must test in dev first: git tag ${{ env.BASE_VERSION }}-dev"
+            echo "Available dev tags:"
+            git tag -l "*-dev*" | tail -10
             exit 1
           fi
+          DEV_COMMIT=$(git rev-list -n 1 "${{ env.DEV_TAG }}")
+          echo "DEV_COMMIT=$DEV_COMMIT" >> $GITHUB_ENV
+          echo "Dev tag ${{ env.DEV_TAG }} points to commit: $DEV_COMMIT"
 
-          echo "Found dev tags for ${{ env.BASE_VERSION }}:"
-          echo "$DEV_TAGS"
-
-          PROD_COMMIT=$(git rev-list -n 1 "${{ github.ref_name }}")
-          echo "Production tag ${{ github.ref_name }} points to commit: $PROD_COMMIT"
-
-          for DEV_TAG in $DEV_TAGS; do
-            DEV_COMMIT=$(git rev-list -n 1 "$DEV_TAG")
-            if [ "$DEV_COMMIT" = "$PROD_COMMIT" ]; then
-              echo "Dev tag $DEV_TAG verified - same commit as production tag"
-              echo "VERIFIED_DEV_TAG=$DEV_TAG" >> $GITHUB_ENV
-              exit 0
-            fi
-          done
-
-          echo "ERROR: No dev tag points to the same commit as production tag ${{ github.ref_name }}"
-          echo "Production commit: $PROD_COMMIT"
-          echo "Dev tags and their commits:"
-          for DEV_TAG in $DEV_TAGS; do
-            DEV_COMMIT=$(git rev-list -n 1 "$DEV_TAG")
-            echo "  $DEV_TAG: $DEV_COMMIT"
-          done
-          echo ""
-          echo "Create a dev tag on the same commit: git tag ${{ env.BASE_VERSION }}-dev $PROD_COMMIT"
-          exit 1
+      - name: Verify production tag exists
+        run: |
+          if ! git rev-parse "${{ env.VERSION }}" >/dev/null 2>&1; then
+            echo "ERROR: Production tag '${{ env.VERSION }}' does not exist"
+            echo ""
+            echo "Please create the production tag first:"
+            echo "  git tag ${{ env.VERSION }}"
+            echo "  git push origin ${{ env.VERSION }}"
+            exit 1
+          fi
+          PROD_COMMIT=$(git rev-list -n 1 "${{ env.VERSION }}")
+          echo "Production tag ${{ env.VERSION }} points to commit: $PROD_COMMIT"
+          if [ "$PROD_COMMIT" != "${{ env.DEV_COMMIT }}" ]; then
+            echo "ERROR: Production tag and dev tag point to different commits"
+            echo "  Production tag commit: $PROD_COMMIT"
+            echo "  Dev tag commit: ${{ env.DEV_COMMIT }}"
+            echo ""
+            echo "Both tags must point to the same commit"
+            exit 1
+          fi
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -174,5 +172,5 @@ jobs:
           echo "Production release published successfully!"
           echo "SDK Package: @layr-labs/ecloud-sdk@${{ env.PACKAGE_VERSION }} (tag: latest)"
           echo "CLI Package: @layr-labs/ecloud-cli@${{ env.PACKAGE_VERSION }} (tag: latest)"
-          echo "Verified dev testing completed with matching commit from ${{ env.VERIFIED_DEV_TAG }}"
+          echo "Verified dev testing completed with matching commit from ${{ env.DEV_TAG }}"
           echo "Install with: npm install -g @layr-labs/ecloud-cli@latest"
