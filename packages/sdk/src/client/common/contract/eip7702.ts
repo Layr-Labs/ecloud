@@ -201,6 +201,9 @@ export async function executeBatch(options: ExecuteBatchOptions, logger: Logger 
   }
 
   // Add gas params if provided
+  if (gas?.gasLimit) {
+    txRequest.gas = gas.gasLimit;
+  }
   if (gas?.maxFeePerGas) {
     txRequest.maxFeePerGas = gas.maxFeePerGas;
   }
