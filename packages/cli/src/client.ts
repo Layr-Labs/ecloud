@@ -78,7 +78,7 @@ export async function createBuildClient(flags: CommonFlags) {
   flags = await validateCommonFlags(flags, { requirePrivateKey: false });
 
   // Get environment config for RPC URL
-  const environment = flags.environment || "mainnet-alpha";
+  const environment = flags.environment;
   const environmentConfig = getEnvironmentConfig(environment);
   const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
 
