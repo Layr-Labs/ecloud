@@ -338,6 +338,7 @@ export async function executeDeployBatch(
       executions: data.executions,
       pendingMessage,
       gas,
+      authorizationList: data.authorizationList,
     },
     logger,
   );
@@ -838,6 +839,7 @@ export async function executeUpgradeBatch(
       executions: data.executions,
       pendingMessage,
       gas,
+      authorizationList: data.authorizationList,
     },
     logger,
   );
