@@ -174,7 +174,7 @@ export async function executeBatch(options: ExecuteBatchOptions, logger: Logger 
     logger.debug("Using wallet client signing for EIP-7702 authorization");
 
     const signedAuthorization = await walletClient.signAuthorization({
-      account: account.address,
+      account,
       contractAddress: environmentConfig.erc7702DelegatorAddress as Address,
       chainId: chainId,
       nonce: Number(authorizationNonce),
