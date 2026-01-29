@@ -2,7 +2,7 @@
  * Core types for ECloud SDK
  */
 
-import { Address, Hex } from "viem";
+import { Address, Hex, SignAuthorizationReturnType } from "viem";
 import { GasEstimate } from "../contract/caller";
 
 export type AppId = Address;
@@ -137,6 +137,8 @@ export interface PreparedDeployData {
   salt: Uint8Array;
   /** Batch executions to be sent */
   executions: Array<{ target: Address; value: bigint; callData: Hex }>;
+  /** Pre-created authorization list for gas estimation accuracy (optional) */
+  authorizationList?: SignAuthorizationReturnType[];
 }
 
 /** Data-only batch for upgrade (clients provided by module) */
@@ -145,6 +147,8 @@ export interface PreparedUpgradeData {
   appId: AppId;
   /** Batch executions to be sent */
   executions: Array<{ target: Address; value: bigint; callData: Hex }>;
+  /** Pre-created authorization list for gas estimation accuracy (optional) */
+  authorizationList?: SignAuthorizationReturnType[];
 }
 
 /** Prepared deployment ready for execution */

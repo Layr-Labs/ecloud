@@ -27,7 +27,7 @@ import {
   prepareDeployBatch,
   executeDeployBatch,
 } from "../../../common/contract/caller";
-import { estimateBatchGas } from "../../../common/contract/eip7702";
+import { estimateBatchGas, createAuthorizationList } from "../../../common/contract/eip7702";
 import { type GasEstimate } from "../../../common/contract/caller";
 import { watchUntilRunning } from "../../../common/contract/watcher";
 import {
@@ -237,12 +237,21 @@ export async function prepareDeployFromVerifiableBuild(
         logger,
       );
 
+      // Create authorization list if not delegated (for accurate gas estimation)
+      logger.debug("Checking delegation status...");
+      const authorizationList = await createAuthorizationList({
+        walletClient: batch.walletClient,
+        publicClient: batch.publicClient,
+        environmentConfig: batch.environmentConfig,
+      });
+
       // Estimate gas
       logger.debug("Estimating gas...");
       const gasEstimate = await estimateBatchGas({
         publicClient: batch.publicClient,
         account: batch.walletClient.account!.address,
         executions: batch.executions,
+        authorizationList,
       });
 
       // Extract only data fields for public type (clients stay internal)
@@ -250,6 +259,7 @@ export async function prepareDeployFromVerifiableBuild(
         appId: batch.appId,
         salt: batch.salt,
         executions: batch.executions,
+        authorizationList,
       };
 
       return {
@@ -596,12 +606,21 @@ export async function prepareDeploy(
         logger,
       );
 
-      // 9. Estimate gas for the batch
+      // 9. Create authorization list if not delegated (for accurate gas estimation)
+      logger.debug("Checking delegation status...");
+      const authorizationList = await createAuthorizationList({
+        walletClient: batch.walletClient,
+        publicClient: batch.publicClient,
+        environmentConfig: batch.environmentConfig,
+      });
+
+      // 10. Estimate gas for the batch
       logger.debug("Estimating gas...");
       const gasEstimate = await estimateBatchGas({
         publicClient: batch.publicClient,
         account: batch.walletClient.account!.address,
         executions: batch.executions,
+        authorizationList,
       });
 
       // Extract only data fields for public type (clients stay internal)
@@ -609,6 +628,7 @@ export async function prepareDeploy(
         appId: batch.appId,
         salt: batch.salt,
         executions: batch.executions,
+        authorizationList,
       };
 
       return {
