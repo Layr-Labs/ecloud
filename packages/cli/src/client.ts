@@ -5,12 +5,14 @@ import {
   getEnvironmentConfig,
   requirePrivateKey,
   getPrivateKeyWithSource,
+  addHexPrefix,
 } from "@layr-labs/ecloud-sdk";
 import { CommonFlags, validateCommonFlags } from "./flags";
 import { getPrivateKeyInteractive } from "./utils/prompts";
 import { getClientId } from "./utils/version";
 import { createViemClients } from "./utils/viemClients";
-import { Hex } from "viem";
+import { createWalletClient, custom, Hex } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 
 export async function createComputeClient(flags: CommonFlags) {
   flags = await validateCommonFlags(flags);
@@ -46,24 +48,21 @@ export async function createComputeClient(flags: CommonFlags) {
 export async function createBillingClient(flags: {
   "private-key"?: string;
   verbose?: boolean;
-  environment?: string;
-  "rpc-url"?: string;
 }) {
   const result = await getPrivateKeyWithSource({
     privateKey: flags["private-key"],
   });
   const privateKey = await getPrivateKeyInteractive(result?.key);
 
-  // Get environment config for RPC URL
-  const environment = flags.environment || "mainnet";
-  const environmentConfig = getEnvironmentConfig(environment);
-  const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
-
-  // Create wallet client from private key
-  const { walletClient } = createViemClients({
-    privateKey: privateKey as Hex,
-    rpcUrl,
-    environment,
+  // Create minimal wallet client for signing only - no RPC needed
+  const account = privateKeyToAccount(addHexPrefix(privateKey) as Hex);
+  const walletClient = createWalletClient({
+    account,
+    transport: custom({
+      async request() {
+        throw new Error("RPC not available - billing uses local signing only");
+      },
+    }),
   });
 
   return createBillingModule({
@@ -79,7 +78,7 @@ export async function createBuildClient(flags: CommonFlags) {
   flags = await validateCommonFlags(flags, { requirePrivateKey: false });
 
   // Get environment config for RPC URL
-  const environment = flags.environment || "mainnet";
+  const environment = flags.environment || "mainnet-alpha";
   const environmentConfig = getEnvironmentConfig(environment);
   const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
 
