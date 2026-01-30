@@ -30,7 +30,6 @@ import {
   noopLogger,
   DeployProgressCallback,
   SequentialDeployResult,
-  DeployStep,
 } from "../types";
 import { Release } from "../types";
 import { getChainFromID } from "../utils/helpers";

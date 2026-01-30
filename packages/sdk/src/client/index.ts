@@ -131,7 +131,7 @@ export interface ClientConfig {
   verbose: boolean;
   privateKey: Hex;
   environment: Environment | string;
-  rpcUrl?: string;
+  rpcUrl?: string | string[];
 }
 
 export interface ECloudClient {
