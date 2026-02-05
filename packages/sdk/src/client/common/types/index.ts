@@ -338,6 +338,8 @@ export interface CreateSubscriptionOptions {
   successUrl?: string;
   /** URL to redirect to if checkout is canceled */
   cancelUrl?: string;
+  /** URL to return if return link is clicked from stripe portal */
+  returnUrl?: string;
 }
 
 export interface CreateSubscriptionResponse {
@@ -414,11 +416,7 @@ export type DeployProgressCallback = (step: DeployStep, txHash?: Hex) => void;
 /**
  * Steps in sequential deployment flow
  */
-export type DeployStep =
-  | "createApp"
-  | "acceptAdmin"
-  | "setPublicLogs"
-  | "complete";
+export type DeployStep = "createApp" | "acceptAdmin" | "setPublicLogs" | "complete";
 
 /**
  * Result from sequential deployment
