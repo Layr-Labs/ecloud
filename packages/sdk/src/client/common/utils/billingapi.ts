@@ -16,6 +16,7 @@ import {
   ProductID,
   CreateSubscriptionOptions,
   CreateSubscriptionResponse,
+  GetSubscriptionOptions,
   ProductSubscriptionResponse,
 } from "../types";
 import { calculateBillingAuthSignature } from "./auth";
@@ -157,8 +158,15 @@ export class BillingApiClient {
     return resp.json();
   }
 
-  async getSubscription(productId: ProductID = "compute"): Promise<ProductSubscriptionResponse> {
-    const endpoint = `${this.config.billingApiServerURL}/products/${productId}/subscription`;
+  async getSubscription(
+    productId: ProductID = "compute",
+    options?: GetSubscriptionOptions,
+  ): Promise<ProductSubscriptionResponse> {
+    let endpoint = `${this.config.billingApiServerURL}/products/${productId}/subscription`;
+    if (options?.returnUrl) {
+      const params = new URLSearchParams({ return_url: options.returnUrl });
+      endpoint = `${endpoint}?${params.toString()}`;
+    }
     const resp = await this.makeAuthenticatedRequest(endpoint, "GET", productId);
     return resp.json();
   }

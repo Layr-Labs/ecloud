@@ -342,6 +342,11 @@ export interface CreateSubscriptionOptions {
   returnUrl?: string;
 }
 
+export interface GetSubscriptionOptions {
+  /** URL to return to from the billing portal */
+  returnUrl?: string;
+}
+
 export interface CreateSubscriptionResponse {
   checkoutUrl: string;
 }
