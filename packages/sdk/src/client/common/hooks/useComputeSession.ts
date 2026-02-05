@@ -9,7 +9,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Address, Hex } from "viem";
+import { Hex } from "viem";
 import {
   ComputeApiConfig,
   getComputeApiSession,

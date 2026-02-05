@@ -12,7 +12,12 @@
 
 import axios, { AxiosResponse } from "axios";
 import { Address, type WalletClient } from "viem";
-import { ProductID, CreateSubscriptionOptions, CreateSubscriptionResponse, ProductSubscriptionResponse } from "../types";
+import {
+  ProductID,
+  CreateSubscriptionOptions,
+  CreateSubscriptionResponse,
+  ProductSubscriptionResponse,
+} from "../types";
 import { calculateBillingAuthSignature } from "./auth";
 import { BillingEnvironmentConfig } from "../types";
 import {
@@ -136,12 +141,18 @@ export class BillingApiClient {
   // Subscription Methods
   // ==========================================================================
 
-  async createSubscription(productId: ProductID = "compute", options?: CreateSubscriptionOptions): Promise<CreateSubscriptionResponse> {
+  async createSubscription(
+    productId: ProductID = "compute",
+    options?: CreateSubscriptionOptions,
+  ): Promise<CreateSubscriptionResponse> {
     const endpoint = `${this.config.billingApiServerURL}/products/${productId}/subscription`;
-    const body = options ? {
-      success_url: options.successUrl,
-      cancel_url: options.cancelUrl,
-    } : undefined;
+    const body = options
+      ? {
+          success_url: options.successUrl,
+          cancel_url: options.cancelUrl,
+          return_url: options.returnUrl,
+        }
+      : undefined;
     const resp = await this.makeAuthenticatedRequest(endpoint, "POST", productId, body);
     return resp.json();
   }
