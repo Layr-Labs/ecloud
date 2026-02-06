@@ -15,7 +15,7 @@ env:
 
 jobs:
   build-and-publish:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     environment:
       name: production
       url: https://www.npmjs.com/package/@layr-labs/ecloud-cli
