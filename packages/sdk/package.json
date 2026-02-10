@@ -45,7 +45,7 @@
   "dependencies": {
     "@inquirer/prompts": "^7.10.1",
     "@napi-rs/keyring": "^1.0.5",
-    "axios": "^1.13.2",
+    "axios": "^1.13.5",
     "chalk": "^5.6.2",
     "dockerode": "^4.0.9",
     "form-data": "^4.0.5",

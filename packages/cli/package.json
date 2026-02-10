@@ -16,7 +16,7 @@
     "@layr-labs/ecloud-sdk": "workspace:*",
     "@napi-rs/keyring": "^1.0.5",
     "@oclif/core": "^4.8.0",
-    "axios": "^1.13.2",
+    "axios": "^1.13.5",
     "chalk": "^5.6.2",
     "cli-table3": "^0.6.5",
     "dockerode": "^4.0.9",
