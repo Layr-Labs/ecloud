@@ -70,6 +70,8 @@ export interface SDKUpgradeOptions {
   gas?: GasEstimate;
   /** Skip telemetry (used when called from CLI) - optional */
   skipTelemetry?: boolean;
+  /** Use eigenx-kms-client (v2) for environment variable encryption */
+  useKmsV2?: boolean;
 }
 
 export interface UpgradeResult {
@@ -163,6 +165,7 @@ export async function prepareUpgradeFromVerifiableBuild(
           instanceType: options.instanceType,
           environmentConfig: preflightCtx.environmentConfig,
           appId: appID as string,
+          useKmsV2: options.useKmsV2,
         },
         logger,
       );
@@ -340,6 +343,7 @@ export async function upgrade(
           instanceType,
           environmentConfig: preflightCtx.environmentConfig,
           appId: appID,
+          useKmsV2: options.useKmsV2,
         },
         logger,
       );
@@ -450,6 +454,7 @@ export async function prepareUpgrade(
           instanceType,
           environmentConfig: preflightCtx.environmentConfig,
           appId: appID,
+          useKmsV2: options.useKmsV2,
         },
         logger,
       );

@@ -3,11 +3,23 @@ echo "compute-source-env.sh: Running setup script..."
 
 # Fetch and source environment variables from KMS
 echo "Fetching secrets from KMS..."
+{{#if useKmsV2}}
+if /usr/local/bin/eigenx-kms-client decrypt \
+  --eth-rpc-url "{{ethRpcUrl}}" \
+  --avs-address "{{avsAddress}}" \
+  --operator-set-id "{{operatorSetId}}" \
+  --app-id "{{appId}}" \
+  --kms-signing-key-file /usr/local/bin/kms-signing-public-key.pem \
+  --userapi-url "{{userAPIURL}}" \
+  --app-controller-address "{{appControllerAddress}}" \
+  --output /tmp/.env; then
+{{else}}
 if /usr/local/bin/kms-client \
   --kms-server-url "{{kmsServerURL}}" \
   --kms-signing-key-file /usr/local/bin/kms-signing-public-key.pem \
   --userapi-url "{{userAPIURL}}" \
   --output /tmp/.env; then
+{{/if}}
     echo "compute-source-env.sh: Successfully fetched environment variables from KMS"
     set -a && . /tmp/.env && set +a
     rm -f /tmp/.env

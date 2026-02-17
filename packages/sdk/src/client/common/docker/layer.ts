@@ -30,6 +30,7 @@ import {
   CADDYFILE_NAME,
   LAYERED_BUILD_DIR_PREFIX,
   DOCKER_PLATFORM,
+  EIGENX_KMS_CLIENT_BINARY_NAME,
 } from "../constants";
 
 import { getDirname } from "../utils/dirname";
@@ -95,6 +96,8 @@ export interface BuildAndPushLayeredImageOptions {
   resourceUsageAllow: string;
   envFilePath?: string;
   environmentConfig: EnvironmentConfig;
+  useKmsV2?: boolean;
+  appId?: string;
 }
 
 export interface LayerRemoteImageIfNeededOptions {
@@ -103,6 +106,8 @@ export interface LayerRemoteImageIfNeededOptions {
   resourceUsageAllow: string;
   envFilePath?: string;
   environmentConfig: EnvironmentConfig;
+  useKmsV2?: boolean;
+  appId?: string;
 }
 
 /**
@@ -119,6 +124,8 @@ export async function buildAndPushLayeredImage(
     resourceUsageAllow,
     envFilePath,
     environmentConfig,
+    useKmsV2,
+    appId,
   } = options;
 
   // 1. Build base image from user's Dockerfile
@@ -140,6 +147,8 @@ export async function buildAndPushLayeredImage(
       resourceUsageAllow,
       envFilePath,
       environmentConfig,
+      useKmsV2,
+      appId,
     },
     logger,
   );
@@ -152,7 +161,7 @@ export async function layerRemoteImageIfNeeded(
   options: LayerRemoteImageIfNeededOptions,
   logger: Logger,
 ): Promise<string> {
-  const { imageRef, logRedirect, resourceUsageAllow, envFilePath, environmentConfig } = options;
+  const { imageRef, logRedirect, resourceUsageAllow, envFilePath, environmentConfig, useKmsV2, appId } = options;
 
   const docker = new Docker();
 
@@ -181,6 +190,8 @@ export async function layerRemoteImageIfNeeded(
       resourceUsageAllow,
       envFilePath,
       environmentConfig,
+      useKmsV2,
+      appId,
     },
     logger,
   );
@@ -200,6 +211,8 @@ async function layerLocalImage(
     resourceUsageAllow: string;
     envFilePath?: string;
     environmentConfig: EnvironmentConfig;
+    useKmsV2?: boolean;
+    appId?: string;
   },
   logger: Logger,
 ): Promise<string> {
@@ -211,6 +224,8 @@ async function layerLocalImage(
     resourceUsageAllow,
     envFilePath,
     environmentConfig,
+    useKmsV2,
+    appId,
   } = options;
 
   // 1. Extract original command and user from source image
@@ -243,6 +258,12 @@ async function layerLocalImage(
   const scriptContent = processScriptTemplate({
     kmsServerURL: environmentConfig.kmsServerURL,
     userAPIURL: environmentConfig.userApiServerURL,
+    useKmsV2,
+    ethRpcUrl: environmentConfig.defaultRPCURL,
+    avsAddress: environmentConfig.avsAddress,
+    operatorSetId: environmentConfig.operatorSetId,
+    appControllerAddress: environmentConfig.appControllerAddress,
+    appId,
   });
 
   // 4. Setup build directory
@@ -315,6 +336,18 @@ async function setupLayeredBuildDirectory(
     }
     fs.copyFileSync(kmsClientSource, kmsClientPath);
     fs.chmodSync(kmsClientPath, 0o755);
+
+    // Copy new eigenx-kms-client binary
+    const eigenxKmsClientPath = path.join(tempDir, EIGENX_KMS_CLIENT_BINARY_NAME);
+    const eigenxKmsClientSource = findBinary("eigenx-kms-client-linux-amd64");
+    if (!fs.existsSync(eigenxKmsClientSource)) {
+      throw new Error(
+        `eigenx-kms-client binary not found. Expected at: ${eigenxKmsClientSource}. ` +
+          "Make sure binaries are in packages/sdk/tools/ directory.",
+      );
+    }
+    fs.copyFileSync(eigenxKmsClientSource, eigenxKmsClientPath);
+    fs.chmodSync(eigenxKmsClientPath, 0o755);
 
     // Include TLS components if requested
     if (includeTLS) {

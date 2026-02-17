@@ -1,5 +1,6 @@
 import { parseAndValidateEnvFile } from "../env/parser";
 import { encryptRSAOAEPAndAES256GCM, getAppProtectedHeaders } from "../encryption/kms";
+import { encryptWithEigenxKmsClient } from "../encryption/eigenxKms";
 import { getKMSKeysForEnvironment } from "../utils/keys";
 import type { EnvironmentConfig, Logger, Release } from "../types";
 
@@ -10,6 +11,7 @@ export interface CreateReleaseFromImageDigestOptions {
   instanceType: string;
   environmentConfig: EnvironmentConfig;
   appId: string;
+  useKmsV2?: boolean;
 }
 
 /**
@@ -21,7 +23,7 @@ export async function createReleaseFromImageDigest(
   options: CreateReleaseFromImageDigestOptions,
   logger: Logger,
 ): Promise<Release> {
-  const { imageRef, imageDigest, envFilePath, instanceType, environmentConfig, appId } = options;
+  const { imageRef, imageDigest, envFilePath, instanceType, environmentConfig, appId, useKmsV2 } = options;
 
   if (!/^sha256:[0-9a-f]{64}$/i.test(imageDigest)) {
     throw new Error(`imageDigest must be in format sha256:<64 hex>, got: ${imageDigest}`);
@@ -46,17 +48,30 @@ export async function createReleaseFromImageDigest(
 
   // Encrypt private environment variables
   logger.info("Encrypting environment variables...");
-  const { encryptionKey } = getKMSKeysForEnvironment(
-    environmentConfig.name,
-    environmentConfig.build,
-  );
-  const protectedHeaders = getAppProtectedHeaders(appId);
-  const privateEnvBytes = Buffer.from(JSON.stringify(privateEnv));
-  const encryptedEnvStr = await encryptRSAOAEPAndAES256GCM(
-    encryptionKey,
-    privateEnvBytes,
-    protectedHeaders,
-  );
+  let encryptedEnvStr: string;
+
+  if (useKmsV2) {
+    logger.info("Using eigenx-kms-client (v2) for encryption...");
+    encryptedEnvStr = encryptWithEigenxKmsClient(
+      environmentConfig.defaultRPCURL,
+      environmentConfig.avsAddress || "",
+      environmentConfig.operatorSetId || 0,
+      appId,
+      JSON.stringify(privateEnv),
+    );
+  } else {
+    const { encryptionKey } = getKMSKeysForEnvironment(
+      environmentConfig.name,
+      environmentConfig.build,
+    );
+    const protectedHeaders = getAppProtectedHeaders(appId);
+    const privateEnvBytes = Buffer.from(JSON.stringify(privateEnv));
+    encryptedEnvStr = await encryptRSAOAEPAndAES256GCM(
+      encryptionKey,
+      privateEnvBytes,
+      protectedHeaders,
+    );
+  }
 
   // Convert digest to bytes32
   const digestHex = imageDigest.split(":")[1]!;

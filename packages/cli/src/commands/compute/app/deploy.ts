@@ -135,6 +135,12 @@ export default class AppDeploy extends Command {
       required: false,
       env: "ECLOUD_BUILD_CADDYFILE",
     }),
+    "use-kms-v2": Flags.boolean({
+      required: false,
+      description: "Use eigenx-kms-client (v2) for environment variable encryption",
+      default: false,
+      env: "ECLOUD_USE_KMS_V2",
+    }),
   };
 
   async run() {
@@ -370,6 +376,7 @@ export default class AppDeploy extends Command {
           ? "private"
           : "off";
 
+      const useKmsV2 = flags["use-kms-v2"];
       const { prepared, gasEstimate } = isVerifiable
         ? await compute.app.prepareDeployFromVerifiableBuild({
             name: appName,
@@ -379,6 +386,7 @@ export default class AppDeploy extends Command {
             instanceType,
             logVisibility,
             resourceUsageMonitoring,
+            useKmsV2,
           })
         : await compute.app.prepareDeploy({
             name: appName,
@@ -388,6 +396,7 @@ export default class AppDeploy extends Command {
             instanceType,
             logVisibility,
             resourceUsageMonitoring,
+            useKmsV2,
           });
 
       // 9. Show gas estimate and prompt for confirmation on mainnet
