@@ -3,6 +3,7 @@ import { Address, Hex, type PublicClient, type WalletClient } from "viem";
 import { calculatePermissionSignature } from "./auth";
 import { EnvironmentConfig } from "../types";
 import { stripHexPrefix } from "./helpers";
+import { requestWithRetry } from "./retry";
 import {
   loginToComputeApi,
   logoutFromComputeApi,
@@ -429,10 +430,11 @@ export class UserApiClient {
     }
 
     try {
-      const response: AxiosResponse = await axios.get(url, {
+      const response: AxiosResponse = await requestWithRetry({
+        method: "GET",
+        url,
         headers,
         maxRedirects: 0,
-        validateStatus: () => true, // Don't throw on any status
         withCredentials: true, // Include cookies for session auth
       });
 
