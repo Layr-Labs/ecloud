@@ -17,14 +17,15 @@ async function sleep(ms: number): Promise<void> {
 }
 
 function getRetryDelay(res: AxiosResponse, attempt: number): number {
+  const backoff = Math.min(INITIAL_BACKOFF_MS * Math.pow(2, attempt), MAX_BACKOFF_MS);
   const retryAfter = res.headers["retry-after"];
   if (retryAfter) {
     const seconds = parseInt(retryAfter, 10);
-    if (!isNaN(seconds)) {
+    if (!isNaN(seconds) && seconds > 0) {
       return Math.min(seconds * 1000, MAX_BACKOFF_MS);
     }
   }
-  return Math.min(INITIAL_BACKOFF_MS * Math.pow(2, attempt), MAX_BACKOFF_MS);
+  return backoff;
 }
 
 async function requestWithRetry(config: AxiosRequestConfig): Promise<AxiosResponse> {
