@@ -4,7 +4,7 @@
  * Migrate a legacy eigenx-cli key to ecloud
  */
 
-import { Command } from "@oclif/core";
+import { Command, Flags } from "@oclif/core";
 import { confirm, select } from "@inquirer/prompts";
 import {
   storePrivateKey,
@@ -21,10 +21,30 @@ import { withTelemetry } from "../../telemetry";
 export default class AuthMigrate extends Command {
   static description = "Migrate a private key from eigenx-cli to ecloud";
 
-  static examples = ["<%= config.bin %> <%= command.id %>"];
+  static examples = [
+    "<%= config.bin %> auth migrate",
+    "<%= config.bin %> auth migrate --environment sepolia",
+    "<%= config.bin %> auth migrate --environment sepolia --delete-legacy --force",
+  ];
+
+  static flags = {
+    environment: Flags.string({
+      description: "Environment of the legacy key to migrate (e.g. sepolia, mainnet)",
+    }),
+    "delete-legacy": Flags.boolean({
+      description: "Delete the legacy key after migration",
+      default: false,
+    }),
+    force: Flags.boolean({
+      description: "Skip all confirmation prompts",
+      default: false,
+    }),
+  };
 
   async run(): Promise<void> {
     return withTelemetry(this, async () => {
+      const { flags } = await this.parse(AuthMigrate);
+
       const legacyKeys = await getLegacyKeys();
 
       if (legacyKeys.length === 0) {
@@ -46,16 +66,31 @@ export default class AuthMigrate extends Command {
         this.log("");
       }
 
-      // Create choices for selection
-      const choices = legacyKeys.map((key) => ({
-        name: `${key.address} (${key.environment} - ${key.source})`,
-        value: key,
-      }));
+      let selectedKey: LegacyKey;
 
-      const selectedKey = await select<LegacyKey>({
-        message: "Select a key to migrate:",
-        choices,
-      });
+      if (flags.environment) {
+        // Match by environment flag
+        const match = legacyKeys.find(
+          (k) => k.environment.toLowerCase() === flags.environment!.toLowerCase(),
+        );
+        if (!match) {
+          this.error(
+            `No legacy key found for environment '${flags.environment}'. Available: ${legacyKeys.map((k) => k.environment).join(", ")}`,
+          );
+        }
+        selectedKey = match;
+      } else {
+        // Interactive selection
+        const choices = legacyKeys.map((key) => ({
+          name: `${key.address} (${key.environment} - ${key.source})`,
+          value: key,
+        }));
+
+        selectedKey = await select<LegacyKey>({
+          message: "Select a key to migrate:",
+          choices,
+        });
+      }
 
       // Retrieve the actual private key
       const privateKey = await getLegacyPrivateKey(selectedKey.environment, selectedKey.source);
@@ -73,21 +108,25 @@ export default class AuthMigrate extends Command {
       const exists = await keyExists();
 
       if (exists) {
-        this.log("");
-        displayWarning([
-          "WARNING: A private key for ecloud already exists!",
-          "Replacing it will cause PERMANENT DATA LOSS if not backed up.",
-          "The previous key will be lost forever.",
-        ]);
+        if (flags.force) {
+          // Skip confirmation
+        } else {
+          this.log("");
+          displayWarning([
+            "WARNING: A private key for ecloud already exists!",
+            "Replacing it will cause PERMANENT DATA LOSS if not backed up.",
+            "The previous key will be lost forever.",
+          ]);
 
-        const confirmReplace = await confirm({
-          message: "Replace existing ecloud key?",
-          default: false,
-        });
+          const confirmReplace = await confirm({
+            message: "Replace existing ecloud key?",
+            default: false,
+          });
 
-        if (!confirmReplace) {
-          this.log("\nMigration cancelled.");
-          return;
+          if (!confirmReplace) {
+            this.log("\nMigration cancelled.");
+            return;
+          }
         }
       }
 
@@ -98,14 +137,19 @@ export default class AuthMigrate extends Command {
         this.log(`✓ Address: ${address}`);
         this.log("\nNote: This key will be used for all environments (mainnet, sepolia, etc.)");
 
-        // Ask if user wants to delete the legacy key (only if save was successful)
-        this.log("");
-        const confirmDelete = await confirm({
-          message: `Delete the legacy key from ${selectedKey.source}:${selectedKey.environment}?`,
-          default: false,
-        });
+        // Delete legacy key
+        const shouldDelete =
+          flags["delete-legacy"] ||
+          (!flags.force &&
+            (await (async () => {
+              this.log("");
+              return confirm({
+                message: `Delete the legacy key from ${selectedKey.source}:${selectedKey.environment}?`,
+                default: false,
+              });
+            })()));
 
-        if (confirmDelete) {
+        if (shouldDelete) {
           const deleted = await deleteLegacyPrivateKey(selectedKey.environment, selectedKey.source);
 
           if (deleted) {
