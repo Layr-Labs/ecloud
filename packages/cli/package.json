@@ -2,6 +2,9 @@
   "name": "@layr-labs/ecloud-cli",
   "version": "0.0.0-development",
   "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "files": [
     "dist",
     "bin",
