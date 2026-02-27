@@ -782,10 +782,41 @@ export async function getEnvFileInteractive(envFilePath?: string): Promise<strin
 /**
  * Prompt for instance type
  */
+export interface SkuInfo {
+  sku: string;
+  description: string;
+  vcpus?: number;
+  memory_mb?: number;
+  monthly_price_usd?: number;
+  hourly_price_usd?: number;
+  platform?: string;
+}
+
+function formatSkuChoice(it: SkuInfo): string {
+  // Rich format when pricing data is available
+  if (it.vcpus != null && it.memory_mb != null && it.monthly_price_usd != null && it.hourly_price_usd != null) {
+    const isShared = it.description.toLowerCase().includes("shared");
+    const vcpuLabel = isShared ? `Shared ${it.vcpus} vCPU` : `${it.vcpus} vCPU`;
+    const memLabel = it.memory_mb >= 1024 ? `${it.memory_mb / 1024} GB` : `${it.memory_mb} MB`;
+    const specs = `${vcpuLabel} + ${memLabel}`;
+    const pricing = `$${it.hourly_price_usd.toFixed(2)}/hr ($${it.monthly_price_usd.toFixed(2)}/mo)`;
+    const platform = it.platform ?? "";
+
+    // Pad for alignment
+    const skuPad = it.sku.padEnd(20);
+    const specsPad = specs.padEnd(22);
+    const pricingPad = pricing.padEnd(24);
+    return `${skuPad} ${specsPad} ${pricingPad} ${platform}`.trimEnd();
+  }
+
+  // Fallback: description only
+  return `${it.sku} - ${it.description}`;
+}
+
 export async function getInstanceTypeInteractive(
   instanceType: string | undefined,
   defaultSKU: string,
-  availableTypes: Array<{ sku: string; description: string }>,
+  availableTypes: SkuInfo[],
 ): Promise<string> {
   if (instanceType) {
     // Validate provided instance type
@@ -798,20 +829,21 @@ export async function getInstanceTypeInteractive(
   }
 
   const isCurrentType = defaultSKU !== "";
-  if (defaultSKU === "" && availableTypes.length > 0) {
-    defaultSKU = availableTypes[0].sku;
+
+  // Show pricing header if pricing data available
+  const hasPricing = availableTypes.some((t) => t.monthly_price_usd != null);
+  if (hasPricing) {
+    console.log("\nPay for what you use \u2014 no upfront costs, per-hour billing.\n");
   }
 
   if (isCurrentType && defaultSKU) {
-    console.log(`\nSelect instance type (current: ${defaultSKU}):`);
-  } else {
-    console.log("\nSelect instance type:");
+    console.log(`Current instance type: ${defaultSKU}\n`);
   }
 
   const choices = availableTypes.map((it) => {
-    let name = `${it.sku} - ${it.description}`;
-    if (it.sku === defaultSKU) {
-      name += isCurrentType ? " (current)" : " (default)";
+    let name = formatSkuChoice(it);
+    if (isCurrentType && it.sku === defaultSKU) {
+      name += " (current)";
     }
     return { name, value: it.sku };
   });
