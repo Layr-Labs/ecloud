@@ -10,6 +10,7 @@ import {
   getOrPromptAppName,
   getEnvFileInteractive,
   getInstanceTypeInteractive,
+  type SkuInfo,
   getLogSettingsInteractive,
   getResourceUsageMonitoringInteractive,
   getAppProfileInteractive,
@@ -70,7 +71,7 @@ export default class AppDeploy extends Command {
     }),
     "instance-type": Flags.string({
       required: false,
-      description: "Machine instance type to use e.g. g1-standard-4t, g1-standard-8t",
+      description: "Machine instance type (e.g., g1-standard-4t, g1-standard-2s, g1-micro-1v)",
       env: "ECLOUD_INSTANCE_TYPE",
     }),
     "skip-profile": Flags.boolean({
@@ -343,6 +344,7 @@ export default class AppDeploy extends Command {
 
       // 5. Get instance type interactively
       const availableTypes = await fetchAvailableInstanceTypes(
+        environment,
         environmentConfig,
         privateKey,
         rpcUrl,
@@ -490,15 +492,16 @@ export default class AppDeploy extends Command {
  * Fetch available instance types from backend
  */
 async function fetchAvailableInstanceTypes(
+  environment: string,
   environmentConfig: any,
   privateKey: string,
   rpcUrl: string,
-): Promise<Array<{ sku: string; description: string }>> {
+): Promise<SkuInfo[]> {
   try {
     const { publicClient, walletClient } = createViemClients({
       privateKey,
       rpcUrl,
-      environment: environmentConfig.name,
+      environment,
     });
     const userApiClient = new UserApiClient(
       environmentConfig,
@@ -516,6 +519,6 @@ async function fetchAvailableInstanceTypes(
   } catch (err: any) {
     console.warn(`Failed to fetch instance types: ${err.message}`);
     // Return a default fallback
-    return [{ sku: "g1-standard-4t", description: "Standard 4-thread instance" }];
+    return [{ sku: "g1-standard-4t", description: "4 vCPUs, 16 GB memory, TDX" }];
   }
 }
