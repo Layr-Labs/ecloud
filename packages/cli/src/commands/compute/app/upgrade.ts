@@ -293,7 +293,7 @@ export default class AppUpgrade extends Command {
         const { publicClient, walletClient } = createViemClients({
           privateKey,
           rpcUrl,
-          environment: environmentConfig.name,
+          environment,
         });
         const userApiClient = new UserApiClient(
           environmentConfig,
@@ -311,6 +311,7 @@ export default class AppUpgrade extends Command {
 
       // 6. Get instance type interactively
       const availableTypes = await fetchAvailableInstanceTypes(
+        environment,
         environmentConfig,
         privateKey,
         rpcUrl,
@@ -395,6 +396,7 @@ export default class AppUpgrade extends Command {
  * Fetch available instance types from backend
  */
 async function fetchAvailableInstanceTypes(
+  environment: string,
   environmentConfig: any,
   privateKey: string,
   rpcUrl: string,
@@ -403,7 +405,7 @@ async function fetchAvailableInstanceTypes(
     const { publicClient, walletClient } = createViemClients({
       privateKey,
       rpcUrl,
-      environment: environmentConfig.name,
+      environment,
     });
     const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, { clientId: getClientId() });
 

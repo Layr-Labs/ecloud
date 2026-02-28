@@ -6,6 +6,7 @@
  */
 
 import { input, select, password, confirm as inquirerConfirm } from "@inquirer/prompts";
+import chalk from "chalk";
 import fs from "fs";
 import path from "path";
 import os from "os";
@@ -792,21 +793,30 @@ export interface SkuInfo {
   platform?: string;
 }
 
+const SKU_TIER_NAMES: Record<string, string> = {
+  "g1-micro-1v": "Starter 1",
+  "g1-small-1v": "Starter 2",
+  "g1-custom-2-4096s": "Growth 1",
+  "g1-standard-2s": "Growth 2",
+  "g1-standard-4t": "Enterprise 1",
+  "g1-standard-8t": "Enterprise 2",
+};
+
 function formatSkuChoice(it: SkuInfo): string {
   // Rich format when pricing data is available
   if (it.vcpus != null && it.memory_mb != null && it.monthly_price_usd != null && it.hourly_price_usd != null) {
+    const tier = SKU_TIER_NAMES[it.sku] ?? it.sku;
     const isShared = it.description.toLowerCase().includes("shared");
     const vcpuLabel = isShared ? `Shared ${it.vcpus} vCPU` : `${it.vcpus} vCPU`;
     const memLabel = it.memory_mb >= 1024 ? `${it.memory_mb / 1024} GB` : `${it.memory_mb} MB`;
     const specs = `${vcpuLabel} + ${memLabel}`;
     const pricing = `$${it.hourly_price_usd.toFixed(2)}/hr ($${it.monthly_price_usd.toFixed(2)}/mo)`;
-    const platform = it.platform ?? "";
 
-    // Pad for alignment
-    const skuPad = it.sku.padEnd(20);
+    const platform = it.platform ?? "";
+    const tierPad = tier.padEnd(14);
     const specsPad = specs.padEnd(22);
-    const pricingPad = pricing.padEnd(24);
-    return `${skuPad} ${specsPad} ${pricingPad} ${platform}`.trimEnd();
+    const platformPad = platform.padEnd(20);
+    return `${tierPad} ${specsPad} ${platformPad} ${pricing}`.trimEnd();
   }
 
   // Fallback: description only
@@ -830,10 +840,13 @@ export async function getInstanceTypeInteractive(
 
   const isCurrentType = defaultSKU !== "";
 
-  // Show pricing header if pricing data available
+  // Show pricing header and platform descriptions
   const hasPricing = availableTypes.some((t) => t.monthly_price_usd != null);
   if (hasPricing) {
     console.log("\nPay for what you use \u2014 no upfront costs, per-hour billing.\n");
+    console.log(`  ${chalk.bold("Shielded VM (vTPM)")}: Verified boot and runtime attestation.`);
+    console.log(`  ${chalk.bold("SEV-SNP (TEE)")}: Verified boot, runtime attestation, and hardware-encrypted memory (AMD).`);
+    console.log(`  ${chalk.bold("TDX (TEE)")}: Verified boot, runtime attestation, and hardware-encrypted memory (Intel).\n`);
   }
 
   if (isCurrentType && defaultSKU) {
