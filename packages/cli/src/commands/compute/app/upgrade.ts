@@ -114,6 +114,12 @@ export default class AppUpgrade extends Command {
       required: false,
       env: "ECLOUD_BUILD_CADDYFILE",
     }),
+    "use-kms-v2": Flags.boolean({
+      required: false,
+      description: "Use eigenx-kms-client (v2) for environment variable encryption",
+      default: false,
+      env: "ECLOUD_USE_KMS_V2",
+    }),
   };
 
   async run() {
@@ -339,6 +345,7 @@ export default class AppUpgrade extends Command {
           ? "private"
           : "off";
 
+      const useKmsV2 = flags["use-kms-v2"];
       const { prepared, gasEstimate } = isVerifiable
         ? await compute.app.prepareUpgradeFromVerifiableBuild(appID, {
             imageRef,
@@ -347,6 +354,7 @@ export default class AppUpgrade extends Command {
             instanceType,
             logVisibility,
             resourceUsageMonitoring,
+            useKmsV2,
           })
         : await compute.app.prepareUpgrade(appID, {
             dockerfile: dockerfilePath,
@@ -355,6 +363,7 @@ export default class AppUpgrade extends Command {
             instanceType,
             logVisibility,
             resourceUsageMonitoring,
+            useKmsV2,
           });
 
       // 10. Show gas estimate and prompt for confirmation on mainnet

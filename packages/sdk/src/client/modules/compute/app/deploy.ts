@@ -74,6 +74,8 @@ export interface SDKDeployOptions {
   gas?: GasEstimate;
   /** Skip telemetry (used when called from CLI) - optional */
   skipTelemetry?: boolean;
+  /** Use eigenx-kms-client (v2) for environment variable encryption */
+  useKmsV2?: boolean;
 }
 
 /**
@@ -128,6 +130,8 @@ export interface VerifiableBuildOptions {
   resourceUsageMonitoring?: ResourceUsageMonitoring;
   /** Skip telemetry (used when called from CLI) - optional */
   skipTelemetry?: boolean;
+  /** Use eigenx-kms-client (v2) for environment variable encryption */
+  useKmsV2?: boolean;
 }
 
 /**
@@ -218,6 +222,7 @@ export async function prepareDeployFromVerifiableBuild(
           instanceType: options.instanceType,
           environmentConfig: preflightCtx.environmentConfig,
           appId: appIDToBeDeployed,
+          useKmsV2: options.useKmsV2,
         },
         logger,
       );
@@ -413,6 +418,7 @@ export async function deploy(
           instanceType,
           environmentConfig: preflightCtx.environmentConfig,
           appId: appIDToBeDeployed,
+          useKmsV2: options.useKmsV2,
         },
         logger,
       );
@@ -587,6 +593,7 @@ export async function prepareDeploy(
           instanceType,
           environmentConfig: preflightCtx.environmentConfig,
           appId: appIDToBeDeployed,
+          useKmsV2: options.useKmsV2,
         },
         logger,
       );

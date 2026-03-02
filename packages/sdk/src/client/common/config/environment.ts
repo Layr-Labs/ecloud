@@ -44,6 +44,8 @@ const ENVIRONMENTS: Record<string, Omit<EnvironmentConfig, "chainID">> = {
     kmsServerURL: "http://10.128.0.57:8080",
     userApiServerURL: "https://userapi-compute-sepolia-dev.eigencloud.xyz",
     defaultRPCURL: "https://ethereum-sepolia-rpc.publicnode.com",
+    avsAddress: "0x47c9806e7DC4e6fE9a0a2399831F32d06DaE5730",
+    operatorSetId: 0,
   },
   sepolia: {
     name: "sepolia",
@@ -54,6 +56,8 @@ const ENVIRONMENTS: Record<string, Omit<EnvironmentConfig, "chainID">> = {
     kmsServerURL: "http://10.128.15.203:8080",
     userApiServerURL: "https://userapi-compute-sepolia-prod.eigencloud.xyz",
     defaultRPCURL: "https://ethereum-sepolia-rpc.publicnode.com",
+    avsAddress: "",
+    operatorSetId: 0,
   },
   "mainnet-alpha": {
     name: "mainnet-alpha",
@@ -64,6 +68,8 @@ const ENVIRONMENTS: Record<string, Omit<EnvironmentConfig, "chainID">> = {
     kmsServerURL: "http://10.128.0.2:8080",
     userApiServerURL: "https://userapi-compute.eigencloud.xyz",
     defaultRPCURL: "https://ethereum-rpc.publicnode.com",
+    avsAddress: "",
+    operatorSetId: 0,
   },
 };
 

@@ -248,6 +248,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           logVisibility: opts.logVisibility,
           resourceUsageMonitoring: opts.resourceUsageMonitoring,
           skipTelemetry,
+          useKmsV2: opts.useKmsV2,
         },
         logger,
       );
@@ -267,6 +268,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           logVisibility: opts.logVisibility,
           resourceUsageMonitoring: opts.resourceUsageMonitoring,
           skipTelemetry,
+          useKmsV2: opts.useKmsV2,
         },
         logger,
       );
@@ -318,6 +320,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           logVisibility: opts.logVisibility,
           resourceUsageMonitoring: opts.resourceUsageMonitoring,
           skipTelemetry,
+          useKmsV2: opts.useKmsV2,
         },
         logger,
       );
@@ -337,6 +340,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           logVisibility: opts.logVisibility,
           resourceUsageMonitoring: opts.resourceUsageMonitoring,
           skipTelemetry,
+          useKmsV2: opts.useKmsV2,
         },
         logger,
       );

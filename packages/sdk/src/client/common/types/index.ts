@@ -56,6 +56,8 @@ export interface PrepareDeployOpts {
   logVisibility: logVisibility;
   /** Resource usage monitoring setting - optional */
   resourceUsageMonitoring?: "enable" | "disable";
+  /** Use eigenx-kms-client (v2) for environment variable encryption */
+  useKmsV2?: boolean;
 }
 
 /** Options for prepareUpgrade */
@@ -72,6 +74,8 @@ export interface PrepareUpgradeOpts {
   logVisibility: logVisibility;
   /** Resource usage monitoring setting - optional */
   resourceUsageMonitoring?: "enable" | "disable";
+  /** Use eigenx-kms-client (v2) for environment variable encryption */
+  useKmsV2?: boolean;
 }
 
 /** Options for prepareDeployFromVerifiableBuild */
@@ -90,6 +94,8 @@ export interface PrepareDeployFromVerifiableBuildOpts {
   logVisibility: logVisibility;
   /** Resource usage monitoring setting - optional */
   resourceUsageMonitoring?: "enable" | "disable";
+  /** Use eigenx-kms-client (v2) for environment variable encryption */
+  useKmsV2?: boolean;
 }
 
 /** Options for prepareUpgradeFromVerifiableBuild */
@@ -106,6 +112,8 @@ export interface PrepareUpgradeFromVerifiableBuildOpts {
   logVisibility: logVisibility;
   /** Resource usage monitoring setting - optional */
   resourceUsageMonitoring?: "enable" | "disable";
+  /** Use eigenx-kms-client (v2) for environment variable encryption */
+  useKmsV2?: boolean;
 }
 
 /** Gas options for execute functions */
@@ -232,6 +240,8 @@ export interface EnvironmentConfig {
   kmsServerURL: string;
   userApiServerURL: string;
   defaultRPCURL: string;
+  avsAddress?: string;
+  operatorSetId?: number;
 }
 
 export interface Release {

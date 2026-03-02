@@ -8,7 +8,8 @@
 import { buildAndPushLayeredImage } from "../docker/layer";
 import { layerRemoteImageIfNeeded } from "../docker/layer";
 import { getImageDigestAndName } from "../registry/digest";
-import { encryptRSAOAEPAndAES256GCM, getAppProtectedHeaders } from "../encryption/kms"; // getAppProtectedHeaders
+import { encryptRSAOAEPAndAES256GCM, getAppProtectedHeaders } from "../encryption/kms";
+import { encryptWithEigenxKmsClient } from "../encryption/eigenxKms";
 import { getKMSKeysForEnvironment } from "../utils/keys";
 import { REGISTRY_PROPAGATION_WAIT_SECONDS } from "../constants";
 
@@ -25,6 +26,7 @@ export interface PrepareReleaseOptions {
   instanceType: string;
   environmentConfig: EnvironmentConfig;
   appId: AppId;
+  useKmsV2?: boolean;
 }
 
 export interface PrepareReleaseResult {
@@ -47,6 +49,7 @@ export async function prepareRelease(
     resourceUsageAllow,
     instanceType,
     environmentConfig,
+    useKmsV2,
   } = options;
 
   let finalImageRef = imageRef;
@@ -63,6 +66,8 @@ export async function prepareRelease(
         resourceUsageAllow,
         envFilePath,
         environmentConfig,
+        useKmsV2,
+        appId: options.appId,
       },
       logger,
     );
@@ -80,6 +85,8 @@ export async function prepareRelease(
         resourceUsageAllow,
         envFilePath,
         environmentConfig,
+        useKmsV2,
+        appId: options.appId,
       },
       logger,
     );
@@ -152,17 +159,30 @@ export async function prepareRelease(
 
   // 5. Encrypt private environment variables
   logger.info("Encrypting environment variables...");
-  const { encryptionKey } = getKMSKeysForEnvironment(
-    environmentConfig.name,
-    environmentConfig.build,
-  );
-  const protectedHeaders = getAppProtectedHeaders(options.appId);
-  const privateEnvBytes = Buffer.from(JSON.stringify(privateEnv));
-  const encryptedEnvStr = await encryptRSAOAEPAndAES256GCM(
-    encryptionKey,
-    privateEnvBytes,
-    protectedHeaders,
-  );
+  let encryptedEnvStr: string;
+
+  if (useKmsV2) {
+    logger.info("Using eigenx-kms-client (v2) for encryption...");
+    encryptedEnvStr = encryptWithEigenxKmsClient(
+      environmentConfig.defaultRPCURL,
+      environmentConfig.avsAddress || "",
+      environmentConfig.operatorSetId || 0,
+      options.appId,
+      JSON.stringify(privateEnv),
+    );
+  } else {
+    const { encryptionKey } = getKMSKeysForEnvironment(
+      environmentConfig.name,
+      environmentConfig.build,
+    );
+    const protectedHeaders = getAppProtectedHeaders(options.appId);
+    const privateEnvBytes = Buffer.from(JSON.stringify(privateEnv));
+    encryptedEnvStr = await encryptRSAOAEPAndAES256GCM(
+      encryptionKey,
+      privateEnvBytes,
+      protectedHeaders,
+    );
+  }
 
   // 6. Create release struct
   const release: Release = {
