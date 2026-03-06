@@ -46,7 +46,12 @@ export {
   prepareUpgradeFromVerifiableBuild,
   executeUpgrade,
   watchUpgrade,
+  scheduleUpgrade,
+  executeGovernedUpgrade,
   type PrepareUpgradeResult,
+  type GovernedUpgradeResult,
+  type ScheduleUpgradeOptions,
+  type ExecuteGovernedUpgradeOptions,
 } from "./modules/compute/app/upgrade";
 
 // Export compute module for standalone use
@@ -95,8 +100,17 @@ export {
   getBlockTimestamps,
   estimateTransactionGas,
   formatETH,
+  getAppGoverned,
+  getPendingAppUpgrade,
+  transferAppOwnership,
+  scheduleAppUpgrade,
+  executeGovernedUpgrade as executeGovernedUpgradeOnChain,
   type GasEstimate,
   type EstimateGasOptions,
+  type PendingUpgrade,
+  type TransferOwnershipOptions,
+  type ScheduleUpgradeOptions as ScheduleUpgradeCallerOptions,
+  type ExecuteGovernedUpgradeOptions as ExecuteGovernedUpgradeCallerOptions,
 } from "./common/contract/caller";
 
 // Export batch gas estimation and delegation check

@@ -24,7 +24,11 @@ import {
   upgradeApp,
   prepareUpgradeBatch,
   executeUpgradeBatch,
+  scheduleAppUpgrade,
+  executeGovernedUpgrade as executeGovernedUpgradeOnChain,
+  getPendingAppUpgrade,
   type GasEstimate,
+  type PendingUpgrade,
 } from "../../../common/contract/caller";
 import { estimateBatchGas, createAuthorizationList } from "../../../common/contract/eip7702";
 import { watchUntilUpgradeComplete } from "../../../common/contract/watcher";
@@ -533,6 +537,186 @@ export async function executeUpgrade(options: ExecuteUpgradeOptions): Promise<Up
         imageRef: prepared.imageRef,
         txHash,
       };
+    },
+  );
+}
+
+/**
+ * Result from scheduleUpgrade / executeGovernedUpgrade
+ */
+export interface GovernedUpgradeResult {
+  appId: AppId;
+  imageRef: string;
+  txHash: Hex;
+}
+
+/**
+ * Options for scheduleUpgrade (governed apps)
+ */
+export interface ScheduleUpgradeOptions extends Omit<SDKUpgradeOptions, "gas"> {
+  /** Delay in seconds before the upgrade can be executed */
+  delaySeconds: bigint;
+  gas?: GasEstimate;
+}
+
+/**
+ * Schedule an upgrade for a governed app (requires prior scheduleUpgrade + executeUpgrade flow).
+ *
+ * Runs the full build pipeline, then calls scheduleUpgrade on-chain instead of upgradeApp.
+ * The controller does NOT act on this event — call executeGovernedUpgrade after the delay.
+ */
+export async function scheduleUpgrade(
+  options: ScheduleUpgradeOptions,
+  logger: Logger = defaultLogger,
+): Promise<GovernedUpgradeResult> {
+  return withSDKTelemetry(
+    {
+      functionName: "scheduleUpgrade",
+      skipTelemetry: options.skipTelemetry,
+      properties: { environment: options.environment || "sepolia" },
+    },
+    async () => {
+      logger.debug("Performing preflight checks...");
+      const preflightCtx = await doPreflightChecks(
+        { walletClient: options.walletClient, publicClient: options.publicClient, environment: options.environment },
+        logger,
+      );
+
+      const appID = validateUpgradeOptions(options as SDKUpgradeOptions);
+      const { logRedirect } = validateLogVisibility(options.logVisibility);
+      const resourceUsageAllow = validateResourceUsageMonitoring(options.resourceUsageMonitoring);
+
+      logger.debug("Checking Docker...");
+      await ensureDockerIsRunning();
+
+      const dockerfilePath = options.dockerfilePath || "";
+      const imageRef = options.imageRef || "";
+      const envFilePath = options.envFilePath || "";
+
+      logger.info("Preparing release...");
+      const { release, finalImageRef } = await prepareRelease(
+        {
+          dockerfilePath,
+          imageRef,
+          envFilePath,
+          logRedirect,
+          resourceUsageAllow,
+          instanceType: options.instanceType,
+          environmentConfig: preflightCtx.environmentConfig,
+          appId: appID,
+        },
+        logger,
+      );
+
+      logger.info("Scheduling upgrade on-chain...");
+      const txHash = await scheduleAppUpgrade(
+        {
+          walletClient: preflightCtx.walletClient,
+          publicClient: preflightCtx.publicClient,
+          environmentConfig: preflightCtx.environmentConfig,
+          appID,
+          release,
+          delaySeconds: options.delaySeconds,
+          gas: options.gas,
+        },
+        logger,
+      );
+
+      return { appId: appID, imageRef: finalImageRef, txHash };
+    },
+  );
+}
+
+/**
+ * Options for executeGovernedUpgrade
+ */
+export type ExecuteGovernedUpgradeOptions = Omit<SDKUpgradeOptions, "gas"> & { gas?: GasEstimate };
+
+/**
+ * Execute a previously scheduled upgrade for a governed app.
+ *
+ * Runs the full build pipeline with the same inputs as scheduleUpgrade to reconstruct
+ * the Release, then calls executeUpgrade on-chain (verifying hash match).
+ */
+export async function executeGovernedUpgrade(
+  options: ExecuteGovernedUpgradeOptions,
+  logger: Logger = defaultLogger,
+): Promise<GovernedUpgradeResult> {
+  return withSDKTelemetry(
+    {
+      functionName: "executeGovernedUpgrade",
+      skipTelemetry: options.skipTelemetry,
+      properties: { environment: options.environment || "sepolia" },
+    },
+    async () => {
+      logger.debug("Performing preflight checks...");
+      const preflightCtx = await doPreflightChecks(
+        { walletClient: options.walletClient, publicClient: options.publicClient, environment: options.environment },
+        logger,
+      );
+
+      const appID = validateUpgradeOptions(options as SDKUpgradeOptions);
+      const { logRedirect } = validateLogVisibility(options.logVisibility);
+      const resourceUsageAllow = validateResourceUsageMonitoring(options.resourceUsageMonitoring);
+
+      // Check that a scheduled upgrade exists and is ready
+      const pending = await getPendingAppUpgrade(preflightCtx.publicClient, preflightCtx.environmentConfig, appID);
+      if (pending.readyAt === 0n) {
+        throw new Error("no upgrade is scheduled for this app");
+      }
+      const now = BigInt(Math.floor(Date.now() / 1000));
+      if (now < pending.readyAt) {
+        const remaining = pending.readyAt - now;
+        throw new Error(`upgrade is not ready yet — ${remaining}s remaining`);
+      }
+
+      logger.debug("Checking Docker...");
+      await ensureDockerIsRunning();
+
+      const dockerfilePath = options.dockerfilePath || "";
+      const imageRef = options.imageRef || "";
+      const envFilePath = options.envFilePath || "";
+
+      logger.info("Preparing release (must match scheduled release)...");
+      const { release, finalImageRef } = await prepareRelease(
+        {
+          dockerfilePath,
+          imageRef,
+          envFilePath,
+          logRedirect,
+          resourceUsageAllow,
+          instanceType: options.instanceType,
+          environmentConfig: preflightCtx.environmentConfig,
+          appId: appID,
+        },
+        logger,
+      );
+
+      logger.info("Executing scheduled upgrade on-chain...");
+      const txHash = await executeGovernedUpgradeOnChain(
+        {
+          walletClient: preflightCtx.walletClient,
+          publicClient: preflightCtx.publicClient,
+          environmentConfig: preflightCtx.environmentConfig,
+          appID,
+          release,
+          gas: options.gas,
+        },
+        logger,
+      );
+
+      logger.info("Waiting for upgrade to complete...");
+      await watchUntilUpgradeComplete(
+        {
+          walletClient: preflightCtx.walletClient,
+          publicClient: preflightCtx.publicClient,
+          environmentConfig: preflightCtx.environmentConfig,
+          appId: appID,
+        },
+        logger,
+      );
+
+      return { appId: appID, imageRef: finalImageRef, txHash };
     },
   );
 }
