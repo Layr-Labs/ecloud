@@ -24,7 +24,7 @@ import { setLinkedAppForDirectory } from "../../../../utils/globalConfig";
 import { getDashboardUrl } from "../../../../utils/dashboard";
 
 export default class AppUpgradeExecute extends Command {
-  static description = "Execute a previously scheduled governed upgrade once the delay has elapsed";
+  static description = "Execute a previously scheduled upgrade for a timelocked app once the delay has elapsed";
 
   static args = {
     "app-id": Args.string({
@@ -89,10 +89,10 @@ export default class AppUpgradeExecute extends Command {
         action: "execute upgrade",
       });
 
-      // Verify governance mode
-      const governed = await compute.app.isGoverned(appID);
-      if (!governed) {
-        this.error("This app is not in governance mode. Use 'ecloud compute app upgrade' for direct upgrades.");
+      // Verify timelocked mode
+      const timelocked = await compute.app.isTimelocked(appID);
+      if (!timelocked) {
+        this.error("This app is not timelocked. Use 'ecloud compute app upgrade' for direct upgrades.");
       }
 
       // Check scheduled upgrade status

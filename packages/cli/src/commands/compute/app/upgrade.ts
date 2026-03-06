@@ -146,12 +146,12 @@ export default class AppUpgrade extends Command {
         action: "upgrade",
       });
 
-      // Check governance mode — governed apps cannot be directly upgraded
-      const governed = await compute.app.isGoverned(appID);
-      if (governed) {
+      // Check timelocked mode — timelocked apps cannot be directly upgraded
+      const timelocked = await compute.app.isTimelocked(appID);
+      if (timelocked) {
         this.error(
-          `App ${appID} is in governance mode (Safe/Timelock owner).\n` +
-          `Use the two-step governance flow instead:\n` +
+          `App ${appID} is timelocked (Timelock owner).\n` +
+          `Use the two-step timelocked flow instead:\n` +
           `  ecloud compute app upgrade schedule --app=${appID} --after=<delay>\n` +
           `  ecloud compute app upgrade execute  --app=${appID}`,
         );

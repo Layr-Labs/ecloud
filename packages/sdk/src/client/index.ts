@@ -103,7 +103,7 @@ export {
   getBillingType,
   getAppsByBillingAccount,
   calculateAppID,
-  getAppGoverned,
+  getAppTimelocked,
   getPendingAppUpgrade,
   transferAppOwnership,
   scheduleAppUpgrade,

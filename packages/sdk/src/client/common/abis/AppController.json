@@ -907,7 +907,7 @@
   },
   {
     "type": "function",
-    "name": "getAppGoverned",
+    "name": "getAppTimelocked",
     "inputs": [
       {
         "name": "app",
@@ -1486,12 +1486,12 @@
   },
   {
     "type": "error",
-    "name": "DirectUpgradeNotAllowed",
+    "name": "TimelockRequired",
     "inputs": []
   },
   {
     "type": "error",
-    "name": "GovernanceRequired",
+    "name": "NotTimelocked",
     "inputs": []
   },
   {

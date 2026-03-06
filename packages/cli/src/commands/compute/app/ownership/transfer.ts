@@ -49,13 +49,13 @@ export default class AppOwnershipTransfer extends Command {
         this.error(`Invalid address: ${newOwner}`);
       }
 
-      // Check current governance state
-      const governed = await compute.app.isGoverned(appId);
+      // Check current timelocked state
+      const timelocked = await compute.app.isTimelocked(appId);
 
       this.log(`\nApp:       ${chalk.bold(appId)}`);
       this.log(`New owner: ${chalk.bold(newOwner)}`);
-      if (!governed) {
-        this.log(chalk.yellow("\nNote: if the new owner is a Safe or Timelock deployed by SafeTimelockFactory, governance mode will be enabled automatically."));
+      if (!timelocked) {
+        this.log(chalk.yellow("\nNote: if the new owner is a Timelock deployed by SafeTimelockFactory, timelocked mode will be enabled automatically."));
       }
 
       if (isMainnet(environmentConfig)) {
@@ -70,10 +70,10 @@ export default class AppOwnershipTransfer extends Command {
 
       this.log(`\n✅ ${chalk.green(`Ownership transferred successfully (tx: ${res.tx})`)}`);
 
-      // Check whether governance was enabled as a result
-      const nowGoverned = await compute.app.isGoverned(appId);
-      if (nowGoverned) {
-        this.log(chalk.cyan("\nGovernance mode enabled. Upgrades now require:"));
+      // Check whether timelocked mode was enabled as a result
+      const nowTimelocked = await compute.app.isTimelocked(appId);
+      if (nowTimelocked) {
+        this.log(chalk.cyan("\nTimelocked mode enabled. Upgrades now require:"));
         this.log(chalk.cyan("  ecloud compute app upgrade schedule --app=<id> --after=<duration>"));
         this.log(chalk.cyan("  ecloud compute app upgrade execute  --app=<id>"));
       }

@@ -34,7 +34,7 @@ import {
   isDelegated,
   getBillingType,
   getAppsByBillingAccount,
-  getAppGoverned,
+  getAppTimelocked,
   getPendingAppUpgrade,
   transferAppOwnership,
   scheduleAppUpgrade,
@@ -175,7 +175,7 @@ export interface AppModule {
   undelegate: () => Promise<{ tx: Hex | false }>;
 
   // Governance
-  isGoverned: (appId: AppId) => Promise<boolean>;
+  isTimelocked: (appId: AppId) => Promise<boolean>;
   getPendingUpgrade: (appId: AppId) => Promise<PendingUpgrade>;
   transferOwnership: (appId: AppId, newOwner: Address, opts?: { gas?: GasEstimate }) => Promise<{ tx: Hex }>;
   scheduleUpgrade: (
@@ -591,8 +591,8 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
       );
     },
 
-    async isGoverned(appId) {
-      return getAppGoverned(publicClient, environment, appId as Address);
+    async isTimelocked(appId) {
+      return getAppTimelocked(publicClient, environment, appId as Address);
     },
 
     async getPendingUpgrade(appId) {
