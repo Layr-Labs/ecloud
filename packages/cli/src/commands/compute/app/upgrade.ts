@@ -126,8 +126,16 @@ export default class AppUpgrade extends Command {
       if (process.env.ECLOUD_REAL_MODE !== "true") {
         const appID = args["app-id"] || "0xA1B2C3D4E5F6000000000000000000000000abcd";
         const imageRef = flags["image-ref"] || flags.dockerfile || "myrepo/myapp:latest";
+        const demoDelay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+        const demoDigest = "sha256:6da6226e847082ed23ac90bd65ff4710171006249ad4e0a12d2ab19be4210dae";
+        const demoTx = "0xa1b2c3d4e5f67890abcdef01234567890abcdef01234567890abcdef01234567";
 
-        if (process.env.ECLOUD_DEMO_SCENARIO === "timelocked") {
+        // Determine identity from demo state or env override
+        const { getDemoState } = await import("../../../utils/demoState");
+        const { identity } = getDemoState();
+        const scenario = process.env.ECLOUD_DEMO_SCENARIO || identity?.type || "eoa";
+
+        if (scenario === "timelocked" || identity?.type === "timelock") {
           this.error(
             `App ${appID} is timelocked (Timelock owner).\n` +
             `Use the two-step timelocked flow instead:\n` +
@@ -136,11 +144,28 @@ export default class AppUpgrade extends Command {
           );
         }
 
-        // Default demo: successful upgrade
-        const demoDelay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-        const demoDigest = "sha256:6da6226e847082ed23ac90bd65ff4710171006249ad4e0a12d2ab19be4210dae";
-        const demoTx = "0xa1b2c3d4e5f67890abcdef01234567890abcdef01234567890abcdef01234567";
+        if (scenario === "safe" || identity?.type === "safe") {
+          // Safe path: propose transaction, show Safe URL
+          const safeAddr = identity?.address || "0x9999aaaa9999aaaa9999aaaa9999aaaa9999aaaa";
+          const safeShort = safeAddr.slice(0, 6) + "..." + safeAddr.slice(-4);
 
+          this.log(chalk.gray("\nBuilding image..."));
+          await demoDelay(800);
+          this.log(chalk.gray(`  ✓ Image pushed: ${imageRef}@${demoDigest.slice(0, 23)}...`));
+          await demoDelay(400);
+          this.log(chalk.gray("  ✓ Environment variables encrypted"));
+          await demoDelay(300);
+          this.log(chalk.gray("  ✓ Release artifact prepared"));
+          await demoDelay(500);
+
+          this.log(`\n${chalk.cyan("Transaction proposed to Safe.")} (${safeShort})`);
+          this.log(
+            `${chalk.gray("View and sign at:")} ${chalk.blue.underline(`https://app.safe.global/transactions/queue?safe=eth:${safeAddr}`)}`,
+          );
+          return;
+        }
+
+        // EOA path: direct upgrade
         this.log(chalk.gray("\nBuilding image..."));
         await demoDelay(800);
         this.log(chalk.gray(`  ✓ Image pushed: ${imageRef}@${demoDigest.slice(0, 23)}...`));

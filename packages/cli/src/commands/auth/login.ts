@@ -1,7 +1,8 @@
+// [DEMO STUB] Real implementation: taras/gov branch. Set ECLOUD_REAL_MODE=true to bypass.
 /**
  * Auth Login Command
  *
- * Store an existing private key in OS keyring
+ * Connect wallet or enter EOA address, then select an active identity.
  */
 
 import { Command } from "@oclif/core";
@@ -18,6 +19,8 @@ import {
 } from "@layr-labs/ecloud-sdk";
 import { getHiddenInput, displayWarning } from "../../utils/security";
 import { withTelemetry } from "../../telemetry";
+import { DEMO_IDENTITIES, formatIdentity, setDemoState } from "../../utils/demoState";
+import chalk from "chalk";
 
 export default class AuthLogin extends Command {
   static description = "Store your private key in OS keyring";
@@ -26,6 +29,10 @@ export default class AuthLogin extends Command {
 
   async run(): Promise<void> {
     return withTelemetry(this, async () => {
+      if (process.env.ECLOUD_REAL_MODE !== "true") {
+        await demoLogin(this.log.bind(this));
+        return;
+      }
       // Check if key already exists
       const exists = await keyExists();
 
@@ -162,4 +169,40 @@ export default class AuthLogin extends Command {
       }
     });
   }
+}
+
+async function demoLogin(log: (msg: string) => void): Promise<void> {
+  log("");
+
+  // Step 1: wallet / address input (simulated — pre-filled for demo)
+  const walletAddress = "0x1234567890abcdef1234567890abcdef12345678";
+  log(chalk.gray(`Connect wallet or enter EOA address: ${walletAddress}`));
+  log("");
+
+  // Step 2: identity selection
+  const choices = [
+    {
+      name: `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)} (your wallet)`,
+      value: 0,
+    },
+    { name: "───────────────────────────────────────", value: -1, disabled: true },
+    {
+      name: `${DEMO_IDENTITIES[1].address.slice(0, 6)}...${DEMO_IDENTITIES[1].address.slice(-4)} (Timelock, 24h delay) via 2/3 Safe`,
+      value: 1,
+    },
+    {
+      name: `${DEMO_IDENTITIES[2].address.slice(0, 6)}...${DEMO_IDENTITIES[2].address.slice(-4)} (3/5 Safe)`,
+      value: 2,
+    },
+  ];
+
+  const selected = await select({
+    message: "Select an identity:",
+    choices: choices.filter((c) => c.value !== -1),
+  });
+
+  const identity = DEMO_IDENTITIES[selected];
+  setDemoState({ identity });
+
+  log(`\n${chalk.green("✓")} Logged in as: ${chalk.bold(formatIdentity(identity))}`);
 }

@@ -1,17 +1,20 @@
+// [DEMO STUB] Real implementation: taras/gov branch. Set ECLOUD_REAL_MODE=true to bypass.
 /**
- * Auth Generate Command
+ * Auth Generate / New Command
  *
- * Generate a new private key and optionally store it in OS keyring
+ * Create a new identity: EOA, Gnosis Safe, or Timelock.
  */
 
 import { Command, Flags } from "@oclif/core";
-import { confirm } from "@inquirer/prompts";
+import { confirm, input, select } from "@inquirer/prompts";
 import { generateNewPrivateKey, storePrivateKey, keyExists } from "@layr-labs/ecloud-sdk";
 import { showPrivateKey, displayWarning } from "../../utils/security";
 import { withTelemetry } from "../../telemetry";
+import { setDemoState } from "../../utils/demoState";
+import chalk from "chalk";
 
 export default class AuthGenerate extends Command {
-  static description = "Generate a new private key";
+  static description = "Create a new identity: EOA, Gnosis Safe, or Timelock";
 
   static aliases = ["auth:gen", "auth:new"];
 
@@ -30,6 +33,11 @@ export default class AuthGenerate extends Command {
   async run(): Promise<void> {
     return withTelemetry(this, async () => {
       const { flags } = await this.parse(AuthGenerate);
+
+      if (process.env.ECLOUD_REAL_MODE !== "true") {
+        await demoNew(this.log.bind(this));
+        return;
+      }
 
       // Generate new key
       this.log("Generating new private key...\n");
@@ -113,4 +121,117 @@ Press 'q' to exit and continue...
       }
     });
   }
+}
+
+function demoDelay(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function demoNew(log: (msg: string) => void): Promise<void> {
+  log("");
+
+  const kind = await select({
+    message: "What would you like to create?",
+    choices: [
+      { name: "EOA  (new private key)", value: "eoa" },
+      { name: "Gnosis Safe", value: "safe" },
+      { name: "Timelock  (for existing EOA or Safe)", value: "timelock" },
+    ],
+  });
+
+  log("");
+
+  if (kind === "eoa") {
+    log(chalk.gray("Generating new private key..."));
+    await demoDelay(600);
+    const addr = "0xF00D111122223333444455556666777788889999";
+    setDemoState({
+      identity: { address: addr, type: "eoa", label: "your wallet" },
+    });
+    log(`\n${chalk.green("✓")} New EOA: ${chalk.bold(addr)}`);
+    log(chalk.green("✓") + " Private key stored in OS keyring.");
+    log(chalk.yellow("\nIMPORTANT: Back up your private key — it will not be shown again."));
+    return;
+  }
+
+  if (kind === "safe") {
+    const ownersRaw = await input({
+      message: "Enter owner addresses (comma-separated):",
+      default: "0x1111...aaaa, 0x2222...bbbb, 0x3333...cccc",
+    });
+    const threshold = await input({
+      message: "Threshold (e.g., 2 of 3):",
+      default: "2",
+    });
+    const owners = ownersRaw.split(",").map((s) => s.trim());
+
+    const addTimelock = await confirm({ message: "Add timelock delay?", default: false });
+    let delay = "";
+    if (addTimelock) {
+      delay = await input({ message: "Minimum delay (e.g., \"24h\", \"7d\"):", default: "24h" });
+    }
+
+    log("");
+    if (addTimelock) {
+      log(chalk.gray(`Deploying Safe (${threshold} of ${owners.length}) + Timelock via factory...`));
+    } else {
+      log(chalk.gray(`Deploying Safe (${threshold} of ${owners.length}) via factory...`));
+    }
+    await demoDelay(1200);
+
+    const safeAddr = "0x9999aaaa9999aaaa9999aaaa9999aaaa9999aaaa";
+    log(`${chalk.green("✓")} Safe deployed:     ${chalk.bold(safeAddr)} (${threshold}/${owners.length})`);
+
+    if (addTimelock) {
+      await demoDelay(600);
+      const timelockAddr = "0xABCDEF0123456789ABCDEF0123456789ABCDEF01";
+      log(`${chalk.green("✓")} Timelock deployed: ${chalk.bold(timelockAddr)} (${delay} delay, wraps Safe)`);
+      setDemoState({
+        identity: {
+          address: timelockAddr,
+          type: "timelock",
+          label: `Timelock, ${delay} delay`,
+          detail: `via ${threshold}/${owners.length} Safe`,
+          safeAddress: safeAddr,
+          delay,
+        },
+      });
+      log(`\n${chalk.green("✓")} Logged in as: ${chalk.bold(timelockAddr)} (Timelock, ${delay} delay)`);
+    } else {
+      setDemoState({
+        identity: { address: safeAddr, type: "safe", label: `${threshold}/${owners.length} Safe` },
+      });
+      log(`\n${chalk.green("✓")} Logged in as: ${chalk.bold(safeAddr)} (${threshold}/${owners.length} Safe)`);
+    }
+    return;
+  }
+
+  // Timelock for existing EOA or Safe
+  const proposer = await input({
+    message: "Proposer/executor address (your EOA or Safe):",
+    default: "0x1234567890abcdef1234567890abcdef12345678",
+  });
+  const delay = await input({
+    message: "Minimum delay (e.g., \"24h\", \"7d\"):",
+    default: "24h",
+  });
+
+  log("");
+  log(chalk.gray("Deploying Timelock via factory..."));
+  await demoDelay(1000);
+
+  const timelockAddr = "0xABCDEF0123456789ABCDEF0123456789ABCDEF01";
+  setDemoState({
+    identity: {
+      address: timelockAddr,
+      type: "timelock",
+      label: `Timelock, ${delay} delay`,
+      delay,
+    },
+  });
+
+  log(`${chalk.green("✓")} Timelock deployed: ${chalk.bold(timelockAddr)}`);
+  log(`\nMinimum delay:      ${chalk.bold(delay)}`);
+  log(`Proposer/Executor:  ${chalk.bold(proposer)}`);
+  log(`\n${chalk.green("✓")} Logged in as: ${chalk.bold(timelockAddr)} (Timelock, ${delay} delay)`);
 }

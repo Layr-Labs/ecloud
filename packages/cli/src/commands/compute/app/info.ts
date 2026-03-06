@@ -1,3 +1,4 @@
+// [DEMO STUB] Real implementation: taras/gov branch. Set ECLOUD_REAL_MODE=true to bypass.
 import { Command, Args, Flags } from "@oclif/core";
 import {
   getEnvironmentConfig,
@@ -39,6 +40,11 @@ export default class AppInfo extends Command {
 
   async run() {
     const { args, flags } = await this.parse(AppInfo);
+
+    if (process.env.ECLOUD_REAL_MODE !== "true") {
+      await demoInfo(args["app-id"], this.log.bind(this));
+      return;
+    }
 
     // Validate flags and prompt for missing values
     const validatedFlags = await validateCommonFlags(flags);
@@ -211,6 +217,57 @@ export default class AppInfo extends Command {
       );
     }
   }
+}
+
+async function demoInfo(appIdArg: string | undefined, log: (msg: string) => void): Promise<void> {
+  const { getDemoState, DEMO_TEAM, formatIdentity } = await import("../../../utils/demoState");
+  const { identity } = getDemoState();
+
+  const appId = appIdArg || "0xA1B2C3D4E5F6000000000000000000000000abcd";
+  const appShort = appId.slice(0, 6) + "..." + appId.slice(-4);
+
+  // Owner is whoever is logged in, or fall back to demo timelock
+  const owner = identity || {
+    address: "0xABCDEF0123456789ABCDEF0123456789ABCDEF01",
+    type: "timelock" as const,
+    label: "Timelock, 24h delay",
+    detail: "via 2/3 Safe",
+  };
+  const ownerShort = owner.address.slice(0, 6) + "..." + owner.address.slice(-4);
+  const ownerDisplay =
+    owner.type === "timelock"
+      ? `${ownerShort} (${owner.label}${owner.detail ? ", " + owner.detail : ""})`
+      : `${ownerShort} (${owner.label})`;
+
+  log("");
+  log(`App: ${chalk.cyan.bold("my-app")}  ${chalk.gray(`(${appShort})`)}`);
+  log(`  Owner:          ${chalk.bold(ownerDisplay)}`);
+  log(`  Status:         ${chalk.green("STARTED")}`);
+  log(`  Image:          myrepo/myapp:v2`);
+  log(`  Last upgrade:   ${new Date(Date.now() - 3 * 3600 * 1000).toLocaleString()}`);
+  log(`  Instance type:  g1-standard-4t`);
+  log(`  IP Address:     34.120.45.67`);
+  log("");
+  log("  Team Roles:");
+
+  const pad = (s: string, n: number) => s + " ".repeat(Math.max(0, n - s.length));
+  const roleLabel = (role: string) => chalk.bold(pad(role + ":", 12));
+
+  for (const [role, members] of Object.entries(DEMO_TEAM)) {
+    members.forEach((m, i) => {
+      const addr = m.address.slice(0, 6) + "..." + m.address.slice(-4);
+      const desc = `${addr} (${m.label})`;
+      if (i === 0) {
+        log(`    ${roleLabel(role)} ${desc}`);
+      } else {
+        log(`    ${" ".repeat(12)} ${desc}`);
+      }
+    });
+  }
+
+  log("");
+  log(`  Dashboard: ${chalk.blue.underline(`https://app.eigencloud.xyz/apps/${appId}`)}`);
+  log("");
 }
 
 async function showCountdown(seconds: number): Promise<void> {
