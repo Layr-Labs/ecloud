@@ -136,6 +136,17 @@ export default class AppUpgrade extends Command {
         action: "upgrade",
       });
 
+      // Check governance mode — governed apps cannot be directly upgraded
+      const governed = await compute.app.isGoverned(appID);
+      if (governed) {
+        this.error(
+          `App ${appID} is in governance mode (Safe/Timelock owner).\n` +
+          `Use the two-step governance flow instead:\n` +
+          `  ecloud compute app upgrade schedule --app=${appID} --after=<delay>\n` +
+          `  ecloud compute app upgrade execute  --app=${appID}`,
+        );
+      }
+
       type VerifiableMode = "none" | "git" | "prebuilt";
       let buildClient: Awaited<ReturnType<typeof createBuildClient>> | undefined;
       const getBuildClient = async () => {
