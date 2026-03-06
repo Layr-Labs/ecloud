@@ -119,6 +119,43 @@ export default class AppUpgrade extends Command {
   async run() {
     return withTelemetry(this, async () => {
       const { args, flags } = await this.parse(AppUpgrade);
+
+      // [DEMO] Stub paths — no network calls required.
+      // Set ECLOUD_REAL_MODE=true to bypass and run the real implementation.
+      // Set ECLOUD_DEMO_SCENARIO=timelocked to show the timelocked error path.
+      if (process.env.ECLOUD_REAL_MODE !== "true") {
+        const appID = args["app-id"] || "0xA1B2C3D4E5F6000000000000000000000000abcd";
+        const imageRef = flags["image-ref"] || flags.dockerfile || "myrepo/myapp:latest";
+
+        if (process.env.ECLOUD_DEMO_SCENARIO === "timelocked") {
+          this.error(
+            `App ${appID} is timelocked (Timelock owner).\n` +
+            `Use the two-step timelocked flow instead:\n` +
+            `  ecloud compute app upgrade schedule --app=${appID} --after=<delay>\n` +
+            `  ecloud compute app upgrade execute  --app=${appID}`,
+          );
+        }
+
+        // Default demo: successful upgrade
+        const demoDelay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+        const demoDigest = "sha256:6da6226e847082ed23ac90bd65ff4710171006249ad4e0a12d2ab19be4210dae";
+        const demoTx = "0xa1b2c3d4e5f67890abcdef01234567890abcdef01234567890abcdef01234567";
+
+        this.log(chalk.gray("\nBuilding image..."));
+        await demoDelay(800);
+        this.log(chalk.gray(`  ✓ Image pushed: ${imageRef}@${demoDigest.slice(0, 23)}...`));
+        await demoDelay(400);
+        this.log(chalk.gray("  ✓ Environment variables encrypted"));
+        await demoDelay(300);
+        this.log(chalk.gray("  ✓ Release artifact prepared"));
+        await demoDelay(800);
+
+        this.log(`\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${appID}, image: ${imageRef})`)}`)}`);
+        this.log(`\n${chalk.gray("tx:")} ${chalk.gray(demoTx)}`);
+        this.log(`\n${chalk.gray("View your app:")} ${chalk.blue.underline(`https://app.eigencloud.xyz/apps/${appID}`)}`);
+        return;
+      }
+
       const compute = await createComputeClient(flags);
 
       // Get validated values from flags (mutated by createComputeClient)

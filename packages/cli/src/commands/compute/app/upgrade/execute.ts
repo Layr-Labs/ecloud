@@ -1,30 +1,26 @@
+// [DEMO STUB] Network and build calls replaced with simulated output for UX review.
+// Real implementation: taras/gov branch.
+//
+// Demo scenarios (set via env var ECLOUD_DEMO_SCENARIO):
+//   (default)   — upgrade is ready, executes successfully
+//   not-ready   — delay hasn't elapsed yet
+//   no-schedule — no pending upgrade exists
+//   mismatch    — release hash doesn't match what was scheduled
 import { Command, Args, Flags } from "@oclif/core";
-import { getEnvironmentConfig, isMainnet } from "@layr-labs/ecloud-sdk";
-import { withTelemetry } from "../../../../telemetry";
 import { commonFlags } from "../../../../flags";
-import { createComputeClient } from "../../../../client";
-import { createViemClients } from "../../../../utils/viemClients";
-import {
-  getDockerfileInteractive,
-  getImageReferenceInteractive,
-  getEnvFileInteractive,
-  getInstanceTypeInteractive,
-  getLogSettingsInteractive,
-  getResourceUsageMonitoringInteractive,
-  getOrPromptAppID,
-  LogVisibility,
-  ResourceUsageMonitoring,
-  confirm,
-} from "../../../../utils/prompts";
 import chalk from "chalk";
-import { UserApiClient } from "@layr-labs/ecloud-sdk";
-import { getClientId } from "../../../../utils/version";
-import { executeGovernedUpgrade } from "@layr-labs/ecloud-sdk";
-import { setLinkedAppForDirectory } from "../../../../utils/globalConfig";
-import { getDashboardUrl } from "../../../../utils/dashboard";
+
+const DEMO_TX = "0x9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d9c8b7a6f5e4d3c2b1a0f9e8";
+const DEMO_DIGEST = "sha256:6da6226e847082ed23ac90bd65ff4710171006249ad4e0a12d2ab19be4210dae";
+const DEMO_READY_IN = 6847; // seconds remaining for the not-ready scenario
+
+function demoDelay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export default class AppUpgradeExecute extends Command {
-  static description = "Execute a previously scheduled upgrade for a timelocked app once the delay has elapsed";
+  static description =
+    "Execute a previously scheduled upgrade for a timelocked app once the delay has elapsed";
 
   static args = {
     "app-id": Args.string({
@@ -47,20 +43,20 @@ export default class AppUpgradeExecute extends Command {
     }),
     "env-file": Flags.string({
       required: false,
-      description: 'Environment file (must match what was used in schedule)',
+      description: "Environment file (must match what was used in schedule)",
       default: ".env",
       env: "ECLOUD_ENVFILE_PATH",
+    }),
+    "instance-type": Flags.string({
+      required: false,
+      description: "Machine instance type",
+      env: "ECLOUD_INSTANCE_TYPE",
     }),
     "log-visibility": Flags.string({
       required: false,
       description: "Log visibility setting: public, private, or off",
       options: ["public", "private", "off"],
       env: "ECLOUD_LOG_VISIBILITY",
-    }),
-    "instance-type": Flags.string({
-      required: false,
-      description: "Machine instance type",
-      env: "ECLOUD_INSTANCE_TYPE",
     }),
     "resource-usage-monitoring": Flags.string({
       required: false,
@@ -71,113 +67,51 @@ export default class AppUpgradeExecute extends Command {
   };
 
   async run() {
-    return withTelemetry(this, async () => {
-      const { args, flags } = await this.parse(AppUpgradeExecute);
-      const compute = await createComputeClient(flags);
+    const { args, flags } = await this.parse(AppUpgradeExecute);
 
-      const environment = flags.environment;
-      const environmentConfig = getEnvironmentConfig(environment);
-      const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
-      const privateKey = flags["private-key"]!;
+    const appID = args["app-id"] || "0xA1B2C3D4E5F6000000000000000000000000abcd";
+    const imageRef = flags["image-ref"] || flags.dockerfile || "myrepo/myapp:latest";
+    const scenario = process.env.ECLOUD_DEMO_SCENARIO || "ready";
 
-      // Resolve app ID
-      const appID = await getOrPromptAppID({
-        appID: args["app-id"],
-        environment,
-        privateKey,
-        rpcUrl,
-        action: "execute upgrade",
-      });
-
-      // Verify timelocked mode
-      const timelocked = await compute.app.isTimelocked(appID);
-      if (!timelocked) {
-        this.error("This app is not timelocked. Use 'ecloud compute app upgrade' for direct upgrades.");
-      }
-
-      // Check scheduled upgrade status
-      const pending = await compute.app.getPendingUpgrade(appID);
-      if (pending.readyAt === 0n) {
-        this.error("No upgrade is scheduled for this app. Run 'ecloud compute app upgrade schedule' first.");
-      }
-
-      const now = BigInt(Math.floor(Date.now() / 1000));
-      if (now < pending.readyAt) {
-        const remaining = pending.readyAt - now;
-        const readyDate = new Date(Number(pending.readyAt) * 1000).toLocaleString();
-        this.error(`Upgrade is not ready yet. Executable after ${chalk.bold(readyDate)} (${remaining}s remaining).`);
-      }
-
-      this.log(chalk.cyan(`\nScheduled upgrade is ready. Proceeding with execution...`));
-      this.log(chalk.yellow("Note: build inputs must exactly match what was used in 'upgrade schedule'."));
-
-      // Collect the same build inputs used during scheduling
-      const dockerfilePath = await getDockerfileInteractive(flags.dockerfile);
-      const buildFromDockerfile = dockerfilePath !== "";
-      const imageRef = await getImageReferenceInteractive(flags["image-ref"], buildFromDockerfile);
-      const envFilePath = await getEnvFileInteractive(flags["env-file"]);
-
-      const { publicClient, walletClient } = createViemClients({ privateKey, rpcUrl, environment });
-      let currentInstanceType = "";
-      try {
-        const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, { clientId: getClientId() });
-        const infos = await userApiClient.getInfos([appID], 1);
-        if (infos.length > 0) currentInstanceType = infos[0].machineType || "";
-      } catch {}
-
-      const availableTypes = await fetchAvailableInstanceTypes(environmentConfig, walletClient, publicClient);
-      const instanceType = await getInstanceTypeInteractive(flags["instance-type"], currentInstanceType, availableTypes);
-
-      const logSettings = await getLogSettingsInteractive(flags["log-visibility"] as LogVisibility | undefined);
-      const resourceUsageMonitoring = await getResourceUsageMonitoringInteractive(
-        flags["resource-usage-monitoring"] as ResourceUsageMonitoring | undefined,
+    // Error scenarios
+    if (scenario === "no-schedule") {
+      this.error(
+        "No upgrade is scheduled for this app. Run 'ecloud compute app upgrade schedule' first.",
       );
-      const logVisibility = logSettings.publicLogs ? "public" : logSettings.logRedirect ? "private" : "off";
+    }
 
-      if (isMainnet(environmentConfig)) {
-        const confirmed = await confirm("Execute the scheduled upgrade?");
-        if (!confirmed) {
-          this.log(`\n${chalk.gray("Execution cancelled")}`);
-          return;
-        }
-      }
-
-      const res = await executeGovernedUpgrade(
-        {
-          appId: appID,
-          walletClient,
-          publicClient,
-          environment,
-          dockerfilePath,
-          imageRef,
-          envFilePath,
-          instanceType,
-          logVisibility: logVisibility as LogVisibility,
-          resourceUsageMonitoring: resourceUsageMonitoring as ResourceUsageMonitoring,
-          skipTelemetry: true,
-        },
+    if (scenario === "not-ready") {
+      const readyDate = new Date(Date.now() + DEMO_READY_IN * 1000).toLocaleString();
+      this.error(
+        `Upgrade is not ready yet. Executable after ${chalk.bold(readyDate)} (${DEMO_READY_IN}s remaining).`,
       );
+    }
 
-      try {
-        const cwd = process.env.INIT_CWD || process.cwd();
-        setLinkedAppForDirectory(environment, cwd, res.appId);
-      } catch {}
-
-      this.log(
-        `\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${res.appId}, image: ${res.imageRef})`)}`)}`,
+    if (scenario === "mismatch") {
+      this.error(
+        "contract error: ReleaseMismatch\n" +
+          "The provided build inputs do not match what was committed during 'upgrade schedule'.\n" +
+          "Re-run with the exact same --image-ref, --env-file, and --instance-type.",
       );
+    }
 
-      const dashboardUrl = getDashboardUrl(environment, res.appId);
-      this.log(`\n${chalk.gray("View your app:")} ${chalk.blue.underline(dashboardUrl)}`);
-    });
+    // Happy path
+    this.log(chalk.cyan("\nScheduled upgrade is ready. Proceeding with execution..."));
+    this.log(chalk.yellow("Note: build inputs must exactly match what was used in 'upgrade schedule'."));
+
+    this.log(chalk.gray("\nRebuilding image for verification..."));
+    await demoDelay(700);
+    this.log(chalk.gray(`  ✓ Image verified: ${imageRef}@${DEMO_DIGEST.slice(0, 23)}...`));
+    await demoDelay(300);
+    this.log(chalk.gray("  ✓ Release hash matched"));
+
+    await demoDelay(900);
+
+    this.log(
+      `\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${appID}, image: ${imageRef})`)}`)}`,
+    );
+    this.log(
+      `\n${chalk.gray("View your app:")} ${chalk.blue.underline(`https://app.eigencloud.xyz/apps/${appID}`)}`,
+    );
   }
-}
-
-async function fetchAvailableInstanceTypes(environmentConfig: any, walletClient: any, publicClient: any) {
-  try {
-    const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, { clientId: getClientId() });
-    const skuList = await userApiClient.getSKUs();
-    if (skuList.skus.length > 0) return skuList.skus;
-  } catch {}
-  return [{ sku: "g1-standard-4t", description: "4 vCPUs, 16 GB memory, TDX" }];
 }
