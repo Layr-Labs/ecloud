@@ -36,6 +36,7 @@
     "format": "prettier --check .",
     "format:fix": "prettier --write .",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "ecloud": "node bin/run.js"
   },
   "oclif": {
