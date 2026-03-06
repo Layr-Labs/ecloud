@@ -738,6 +738,14 @@ export async function prepareUpgradeBatch(
     needsPermissionChange,
   } = options;
 
+  // 0. Check governance — governed apps cannot use direct upgradeApp()
+  const governed = await getAppGoverned(publicClient, environmentConfig, appID);
+  if (governed) {
+    throw new Error(
+      "this app is governed — use 'ecloud compute app upgrade schedule' and 'ecloud compute app upgrade execute' instead of a direct upgrade",
+    );
+  }
+
   // 1. Pack upgrade app call
   // Convert Release Uint8Array values to hex strings for viem
   const releaseForViem = {
@@ -1002,6 +1010,18 @@ function formatAppControllerError(decoded: {
       return new Error("invalid release metadata URI provided");
     case "InvalidShortString":
       return new Error("invalid short string format");
+    case "DirectUpgradeNotAllowed":
+      return new Error(
+        "this app is governed — use 'ecloud compute app upgrade schedule' and 'ecloud compute app upgrade execute' instead of a direct upgrade",
+      );
+    case "GovernanceRequired":
+      return new Error("this operation requires governance mode — transfer ownership to a Safe or Timelock first");
+    case "UpgradeNotReady":
+      return new Error("the scheduled upgrade delay has not elapsed yet");
+    case "NoScheduledUpgrade":
+      return new Error("no upgrade is scheduled for this app");
+    case "ReleaseMismatch":
+      return new Error("the provided release does not match the scheduled upgrade");
     default:
       return new Error(`contract error: ${errorName}`);
   }
@@ -1230,6 +1250,202 @@ export async function getBlockTimestamps(
   }
 
   return timestamps;
+}
+
+/**
+ * Get whether an app is in governance mode (requires scheduleUpgrade + executeUpgrade)
+ */
+export async function getAppGoverned(
+  publicClient: PublicClient,
+  environmentConfig: EnvironmentConfig,
+  appID: Address,
+): Promise<boolean> {
+  const governed = await publicClient.readContract({
+    address: environmentConfig.appControllerAddress as Address,
+    abi: AppControllerABI,
+    functionName: "getAppGoverned",
+    args: [appID],
+  });
+
+  return governed as boolean;
+}
+
+/**
+ * Get the pending upgrade for a governed app
+ */
+export interface PendingUpgrade {
+  releaseHash: Hex;
+  readyAt: bigint;
+}
+
+export async function getPendingAppUpgrade(
+  publicClient: PublicClient,
+  environmentConfig: EnvironmentConfig,
+  appID: Address,
+): Promise<PendingUpgrade> {
+  const result = (await publicClient.readContract({
+    address: environmentConfig.appControllerAddress as Address,
+    abi: AppControllerABI,
+    functionName: "getPendingUpgrade",
+    args: [appID],
+  })) as { releaseHash: Hex; readyAt: bigint };
+
+  return { releaseHash: result.releaseHash, readyAt: result.readyAt };
+}
+
+/**
+ * Options for transferring app ownership
+ */
+export interface TransferOwnershipOptions {
+  walletClient: WalletClient;
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+  appID: Address;
+  newOwner: Address;
+  gas?: GasEstimate;
+}
+
+/**
+ * Transfer ownership of an app to a new address.
+ * If newOwner is a Safe or Timelock deployed by SafeTimelockFactory, governance mode is enabled automatically.
+ */
+export async function transferAppOwnership(
+  options: TransferOwnershipOptions,
+  logger: Logger = noopLogger,
+): Promise<Hex> {
+  const { walletClient, publicClient, environmentConfig, appID, newOwner, gas } = options;
+
+  const data = encodeFunctionData({
+    abi: AppControllerABI,
+    functionName: "transferOwnership",
+    args: [appID, newOwner],
+  });
+
+  return sendAndWaitForTransaction(
+    {
+      walletClient,
+      publicClient,
+      environmentConfig,
+      to: environmentConfig.appControllerAddress as Address,
+      data,
+      pendingMessage: `Transferring ownership of app ${appID} to ${newOwner}...`,
+      txDescription: "TransferOwnership",
+      gas,
+    },
+    logger,
+  );
+}
+
+/**
+ * Options for scheduling a governed upgrade
+ */
+export interface ScheduleUpgradeOptions {
+  walletClient: WalletClient;
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+  appID: Address;
+  release: Release;
+  /** Delay in seconds before the upgrade can be executed */
+  delaySeconds: bigint;
+  gas?: GasEstimate;
+}
+
+/**
+ * Schedule an upgrade for a governed app (Safe/Timelock owner).
+ * Emits AppUpgradeScheduled; controller takes no action until executeGovernedUpgrade is called.
+ */
+export async function scheduleAppUpgrade(
+  options: ScheduleUpgradeOptions,
+  logger: Logger = noopLogger,
+): Promise<Hex> {
+  const { walletClient, publicClient, environmentConfig, appID, release, delaySeconds, gas } = options;
+
+  const releaseForViem = {
+    rmsRelease: {
+      artifacts: release.rmsRelease.artifacts.map((artifact) => ({
+        digest: `0x${bytesToHex(artifact.digest).slice(2).padStart(64, "0")}` as Hex,
+        registry: artifact.registry,
+      })),
+      upgradeByTime: release.rmsRelease.upgradeByTime,
+    },
+    publicEnv: bytesToHex(release.publicEnv) as Hex,
+    encryptedEnv: bytesToHex(release.encryptedEnv) as Hex,
+  };
+
+  const data = encodeFunctionData({
+    abi: AppControllerABI,
+    functionName: "scheduleUpgrade",
+    args: [appID, releaseForViem, delaySeconds],
+  });
+
+  return sendAndWaitForTransaction(
+    {
+      walletClient,
+      publicClient,
+      environmentConfig,
+      to: environmentConfig.appControllerAddress as Address,
+      data,
+      pendingMessage: `Scheduling upgrade for app ${appID} (delay: ${delaySeconds}s)...`,
+      txDescription: "ScheduleUpgrade",
+      gas,
+    },
+    logger,
+  );
+}
+
+/**
+ * Options for executing a scheduled governed upgrade
+ */
+export interface ExecuteGovernedUpgradeOptions {
+  walletClient: WalletClient;
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+  appID: Address;
+  release: Release;
+  gas?: GasEstimate;
+}
+
+/**
+ * Execute a previously scheduled upgrade for a governed app.
+ * The release must match the hash committed in scheduleUpgrade.
+ */
+export async function executeGovernedUpgrade(
+  options: ExecuteGovernedUpgradeOptions,
+  logger: Logger = noopLogger,
+): Promise<Hex> {
+  const { walletClient, publicClient, environmentConfig, appID, release, gas } = options;
+
+  const releaseForViem = {
+    rmsRelease: {
+      artifacts: release.rmsRelease.artifacts.map((artifact) => ({
+        digest: `0x${bytesToHex(artifact.digest).slice(2).padStart(64, "0")}` as Hex,
+        registry: artifact.registry,
+      })),
+      upgradeByTime: release.rmsRelease.upgradeByTime,
+    },
+    publicEnv: bytesToHex(release.publicEnv) as Hex,
+    encryptedEnv: bytesToHex(release.encryptedEnv) as Hex,
+  };
+
+  const data = encodeFunctionData({
+    abi: AppControllerABI,
+    functionName: "executeUpgrade",
+    args: [appID, releaseForViem],
+  });
+
+  return sendAndWaitForTransaction(
+    {
+      walletClient,
+      publicClient,
+      environmentConfig,
+      to: environmentConfig.appControllerAddress as Address,
+      data,
+      pendingMessage: `Executing scheduled upgrade for app ${appID}...`,
+      txDescription: "ExecuteUpgrade",
+      gas,
+    },
+    logger,
+  );
 }
 
 /**

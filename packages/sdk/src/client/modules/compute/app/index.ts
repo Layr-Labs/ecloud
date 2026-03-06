@@ -34,8 +34,14 @@ import {
   isDelegated,
   getBillingType,
   getAppsByBillingAccount,
+  getAppGoverned,
+  getPendingAppUpgrade,
+  transferAppOwnership,
+  scheduleAppUpgrade,
+  executeGovernedUpgrade,
   type GasEstimate,
   type AppConfig,
+  type PendingUpgrade,
 } from "../../../common/contract/caller";
 import { withSDKTelemetry } from "../../../common/telemetry/wrapper";
 import { UserApiClient } from "../../../common/utils/userapi";
@@ -167,6 +173,22 @@ export interface AppModule {
   // Delegation
   isDelegated: () => Promise<boolean>;
   undelegate: () => Promise<{ tx: Hex | false }>;
+
+  // Governance
+  isGoverned: (appId: AppId) => Promise<boolean>;
+  getPendingUpgrade: (appId: AppId) => Promise<PendingUpgrade>;
+  transferOwnership: (appId: AppId, newOwner: Address, opts?: { gas?: GasEstimate }) => Promise<{ tx: Hex }>;
+  scheduleUpgrade: (
+    appId: AppId,
+    release: import("../../../common/types").Release,
+    delaySeconds: bigint,
+    opts?: { gas?: GasEstimate },
+  ) => Promise<{ tx: Hex }>;
+  executeGovernedUpgrade: (
+    appId: AppId,
+    release: import("../../../common/types").Release,
+    opts?: { gas?: GasEstimate },
+  ) => Promise<{ tx: Hex }>;
 }
 
 export interface AppModuleConfig {
@@ -564,6 +586,87 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
             logger,
           );
 
+          return { tx };
+        },
+      );
+    },
+
+    async isGoverned(appId) {
+      return getAppGoverned(publicClient, environment, appId as Address);
+    },
+
+    async getPendingUpgrade(appId) {
+      return getPendingAppUpgrade(publicClient, environment, appId as Address);
+    },
+
+    async transferOwnership(appId, newOwner, opts) {
+      return withSDKTelemetry(
+        {
+          functionName: "transferOwnership",
+          skipTelemetry,
+          properties: { environment: ctx.environment },
+        },
+        async () => {
+          const tx = await transferAppOwnership(
+            {
+              walletClient,
+              publicClient,
+              environmentConfig: environment,
+              appID: appId as Address,
+              newOwner: newOwner as Address,
+              gas: opts?.gas,
+            },
+            logger,
+          );
+          return { tx };
+        },
+      );
+    },
+
+    async scheduleUpgrade(appId, release, delaySeconds, opts) {
+      return withSDKTelemetry(
+        {
+          functionName: "scheduleUpgrade",
+          skipTelemetry,
+          properties: { environment: ctx.environment },
+        },
+        async () => {
+          const tx = await scheduleAppUpgrade(
+            {
+              walletClient,
+              publicClient,
+              environmentConfig: environment,
+              appID: appId as Address,
+              release,
+              delaySeconds,
+              gas: opts?.gas,
+            },
+            logger,
+          );
+          return { tx };
+        },
+      );
+    },
+
+    async executeGovernedUpgrade(appId, release, opts) {
+      return withSDKTelemetry(
+        {
+          functionName: "executeGovernedUpgrade",
+          skipTelemetry,
+          properties: { environment: ctx.environment },
+        },
+        async () => {
+          const tx = await executeGovernedUpgrade(
+            {
+              walletClient,
+              publicClient,
+              environmentConfig: environment,
+              appID: appId as Address,
+              release,
+              gas: opts?.gas,
+            },
+            logger,
+          );
           return { tx };
         },
       );

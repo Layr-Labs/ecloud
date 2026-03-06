@@ -893,6 +893,216 @@
     "stateMutability": "view"
   },
   {
+    "type": "function",
+    "name": "safeTimelockFactory",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contractISafeTimelockFactory"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getAppGoverned",
+    "inputs": [
+      {
+        "name": "app",
+        "type": "address",
+        "internalType": "contractIApp"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getPendingUpgrade",
+    "inputs": [
+      {
+        "name": "app",
+        "type": "address",
+        "internalType": "contractIApp"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "structIAppController.PendingUpgrade",
+        "components": [
+          {
+            "name": "releaseHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "readyAt",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "transferOwnership",
+    "inputs": [
+      {
+        "name": "app",
+        "type": "address",
+        "internalType": "contractIApp"
+      },
+      {
+        "name": "newOwner",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "scheduleUpgrade",
+    "inputs": [
+      {
+        "name": "app",
+        "type": "address",
+        "internalType": "contractIApp"
+      },
+      {
+        "name": "release",
+        "type": "tuple",
+        "internalType": "structIAppController.Release",
+        "components": [
+          {
+            "name": "rmsRelease",
+            "type": "tuple",
+            "internalType": "structIReleaseManagerTypes.Release",
+            "components": [
+              {
+                "name": "artifacts",
+                "type": "tuple[]",
+                "internalType": "structIReleaseManagerTypes.Artifact[]",
+                "components": [
+                  {
+                    "name": "digest",
+                    "type": "bytes32",
+                    "internalType": "bytes32"
+                  },
+                  {
+                    "name": "registry",
+                    "type": "string",
+                    "internalType": "string"
+                  }
+                ]
+              },
+              {
+                "name": "upgradeByTime",
+                "type": "uint32",
+                "internalType": "uint32"
+              }
+            ]
+          },
+          {
+            "name": "publicEnv",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "encryptedEnv",
+            "type": "bytes",
+            "internalType": "bytes"
+          }
+        ]
+      },
+      {
+        "name": "delay",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "executeUpgrade",
+    "inputs": [
+      {
+        "name": "app",
+        "type": "address",
+        "internalType": "contractIApp"
+      },
+      {
+        "name": "release",
+        "type": "tuple",
+        "internalType": "structIAppController.Release",
+        "components": [
+          {
+            "name": "rmsRelease",
+            "type": "tuple",
+            "internalType": "structIReleaseManagerTypes.Release",
+            "components": [
+              {
+                "name": "artifacts",
+                "type": "tuple[]",
+                "internalType": "structIReleaseManagerTypes.Artifact[]",
+                "components": [
+                  {
+                    "name": "digest",
+                    "type": "bytes32",
+                    "internalType": "bytes32"
+                  },
+                  {
+                    "name": "registry",
+                    "type": "string",
+                    "internalType": "string"
+                  }
+                ]
+              },
+              {
+                "name": "upgradeByTime",
+                "type": "uint32",
+                "internalType": "uint32"
+              }
+            ]
+          },
+          {
+            "name": "publicEnv",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "encryptedEnv",
+            "type": "bytes",
+            "internalType": "bytes"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
     "type": "event",
     "name": "AppCreated",
     "inputs": [
@@ -1113,6 +1323,97 @@
     "anonymous": false
   },
   {
+    "type": "event",
+    "name": "AppOwnershipTransferred",
+    "inputs": [
+      {
+        "name": "app",
+        "type": "address",
+        "indexed": true,
+        "internalType": "contractIApp"
+      },
+      {
+        "name": "previousOwner",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "newOwner",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "AppUpgradeScheduled",
+    "inputs": [
+      {
+        "name": "app",
+        "type": "address",
+        "indexed": true,
+        "internalType": "contractIApp"
+      },
+      {
+        "name": "readyAt",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "release",
+        "type": "tuple",
+        "indexed": false,
+        "internalType": "structIAppController.Release",
+        "components": [
+          {
+            "name": "rmsRelease",
+            "type": "tuple",
+            "internalType": "structIReleaseManagerTypes.Release",
+            "components": [
+              {
+                "name": "artifacts",
+                "type": "tuple[]",
+                "internalType": "structIReleaseManagerTypes.Artifact[]",
+                "components": [
+                  {
+                    "name": "digest",
+                    "type": "bytes32",
+                    "internalType": "bytes32"
+                  },
+                  {
+                    "name": "registry",
+                    "type": "string",
+                    "internalType": "string"
+                  }
+                ]
+              },
+              {
+                "name": "upgradeByTime",
+                "type": "uint32",
+                "internalType": "uint32"
+              }
+            ]
+          },
+          {
+            "name": "publicEnv",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "encryptedEnv",
+            "type": "bytes",
+            "internalType": "bytes"
+          }
+        ]
+      }
+    ],
+    "anonymous": false
+  },
+  {
     "type": "error",
     "name": "AccountHasActiveApps",
     "inputs": []
@@ -1182,5 +1483,30 @@
         "internalType": "string"
       }
     ]
+  },
+  {
+    "type": "error",
+    "name": "DirectUpgradeNotAllowed",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "GovernanceRequired",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "UpgradeNotReady",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NoScheduledUpgrade",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ReleaseMismatch",
+    "inputs": []
   }
 ]
