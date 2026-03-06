@@ -734,11 +734,11 @@ export async function prepareUpgradeBatch(
     needsPermissionChange,
   } = options;
 
-  // 0. Check governance — governed apps cannot use direct upgradeApp()
-  const governed = await getAppGoverned(publicClient, environmentConfig, appID);
-  if (governed) {
+  // 0. Check timelocked — timelocked apps cannot use direct upgradeApp()
+  const timelocked = await getAppTimelocked(publicClient, environmentConfig, appID);
+  if (timelocked) {
     throw new Error(
-      "this app is governed — use 'ecloud compute app upgrade schedule' and 'ecloud compute app upgrade execute' instead of a direct upgrade",
+      "this app is timelocked — use 'ecloud compute app upgrade schedule' and 'ecloud compute app upgrade execute' instead of a direct upgrade",
     );
   }
 
@@ -1005,12 +1005,12 @@ function formatAppControllerError(decoded: {
       return new Error("invalid release metadata URI provided");
     case "InvalidShortString":
       return new Error("invalid short string format");
-    case "DirectUpgradeNotAllowed":
+    case "TimelockRequired":
       return new Error(
-        "this app is governed — use 'ecloud compute app upgrade schedule' and 'ecloud compute app upgrade execute' instead of a direct upgrade",
+        "this app is timelocked — use 'ecloud compute app upgrade schedule' and 'ecloud compute app upgrade execute' instead of a direct upgrade",
       );
-    case "GovernanceRequired":
-      return new Error("this operation requires governance mode — transfer ownership to a Safe or Timelock first");
+    case "NotTimelocked":
+      return new Error("this operation requires a timelocked app — transfer ownership to a Timelock first");
     case "UpgradeNotReady":
       return new Error("the scheduled upgrade delay has not elapsed yet");
     case "NoScheduledUpgrade":
@@ -1212,21 +1212,21 @@ export async function getBlockTimestamps(
 }
 
 /**
- * Get whether an app is in governance mode (requires scheduleUpgrade + executeUpgrade)
+ * Get whether an app is timelocked (requires scheduleUpgrade + executeUpgrade)
  */
-export async function getAppGoverned(
+export async function getAppTimelocked(
   publicClient: PublicClient,
   environmentConfig: EnvironmentConfig,
   appID: Address,
 ): Promise<boolean> {
-  const governed = await publicClient.readContract({
+  const timelocked = await publicClient.readContract({
     address: environmentConfig.appControllerAddress as Address,
     abi: AppControllerABI,
-    functionName: "getAppGoverned",
+    functionName: "getAppTimelocked",
     args: [appID],
   });
 
-  return governed as boolean;
+  return timelocked as boolean;
 }
 
 /**

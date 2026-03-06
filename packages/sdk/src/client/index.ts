@@ -100,7 +100,7 @@ export {
   getBlockTimestamps,
   estimateTransactionGas,
   formatETH,
-  getAppGoverned,
+  getAppTimelocked,
   getPendingAppUpgrade,
   transferAppOwnership,
   scheduleAppUpgrade,

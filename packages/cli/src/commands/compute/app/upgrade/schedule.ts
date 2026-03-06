@@ -37,7 +37,7 @@ function parseDurationToSeconds(input: string): bigint {
 }
 
 export default class AppUpgradeSchedule extends Command {
-  static description = "Schedule a governed upgrade (Safe/Timelock multi-sig flow). The upgrade becomes executable after the specified delay.";
+  static description = "Schedule an upgrade for a timelocked app. The upgrade becomes executable after the specified delay.";
 
   static args = {
     "app-id": Args.string({
@@ -115,11 +115,11 @@ export default class AppUpgradeSchedule extends Command {
         action: "schedule upgrade",
       });
 
-      // Verify governance mode
-      const governed = await compute.app.isGoverned(appID);
-      if (!governed) {
+      // Verify timelocked mode
+      const timelocked = await compute.app.isTimelocked(appID);
+      if (!timelocked) {
         this.error(
-          "This app is not in governance mode. Use 'ecloud compute app upgrade' for direct upgrades, or transfer ownership to a Safe/Timelock first.",
+          "This app is not timelocked. Use 'ecloud compute app upgrade' for direct upgrades, or transfer ownership to a Timelock first.",
         );
       }
 
