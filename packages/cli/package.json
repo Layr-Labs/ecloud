@@ -68,6 +68,9 @@
       "compute:build": {
         "description": "Verifiable builds (build from git source + provenance verification)"
       },
+      "compute:team": {
+        "description": "Manage team roles (ADMIN, PAUSER, DEVELOPER)"
+      },
       "compute:env": {
         "hidden": true,
         "description": "Manage deployment environment [alias: env]"
