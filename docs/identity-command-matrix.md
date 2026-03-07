@@ -10,6 +10,50 @@ Behaviour of each CLI command per identity type.
 - **PAUSER** — EOA (or Safe) granted PAUSER role by an ADMIN; can stop apps only
 - **DEVELOPER** — EOA granted DEVELOPER role by an ADMIN; read-only + metadata ops
 
+## Identity migration
+
+How accounts can be created and upgraded to stronger security models.
+
+```
+                    ecloud auth new → Safe
+                   ┌─────────────────────────────────────────┐
+                   │                                         │
+                   ▼                                         │
+  ecloud auth new → EOA                                    Safe
+         │                                                   │
+         │  ecloud auth new                                  │  ecloud auth new
+         │  → Timelock (EOA proposer)                        │  → Timelock (Safe proposer)
+         │                                                   │    OR
+         ▼                                                   │  ecloud auth new → Safe
+  Timelock(EOA)                                              │  → "Add timelock delay?" → yes
+                                                             ▼
+                                                      Timelock(Safe)
+```
+
+**App ownership migration** — once you have a Timelock identity, transfer the app:
+
+```
+  App owned by EOA
+        │
+        │  ecloud compute app ownership transfer --to=<safe-addr>
+        ▼
+  App owned by Safe  ──────────────────────────────────────────────────────────────────┐
+        │                                                                              │
+        │  ecloud compute app ownership transfer --to=<timelock-addr>                  │ upgrades now require
+        ▼                                                                              │ Safe propose
+  App owned by Timelock(Safe)  ─────── upgrades now require schedule + execute + Safe propose
+```
+
+**Upgrade behaviour changes with each step:**
+
+| App owner | Upgrade command | Flow |
+|---|---|---|
+| EOA | `ecloud compute app upgrade` | direct |
+| Safe | `ecloud compute app upgrade` | Safe propose → approved |
+| Timelock(Safe) | `ecloud compute app upgrade schedule` + `execute` | Safe propose → delay → Safe propose |
+
+---
+
 **Legend:**
 - `direct` — CLI signs and submits immediately, no extra steps
 - `Safe propose` — CLI proposes tx to Safe; threshold of signers must approve at app.safe.global
@@ -130,6 +174,35 @@ ecloud compute app upgrade execute <app-id>            → Safe propose → appr
 ecloud compute team grant <addr>                       → Safe propose → approved → done
 ecloud compute app stop                                → Safe propose → approved → done
 ```
+
+### Safe → Timelock(Safe) transition (adding upgrade delay)
+```
+# 1. Start as Safe, deploy the app
+ecloud auth login                              → select 3/5 Safe
+ecloud compute app deploy --image-ref myrepo/myapp:v1
+                                               → Safe propose → approved → done
+
+# 2. Transfer ownership to a Timelock (adds upgrade delay on top of Safe)
+ecloud compute app ownership transfer --to=<timelock-addr>
+                                               → Safe propose → approved → done
+                                               → Timelocked mode enabled
+
+# 3. Switch identity to the Timelock
+ecloud auth login                              → select Timelock (24h delay) via 2/3 Safe
+
+# 4. Direct upgrade is now blocked
+ecloud compute app upgrade                     → ❌ TimelockRequired
+                                               →   use: ecloud compute app upgrade schedule <app-id> --after=<delay>
+                                               →         ecloud compute app upgrade execute  <app-id>
+
+# 5. Use the two-step timelocked flow
+ecloud compute app upgrade schedule <app-id> --after=24h
+                                               → Safe propose → approved → scheduled
+# wait for delay (or: ecloud demo fastforward)
+ecloud compute app upgrade execute <app-id>    → Safe propose → approved → done
+```
+
+---
 
 ### PAUSER role (granted by Safe)
 ```
