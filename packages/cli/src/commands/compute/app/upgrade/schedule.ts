@@ -141,6 +141,6 @@ export default class AppUpgradeSchedule extends Command {
 
     this.log(`\n✅ ${chalk.green(`Upgrade scheduled (tx: ${DEMO_TX})`)}`);
     this.log(chalk.cyan(`\nExecutable after: ${chalk.bold(readyDate)}`));
-    this.log(chalk.cyan(`Run to execute:   ecloud compute app upgrade execute ${appID} --image-ref=${imageRef}`));
+    this.log(chalk.cyan(`Run to execute:   ecloud compute app upgrade execute ${appID}`));
   }
 }

@@ -115,7 +115,6 @@ export default class AppUpgradeExecute extends Command {
 
     // 4. Happy path
     this.log(chalk.cyan("\nScheduled upgrade is ready. Proceeding with execution..."));
-    this.log(chalk.yellow("Note: build inputs must exactly match what was used in 'upgrade schedule'."));
 
     this.log(chalk.gray("\nRebuilding image for verification..."));
     await demoDelay(700);
