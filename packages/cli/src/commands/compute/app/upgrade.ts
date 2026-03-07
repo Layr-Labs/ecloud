@@ -170,7 +170,12 @@ export default class AppUpgrade extends Command {
           this.log(
             `${chalk.gray("View and sign at:")} ${chalk.blue.underline(`https://app.safe.global/transactions/queue?safe=eth:${safeAddr}`)}`,
           );
+          this.log(chalk.gray("\n(Simulating Safe approval...)"));
+          await demoDelay(1200);
           setDemoState({ ...demoState, app: { ...demoApp, image: imageRef, lastUpgradeAt: Math.floor(Date.now() / 1000) } });
+          this.log(`\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${demoApp.appId}, image: ${imageRef})`)}`)}`);
+          this.log(`\n${chalk.gray("tx:")} ${chalk.gray(demoTx)}`);
+          this.log(`\n${chalk.gray("View your app:")} ${chalk.blue.underline(`https://app.eigencloud.xyz/apps/${demoApp.appId}`)}`);
           return;
         }
 
