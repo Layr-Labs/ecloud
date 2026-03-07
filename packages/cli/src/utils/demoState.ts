@@ -115,8 +115,7 @@ export function formatIdentity(id: DemoIdentity): string {
 // Demo team members shown in app info / team list
 export const DEMO_TEAM = {
   ADMIN: [
-    DEMO_IDENTITIES[1], // Timelock
-    { address: "0xDEADBEEFDEADBEEFDEADBEEFDEADBEEFDEADBEEF", type: "eoa" as IdentityType, label: "EOA" },
+    DEMO_IDENTITIES[1], // Timelock(Safe)
   ],
   PAUSER: [
     { address: "0x5678567856785678567856785678567856785678", type: "safe" as IdentityType, label: "2/3 Safe, no delay" },
