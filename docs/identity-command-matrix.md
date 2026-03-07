@@ -128,6 +128,7 @@ Only available when identity is `Timelock(EOA)` or `Timelock(Safe)`. Blocked for
 | `ecloud compute team list` | — | — | ✅ shows roles | ✅ shows roles | — | — |
 
 > Team roles (ADMIN, PAUSER, DEVELOPER) are only shown in `ecloud compute app info` and `ecloud compute team list` when the app owner is a Safe or Timelock(Safe).
+> ADMIN is the Safe or Timelock address — never an individual EOA in a Safe-governed app.
 
 ---
 
