@@ -74,6 +74,10 @@
       "compute:env": {
         "hidden": true,
         "description": "Manage deployment environment [alias: env]"
+      },
+      "demo": {
+        "hidden": true,
+        "description": "Demo helpers (not for production use)"
       }
     }
   },

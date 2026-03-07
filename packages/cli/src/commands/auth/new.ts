@@ -1,6 +1,6 @@
 // [DEMO STUB] Real implementation: taras/gov branch. Set ECLOUD_REAL_MODE=true to bypass.
 /**
- * Auth Generate / New Command
+ * Auth New Command
  *
  * Create a new identity: EOA, Gnosis Safe, or Timelock.
  */
@@ -13,10 +13,10 @@ import { withTelemetry } from "../../telemetry";
 import { setDemoState } from "../../utils/demoState";
 import chalk from "chalk";
 
-export default class AuthGenerate extends Command {
+export default class AuthNew extends Command {
   static description = "Create a new identity: EOA, Gnosis Safe, or Timelock";
 
-  static aliases = ["auth:gen", "auth:new"];
+  static aliases = ["auth:generate", "auth:gen"];
 
   static examples = [
     "<%= config.bin %> <%= command.id %>",
@@ -32,7 +32,7 @@ export default class AuthGenerate extends Command {
 
   async run(): Promise<void> {
     return withTelemetry(this, async () => {
-      const { flags } = await this.parse(AuthGenerate);
+      const { flags } = await this.parse(AuthNew);
 
       if (process.env.ECLOUD_REAL_MODE !== "true") {
         await demoNew(this.log.bind(this));

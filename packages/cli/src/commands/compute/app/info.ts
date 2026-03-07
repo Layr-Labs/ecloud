@@ -220,34 +220,40 @@ export default class AppInfo extends Command {
 }
 
 async function demoInfo(appIdArg: string | undefined, log: (msg: string) => void): Promise<void> {
-  const { getDemoState, DEMO_TEAM, formatIdentity } = await import("../../../utils/demoState");
-  const { identity } = getDemoState();
+  const { getDemoState, DEMO_TEAM, isTimelockOverSafe } = await import("../../../utils/demoState");
+  const { identity, app } = getDemoState();
 
-  const appId = appIdArg || "0xA1B2C3D4E5F6000000000000000000000000abcd";
+  if (!app) {
+    log(chalk.yellow("\nNo app deployed yet. Run 'ecloud compute app deploy' first."));
+    log("");
+    return;
+  }
+
+  const appId = appIdArg || app.appId;
   const appShort = appId.slice(0, 6) + "..." + appId.slice(-4);
 
-  // Owner is whoever is logged in, or fall back to demo timelock
-  const owner = identity || {
-    address: "0xABCDEF0123456789ABCDEF0123456789ABCDEF01",
-    type: "timelock" as const,
-    label: "Timelock, 24h delay",
-    detail: "via 2/3 Safe",
-  };
-  const ownerShort = owner.address.slice(0, 6) + "..." + owner.address.slice(-4);
-  const ownerDisplay =
-    owner.type === "timelock"
-      ? `${ownerShort} (${owner.label}${owner.detail ? ", " + owner.detail : ""})`
-      : `${ownerShort} (${owner.label})`;
+  const owner = identity;
+  const ownerDisplay = owner
+    ? owner.type === "timelock"
+      ? `${owner.address.slice(0, 6)}...${owner.address.slice(-4)} (${owner.label}${owner.detail ? ", " + owner.detail : ""})`
+      : `${owner.address.slice(0, 6)}...${owner.address.slice(-4)} (${owner.label})`
+    : chalk.gray("(unknown)");
+
+  const statusColor = app.status === "STARTED" ? chalk.green : app.status === "STOPPED" ? chalk.yellow : chalk.red;
+  const upgradeTime = app.lastUpgradeAt
+    ? new Date(app.lastUpgradeAt * 1000).toLocaleString()
+    : new Date(app.deployedAt * 1000).toLocaleString();
 
   log("");
-  log(`App: ${chalk.cyan.bold("my-app")}  ${chalk.gray(`(${appShort})`)}`);
+  log(`App: ${chalk.cyan.bold(app.name)}  ${chalk.gray(`(${appShort})`)}`);
   log(`  Owner:          ${chalk.bold(ownerDisplay)}`);
-  log(`  Status:         ${chalk.green("STARTED")}`);
-  log(`  Image:          myrepo/myapp:v2`);
-  log(`  Last upgrade:   ${new Date(Date.now() - 3 * 3600 * 1000).toLocaleString()}`);
-  log(`  Instance type:  g1-standard-4t`);
-  log(`  IP Address:     34.120.45.67`);
-  if (owner.type !== "eoa") {
+  log(`  Status:         ${statusColor(app.status)}`);
+  log(`  Image:          ${app.image}`);
+  log(`  Last upgrade:   ${upgradeTime}`);
+  log(`  Instance type:  ${app.instanceType}`);
+  log(`  IP Address:     ${app.ipAddress}`);
+
+  if (owner && (owner.type === "safe" || isTimelockOverSafe(owner))) {
     log("");
     log("  Team Roles:");
 

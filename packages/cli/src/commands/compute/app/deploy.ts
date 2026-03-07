@@ -36,7 +36,7 @@ import {
 } from "../../../utils/dockerhub";
 import { isTlsEnabledFromEnvFile } from "../../../utils/tls";
 import type { SubmitBuildRequest } from "@layr-labs/ecloud-sdk";
-import { getDemoState, isTimelockOverSafe, getSafeAddress } from "../../../utils/demoState";
+import { getDemoState, setDemoState, isTimelockOverSafe, getSafeAddress, type DemoApp } from "../../../utils/demoState";
 
 export default class AppDeploy extends Command {
   static description = "Deploy new app";
@@ -143,10 +143,16 @@ export default class AppDeploy extends Command {
     // [DEMO STUB] Identity-aware demo path — bypassed when ECLOUD_REAL_MODE=true
     if (process.env.ECLOUD_REAL_MODE !== "true") {
       const { flags } = await this.parse(AppDeploy);
+      const { input } = await import("@inquirer/prompts");
       const imageRef = flags["image-ref"] || flags.dockerfile || "myrepo/myapp:latest";
+      const instanceType = flags["instance-type"] || "g1-standard-4t";
+
+      // Derive a default app name from the image ref
+      const defaultName = imageRef.split("/").pop()?.split(":")[0] || "my-app";
+      const appName = flags.name || await input({ message: "App name:", default: defaultName });
+
       const appID = "0xA1B2C3D4E5F6000000000000000000000000abcd";
       const DEMO_TX = "0x2b3c4d5e6f7890abcdef01234567890abcdef01234567890abcdef012345678a";
-
       const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
       this.log(chalk.gray("\nBuilding image..."));
@@ -156,7 +162,8 @@ export default class AppDeploy extends Command {
       this.log(chalk.gray("  ✓ Environment variables encrypted"));
       await delay(300);
 
-      const { identity } = getDemoState();
+      const state = getDemoState();
+      const { identity } = state;
 
       if (identity?.type === "safe" || (identity && isTimelockOverSafe(identity))) {
         const safeAddr = getSafeAddress(identity)!;
@@ -167,6 +174,17 @@ export default class AppDeploy extends Command {
         this.log(chalk.gray("\n(Simulating Safe approval...)"));
         await delay(1200);
       }
+
+      const app: DemoApp = {
+        appId: appID,
+        name: appName,
+        image: imageRef,
+        status: "STARTED",
+        instanceType,
+        ipAddress: "34.120.45.67",
+        deployedAt: Math.floor(Date.now() / 1000),
+      };
+      setDemoState({ ...state, app });
 
       this.log(
         `\n✅ ${chalk.green(`App deployed successfully ${chalk.bold(`(id: ${appID}, image: ${imageRef})`)}` )}`,

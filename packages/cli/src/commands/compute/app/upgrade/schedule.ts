@@ -84,12 +84,20 @@ export default class AppUpgradeSchedule extends Command {
       this.error(e.message);
     }
 
-    const appID = args["app-id"] || "0xA1B2C3D4E5F6000000000000000000000000abcd";
-    const imageRef = flags["image-ref"] || flags.dockerfile || "myrepo/myapp:latest";
-
     // Check identity from state
     const state = getDemoState();
-    const { identity } = state;
+    const { identity, app: demoApp } = state;
+
+    const appID = args["app-id"] || demoApp?.appId || "0xA1B2C3D4E5F6000000000000000000000000abcd";
+    const imageRef = flags["image-ref"] || flags.dockerfile || demoApp?.image || "myrepo/myapp:latest";
+
+    if (!demoApp) {
+      this.error("No app deployed yet. Run 'ecloud compute app deploy' first.");
+    }
+    if (demoApp.status === "TERMINATED") {
+      this.error(`App ${demoApp.appId} is terminated and cannot be upgraded.`);
+    }
+
     if (!identity || identity.type !== "timelock") {
       const hint = !identity
         ? "Run 'ecloud auth login' first and select a Timelock identity."
@@ -133,6 +141,6 @@ export default class AppUpgradeSchedule extends Command {
 
     this.log(`\n✅ ${chalk.green(`Upgrade scheduled (tx: ${DEMO_TX})`)}`);
     this.log(chalk.cyan(`\nExecutable after: ${chalk.bold(readyDate)}`));
-    this.log(chalk.cyan(`Run to execute:   ecloud compute app upgrade execute --app=${appID} --image-ref=${imageRef}`));
+    this.log(chalk.cyan(`Run to execute:   ecloud compute app upgrade execute ${appID} --image-ref=${imageRef}`));
   }
 }

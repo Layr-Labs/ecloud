@@ -32,7 +32,8 @@ export default class AppOwnershipTransfer extends Command {
   async run() {
     const { args, flags } = await this.parse(AppOwnershipTransfer);
 
-    const appId = args["app-id"] || "0xA1B2C3D4E5F6000000000000000000000000abcd";
+    const { getDemoState } = await import("../../../../utils/demoState");
+    const appId = args["app-id"] || getDemoState().app?.appId || "0xA1B2C3D4E5F6000000000000000000000000abcd";
     const newOwner = flags.to;
 
     this.log(`\nApp:       ${chalk.bold(appId)}`);
@@ -52,8 +53,8 @@ export default class AppOwnershipTransfer extends Command {
     const suppressTimelock = process.env.ECLOUD_DEMO_NO_TIMELOCK === "true";
     if (!suppressTimelock) {
       this.log(chalk.cyan("\nTimelocked mode enabled. Upgrades now require:"));
-      this.log(chalk.cyan(`  ecloud compute app upgrade schedule --app=${appId} --after=<duration>`));
-      this.log(chalk.cyan(`  ecloud compute app upgrade execute  --app=${appId}`));
+      this.log(chalk.cyan(`  ecloud compute app upgrade schedule ${appId} --after=<duration>`));
+      this.log(chalk.cyan(`  ecloud compute app upgrade execute  ${appId}`));
     }
   }
 }

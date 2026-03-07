@@ -33,6 +33,15 @@ export default class AppLifecycleTerminate extends Command {
   };
 
   async run() {
+    if (process.env.ECLOUD_REAL_MODE !== "true") {
+      const { getDemoState, setDemoState } = await import("../../../utils/demoState");
+      const state = getDemoState();
+      if (!state.app) { this.error("No app deployed yet. Run 'ecloud compute app deploy' first."); }
+      await new Promise((r) => setTimeout(r, 800));
+      setDemoState({ ...state, app: { ...state.app!, status: "TERMINATED" } });
+      this.log(`\n✅ ${chalk.green(`App terminated (id: ${state.app.appId})`)}`);
+      return;
+    }
     return withTelemetry(this, async () => {
       const { args, flags } = await this.parse(AppLifecycleTerminate);
       const compute = await createComputeClient(flags);

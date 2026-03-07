@@ -7,7 +7,7 @@
 import { Command, Args, Flags } from "@oclif/core";
 import { commonFlags } from "../../../../flags";
 import chalk from "chalk";
-import { getDemoState, setDemoState } from "../../../../utils/demoState";
+import { getDemoState, setDemoState, isTimelockOverSafe, getSafeAddress } from "../../../../utils/demoState";
 
 const DEMO_TX = "0x9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d9c8b7a6f5e4d3c2b1a0f9e8";
 const DEMO_DIGEST = "sha256:6da6226e847082ed23ac90bd65ff4710171006249ad4e0a12d2ab19be4210dae";
@@ -70,7 +70,12 @@ export default class AppUpgradeExecute extends Command {
 
     // 1. Check identity
     const state = getDemoState();
-    const { identity, pendingSchedule } = state;
+    const { identity, pendingSchedule, app: demoApp } = state;
+
+    if (!demoApp) {
+      this.error("No app deployed yet. Run 'ecloud compute app deploy' first.");
+    }
+
     if (!identity || identity.type !== "timelock") {
       const hint = !identity
         ? "Run 'ecloud auth login' first and select a Timelock identity."
@@ -90,13 +95,13 @@ export default class AppUpgradeExecute extends Command {
     const appID = args["app-id"] || pendingSchedule.appId;
     const imageRef = flags["image-ref"] || flags.dockerfile || pendingSchedule.imageRef;
 
-    // 3. Error scenario overrides
-    if (scenario === "not-ready") {
-      const remaining = pendingSchedule.readyAt - Math.floor(Date.now() / 1000);
+    // 3. Real clock check — show "not ready" if delay hasn't elapsed
+    const now = Math.floor(Date.now() / 1000);
+    if (scenario === "not-ready" || now < pendingSchedule.readyAt) {
+      const remaining = pendingSchedule.readyAt - now;
       const readyDate = new Date(pendingSchedule.readyAt * 1000).toLocaleString();
-      const secs = remaining > 0 ? remaining : 6847;
       this.error(
-        `Upgrade is not ready yet. Executable after ${chalk.bold(readyDate)} (${secs}s remaining).`,
+        `Upgrade is not ready yet. Executable after ${chalk.bold(readyDate)} (${remaining}s remaining).`,
       );
     }
 
@@ -117,11 +122,22 @@ export default class AppUpgradeExecute extends Command {
     this.log(chalk.gray(`  ✓ Image verified: ${imageRef}@${DEMO_DIGEST.slice(0, 23)}...`));
     await demoDelay(300);
     this.log(chalk.gray("  ✓ Release hash matched"));
+    await demoDelay(600);
 
-    await demoDelay(900);
+    // 5. Timelock(Safe): each step needs Safe approval
+    if (isTimelockOverSafe(identity)) {
+      const safeAddr = getSafeAddress(identity)!;
+      this.log(chalk.cyan(`\nTransaction proposed to Safe for execution. (${safeAddr.slice(0, 6)}...${safeAddr.slice(-4)})`));
+      this.log(
+        `${chalk.gray("View and sign at:")} ${chalk.blue.underline(`https://app.safe.global/transactions/queue?safe=eth:${safeAddr}`)}`,
+      );
+      this.log(chalk.gray("\n(Simulating Safe approval...)"));
+      await demoDelay(1200);
+    }
 
-    // 5. Clear pending schedule from state
-    setDemoState({ ...state, pendingSchedule: undefined });
+    // 6. Clear pending schedule and record new image in state
+    const updatedApp = state.app ? { ...state.app, image: imageRef, lastUpgradeAt: Math.floor(Date.now() / 1000) } : undefined;
+    setDemoState({ ...state, pendingSchedule: undefined, app: updatedApp });
 
     this.log(
       `\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${appID}, image: ${imageRef})`)}` )}`,

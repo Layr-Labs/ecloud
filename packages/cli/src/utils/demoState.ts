@@ -23,9 +23,21 @@ export interface PendingSchedule {
   delayLabel: string; // human-readable delay, e.g. "2h"
 }
 
+export interface DemoApp {
+  appId: string;
+  name: string;
+  image: string;
+  status: "STARTED" | "STOPPED" | "TERMINATED";
+  instanceType: string;
+  ipAddress: string;
+  deployedAt: number; // unix timestamp seconds
+  lastUpgradeAt?: number;
+}
+
 export interface DemoState {
   identity?: DemoIdentity;
   pendingSchedule?: PendingSchedule;
+  app?: DemoApp;
 }
 
 export function getDemoState(): DemoState {
@@ -70,6 +82,18 @@ export const DEMO_IDENTITIES: DemoIdentity[] = [
     label: "3/5 Safe",
   },
 ];
+
+/** Returns true when the logged-in identity is a Timelock wrapping a Safe */
+export function isTimelockOverSafe(id: DemoIdentity): boolean {
+  return id.type === "timelock" && !!id.safeAddress;
+}
+
+/** Safe address for the current identity (Safe login or Timelock-over-Safe) */
+export function getSafeAddress(id: DemoIdentity): string | undefined {
+  if (id.type === "safe") return id.address;
+  if (id.type === "timelock") return id.safeAddress;
+  return undefined;
+}
 
 export function formatIdentity(id: DemoIdentity): string {
   const short = id.address.slice(0, 6) + "..." + id.address.slice(-4);

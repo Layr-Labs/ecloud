@@ -124,23 +124,31 @@ export default class AppUpgrade extends Command {
       // Set ECLOUD_REAL_MODE=true to bypass and run the real implementation.
       // Set ECLOUD_DEMO_SCENARIO=timelocked to show the timelocked error path.
       if (process.env.ECLOUD_REAL_MODE !== "true") {
-        const appID = args["app-id"] || "0xA1B2C3D4E5F6000000000000000000000000abcd";
         const imageRef = flags["image-ref"] || flags.dockerfile || "myrepo/myapp:latest";
         const demoDelay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
         const demoDigest = "sha256:6da6226e847082ed23ac90bd65ff4710171006249ad4e0a12d2ab19be4210dae";
         const demoTx = "0xa1b2c3d4e5f67890abcdef01234567890abcdef01234567890abcdef01234567";
 
         // Determine identity from demo state or env override
-        const { getDemoState } = await import("../../../utils/demoState");
-        const { identity } = getDemoState();
+        const { getDemoState, setDemoState } = await import("../../../utils/demoState");
+        const demoState = getDemoState();
+        const { identity, app: demoApp } = demoState;
+
+        if (!demoApp) {
+          this.error("No app deployed yet. Run 'ecloud compute app deploy' first.");
+        }
+        if (demoApp.status === "TERMINATED") {
+          this.error(`App ${demoApp.appId} is terminated and cannot be upgraded.`);
+        }
+
         const scenario = process.env.ECLOUD_DEMO_SCENARIO || identity?.type || "eoa";
 
         if (scenario === "timelocked" || identity?.type === "timelock") {
           this.error(
-            `App ${appID} is timelocked (Timelock owner).\n` +
+            `App ${demoApp.appId} is timelocked (Timelock owner).\n` +
             `Use the two-step timelocked flow instead:\n` +
-            `  ecloud compute app upgrade schedule --app=${appID} --after=<delay>\n` +
-            `  ecloud compute app upgrade execute  --app=${appID}`,
+            `  ecloud compute app upgrade schedule ${demoApp.appId} --after=<delay>\n` +
+            `  ecloud compute app upgrade execute  ${demoApp.appId}`,
           );
         }
 
@@ -162,6 +170,7 @@ export default class AppUpgrade extends Command {
           this.log(
             `${chalk.gray("View and sign at:")} ${chalk.blue.underline(`https://app.safe.global/transactions/queue?safe=eth:${safeAddr}`)}`,
           );
+          setDemoState({ ...demoState, app: { ...demoApp, image: imageRef, lastUpgradeAt: Math.floor(Date.now() / 1000) } });
           return;
         }
 
@@ -175,9 +184,10 @@ export default class AppUpgrade extends Command {
         this.log(chalk.gray("  ✓ Release artifact prepared"));
         await demoDelay(800);
 
-        this.log(`\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${appID}, image: ${imageRef})`)}`)}`);
+        setDemoState({ ...demoState, app: { ...demoApp, image: imageRef, lastUpgradeAt: Math.floor(Date.now() / 1000) } });
+        this.log(`\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${demoApp.appId}, image: ${imageRef})`)}`)}`);
         this.log(`\n${chalk.gray("tx:")} ${chalk.gray(demoTx)}`);
-        this.log(`\n${chalk.gray("View your app:")} ${chalk.blue.underline(`https://app.eigencloud.xyz/apps/${appID}`)}`);
+        this.log(`\n${chalk.gray("View your app:")} ${chalk.blue.underline(`https://app.eigencloud.xyz/apps/${demoApp.appId}`)}`);
         return;
       }
 
