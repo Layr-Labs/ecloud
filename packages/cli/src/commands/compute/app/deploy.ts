@@ -36,6 +36,7 @@ import {
 } from "../../../utils/dockerhub";
 import { isTlsEnabledFromEnvFile } from "../../../utils/tls";
 import type { SubmitBuildRequest } from "@layr-labs/ecloud-sdk";
+import { getDemoState, isTimelockOverSafe, getSafeAddress } from "../../../utils/demoState";
 
 export default class AppDeploy extends Command {
   static description = "Deploy new app";
@@ -139,6 +140,44 @@ export default class AppDeploy extends Command {
   };
 
   async run() {
+    // [DEMO STUB] Identity-aware demo path — bypassed when ECLOUD_REAL_MODE=true
+    if (process.env.ECLOUD_REAL_MODE !== "true") {
+      const { flags } = await this.parse(AppDeploy);
+      const imageRef = flags["image-ref"] || flags.dockerfile || "myrepo/myapp:latest";
+      const appID = "0xA1B2C3D4E5F6000000000000000000000000abcd";
+      const DEMO_TX = "0x2b3c4d5e6f7890abcdef01234567890abcdef01234567890abcdef012345678a";
+
+      const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+      this.log(chalk.gray("\nBuilding image..."));
+      await delay(800);
+      this.log(chalk.gray(`  ✓ Image pushed: ${imageRef}`));
+      await delay(400);
+      this.log(chalk.gray("  ✓ Environment variables encrypted"));
+      await delay(300);
+
+      const { identity } = getDemoState();
+
+      if (identity?.type === "safe" || (identity && isTimelockOverSafe(identity))) {
+        const safeAddr = getSafeAddress(identity)!;
+        this.log(chalk.cyan(`\nTransaction proposed to Safe. (${safeAddr.slice(0, 6)}...${safeAddr.slice(-4)})`));
+        this.log(
+          `${chalk.gray("View and sign at:")} ${chalk.blue.underline(`https://app.safe.global/transactions/queue?safe=eth:${safeAddr}`)}`,
+        );
+        this.log(chalk.gray("\n(Simulating Safe approval...)"));
+        await delay(1200);
+      }
+
+      this.log(
+        `\n✅ ${chalk.green(`App deployed successfully ${chalk.bold(`(id: ${appID}, image: ${imageRef})`)}` )}`,
+      );
+      this.log(`\n${chalk.gray("tx:")} ${chalk.gray(DEMO_TX)}`);
+      this.log(
+        `\n${chalk.gray("View your app:")} ${chalk.blue.underline(`https://app.eigencloud.xyz/apps/${appID}`)}`,
+      );
+      return;
+    }
+
     return withTelemetry(this, async () => {
       const { flags } = await this.parse(AppDeploy);
       const compute = await createComputeClient(flags);

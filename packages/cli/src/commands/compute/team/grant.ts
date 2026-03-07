@@ -3,6 +3,7 @@ import { Command, Args } from "@oclif/core";
 import { select } from "@inquirer/prompts";
 import { commonFlags } from "../../../flags";
 import chalk from "chalk";
+import { getDemoState, isTimelockOverSafe, getSafeAddress } from "../../../utils/demoState";
 
 const ROLES = [
   {
@@ -47,6 +48,17 @@ export default class TeamGrant extends Command {
     });
 
     await new Promise((r) => setTimeout(r, 600));
+
+    const { identity } = getDemoState();
+    if (identity && (identity.type === "safe" || isTimelockOverSafe(identity))) {
+      const safeAddr = getSafeAddress(identity)!;
+      this.log(chalk.cyan(`\nTransaction proposed to Safe. (${safeAddr.slice(0, 6)}...${safeAddr.slice(-4)})`));
+      this.log(
+        `${chalk.gray("View and sign at:")} ${chalk.blue.underline(`https://app.safe.global/transactions/queue?safe=eth:${safeAddr}`)}`,
+      );
+      this.log(chalk.gray("\n(Simulating Safe approval...)"));
+      await new Promise((r) => setTimeout(r, 1200));
+    }
 
     this.log(`\n${chalk.green("✓")} Role ${chalk.bold(role)} granted to ${chalk.bold(addrShort)}`);
   }

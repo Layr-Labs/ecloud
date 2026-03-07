@@ -3,7 +3,7 @@
 import { Command, Args, Flags } from "@oclif/core";
 import { commonFlags } from "../../../../flags";
 import chalk from "chalk";
-import { getDemoState, setDemoState } from "../../../../utils/demoState";
+import { getDemoState, setDemoState, isTimelockOverSafe, getSafeAddress } from "../../../../utils/demoState";
 
 const DEMO_TX = "0x1a2b3c4d5e6f7890abcdef01234567890abcdef01234567890abcdef01234567";
 const DEMO_DIGEST = "sha256:6da6226e847082ed23ac90bd65ff4710171006249ad4e0a12d2ab19be4210dae";
@@ -116,6 +116,17 @@ export default class AppUpgradeSchedule extends Command {
     this.log(`Image:       ${chalk.bold(imageRef)}`);
 
     await demoDelay(800);
+
+    // Timelock(Safe): the schedule tx must also be approved by the Safe
+    if (isTimelockOverSafe(identity)) {
+      const safeAddr = getSafeAddress(identity)!;
+      this.log(chalk.cyan(`\nTransaction proposed to Safe for scheduling. (${safeAddr.slice(0, 6)}...${safeAddr.slice(-4)})`));
+      this.log(
+        `${chalk.gray("View and sign at:")} ${chalk.blue.underline(`https://app.safe.global/transactions/queue?safe=eth:${safeAddr}`)}`,
+      );
+      this.log(chalk.gray("\n(Simulating Safe approval...)"));
+      await demoDelay(1200);
+    }
 
     // Persist scheduled upgrade so execute can pick it up
     setDemoState({ ...state, pendingSchedule: { appId: appID, imageRef, readyAt, delayLabel: flags.after } });
