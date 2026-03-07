@@ -19,7 +19,7 @@ import {
 } from "@layr-labs/ecloud-sdk";
 import { getHiddenInput, displayWarning } from "../../utils/security";
 import { withTelemetry } from "../../telemetry";
-import { DEMO_IDENTITIES, formatIdentity, setDemoState } from "../../utils/demoState";
+import { DEMO_IDENTITIES, formatIdentity, getDemoState, setDemoState } from "../../utils/demoState";
 import chalk from "chalk";
 
 export default class AuthLogin extends Command {
@@ -209,7 +209,7 @@ async function demoLogin(log: (msg: string) => void): Promise<void> {
   });
 
   const identity = DEMO_IDENTITIES[selected];
-  setDemoState({ identity });
+  setDemoState({ ...getDemoState(), identity });
 
   log(`\n${chalk.green("✓")} Logged in as: ${chalk.bold(formatIdentity(identity))}`);
 }

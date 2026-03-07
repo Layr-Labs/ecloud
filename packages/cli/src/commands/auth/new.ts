@@ -10,7 +10,7 @@ import { confirm, input, select } from "@inquirer/prompts";
 import { generateNewPrivateKey, storePrivateKey, keyExists } from "@layr-labs/ecloud-sdk";
 import { showPrivateKey, displayWarning } from "../../utils/security";
 import { withTelemetry } from "../../telemetry";
-import { setDemoState } from "../../utils/demoState";
+import { getDemoState, setDemoState } from "../../utils/demoState";
 import chalk from "chalk";
 
 export default class AuthNew extends Command {
@@ -145,9 +145,7 @@ async function demoNew(log: (msg: string) => void): Promise<void> {
     log(chalk.gray("Generating new private key..."));
     await demoDelay(600);
     const addr = "0xF00D111122223333444455556666777788889999";
-    setDemoState({
-      identity: { address: addr, type: "eoa", label: "your wallet" },
-    });
+    setDemoState({ ...getDemoState(), identity: { address: addr, type: "eoa", label: "your wallet" } });
     log(`\n${chalk.green("✓")} New EOA: ${chalk.bold(addr)}`);
     log(chalk.green("✓") + " Private key stored in OS keyring.");
     log(chalk.yellow("\nIMPORTANT: Back up your private key — it will not be shown again."));
@@ -186,21 +184,17 @@ async function demoNew(log: (msg: string) => void): Promise<void> {
       await demoDelay(600);
       const timelockAddr = "0xABCDEF0123456789ABCDEF0123456789ABCDEF01";
       log(`${chalk.green("✓")} Timelock deployed: ${chalk.bold(timelockAddr)} (${delay} delay, wraps Safe)`);
-      setDemoState({
-        identity: {
-          address: timelockAddr,
-          type: "timelock",
-          label: `Timelock, ${delay} delay`,
-          detail: `via ${threshold}/${owners.length} Safe`,
-          safeAddress: safeAddr,
-          delay,
-        },
-      });
+      setDemoState({ ...getDemoState(), identity: {
+        address: timelockAddr,
+        type: "timelock",
+        label: `Timelock, ${delay} delay`,
+        detail: `via ${threshold}/${owners.length} Safe`,
+        safeAddress: safeAddr,
+        delay,
+      }});
       log(`\n${chalk.green("✓")} Logged in as: ${chalk.bold(timelockAddr)} (Timelock, ${delay} delay)`);
     } else {
-      setDemoState({
-        identity: { address: safeAddr, type: "safe", label: `${threshold}/${owners.length} Safe` },
-      });
+      setDemoState({ ...getDemoState(), identity: { address: safeAddr, type: "safe", label: `${threshold}/${owners.length} Safe` } });
       log(`\n${chalk.green("✓")} Logged in as: ${chalk.bold(safeAddr)} (${threshold}/${owners.length} Safe)`);
     }
     return;
@@ -231,16 +225,14 @@ async function demoNew(log: (msg: string) => void): Promise<void> {
 
   const timelockAddr = "0xABCDEF0123456789ABCDEF0123456789ABCDEF01";
   const isSafe = proposerKind === "safe";
-  setDemoState({
-    identity: {
-      address: timelockAddr,
-      type: "timelock",
-      label: `Timelock, ${delay} delay`,
-      detail: isSafe ? `via Safe` : undefined,
-      safeAddress: isSafe ? proposer : undefined,
-      delay,
-    },
-  });
+  setDemoState({ ...getDemoState(), identity: {
+    address: timelockAddr,
+    type: "timelock",
+    label: `Timelock, ${delay} delay`,
+    detail: isSafe ? `via Safe` : undefined,
+    safeAddress: isSafe ? proposer : undefined,
+    delay,
+  }});
 
   log(`${chalk.green("✓")} Timelock deployed: ${chalk.bold(timelockAddr)}`);
   log(`\nMinimum delay:      ${chalk.bold(delay)}`);
