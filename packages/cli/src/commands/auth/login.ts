@@ -185,7 +185,6 @@ async function demoLogin(log: (msg: string) => void): Promise<void> {
       name: `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)} (your wallet)`,
       value: 0,
     },
-    { name: "───────────────────────────────────────", value: -1, disabled: true },
     {
       name: `${DEMO_IDENTITIES[1].address.slice(0, 6)}...${DEMO_IDENTITIES[1].address.slice(-4)} (Timelock, 24h delay) via 2/3 Safe`,
       value: 1,
@@ -194,11 +193,19 @@ async function demoLogin(log: (msg: string) => void): Promise<void> {
       name: `${DEMO_IDENTITIES[2].address.slice(0, 6)}...${DEMO_IDENTITIES[2].address.slice(-4)} (3/5 Safe)`,
       value: 2,
     },
+    {
+      name: `${DEMO_IDENTITIES[3].address.slice(0, 6)}...${DEMO_IDENTITIES[3].address.slice(-4)} (PAUSER role)`,
+      value: 3,
+    },
+    {
+      name: `${DEMO_IDENTITIES[4].address.slice(0, 6)}...${DEMO_IDENTITIES[4].address.slice(-4)} (DEVELOPER role)`,
+      value: 4,
+    },
   ];
 
   const selected = await select({
     message: "Select an identity:",
-    choices: choices.filter((c) => c.value !== -1),
+    choices,
   });
 
   const identity = DEMO_IDENTITIES[selected];

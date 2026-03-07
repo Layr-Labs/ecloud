@@ -29,10 +29,18 @@ export default class AppLifecycleStop extends Command {
 
   async run() {
     if (process.env.ECLOUD_REAL_MODE !== "true") {
-      const { getDemoState, setDemoState } = await import("../../../utils/demoState");
+      const { getDemoState, setDemoState, isTimelockOverSafe, getSafeAddress } = await import("../../../utils/demoState");
       const state = getDemoState();
       if (!state.app) { this.error("No app deployed yet. Run 'ecloud compute app deploy' first."); }
       await new Promise((r) => setTimeout(r, 800));
+      const { identity } = state;
+      if (identity && (identity.type === "safe" || isTimelockOverSafe(identity))) {
+        const safeAddr = getSafeAddress(identity)!;
+        this.log(chalk.cyan(`\nTransaction proposed to Safe. (${safeAddr.slice(0, 6)}...${safeAddr.slice(-4)})`));
+        this.log(`${chalk.gray("View and sign at:")} ${chalk.blue.underline(`https://app.safe.global/transactions/queue?safe=eth:${safeAddr}`)}`);
+        this.log(chalk.gray("\n(Simulating Safe approval...)"));
+        await new Promise((r) => setTimeout(r, 1200));
+      }
       setDemoState({ ...state, app: { ...state.app!, status: "STOPPED" } });
       this.log(`\n✅ ${chalk.green(`App stopped (id: ${state.app.appId})`)}`);
       return;

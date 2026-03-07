@@ -32,8 +32,9 @@ export default class AppOwnershipTransfer extends Command {
   async run() {
     const { args, flags } = await this.parse(AppOwnershipTransfer);
 
-    const { getDemoState } = await import("../../../../utils/demoState");
-    const appId = args["app-id"] || getDemoState().app?.appId || "0xA1B2C3D4E5F6000000000000000000000000abcd";
+    const { getDemoState, isTimelockOverSafe, getSafeAddress } = await import("../../../../utils/demoState");
+    const state = getDemoState();
+    const appId = args["app-id"] || state.app?.appId || "0xA1B2C3D4E5F6000000000000000000000000abcd";
     const newOwner = flags.to;
 
     this.log(`\nApp:       ${chalk.bold(appId)}`);
@@ -45,6 +46,15 @@ export default class AppOwnershipTransfer extends Command {
     );
 
     await demoDelay(1200);
+
+    const { identity } = state;
+    if (identity && (identity.type === "safe" || isTimelockOverSafe(identity))) {
+      const safeAddr = getSafeAddress(identity)!;
+      this.log(chalk.cyan(`\nTransaction proposed to Safe. (${safeAddr.slice(0, 6)}...${safeAddr.slice(-4)})`));
+      this.log(`${chalk.gray("View and sign at:")} ${chalk.blue.underline(`https://app.safe.global/transactions/queue?safe=eth:${safeAddr}`)}`);
+      this.log(chalk.gray("\n(Simulating Safe approval...)"));
+      await demoDelay(1200);
+    }
 
     this.log(`\n✅ ${chalk.green(`Ownership transferred successfully (tx: ${DEMO_TX})`)}`);
 

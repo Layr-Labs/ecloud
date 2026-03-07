@@ -81,6 +81,16 @@ export const DEMO_IDENTITIES: DemoIdentity[] = [
     type: "safe",
     label: "3/5 Safe",
   },
+  {
+    address: "0x5678567856785678567856785678567856785678",
+    type: "eoa",
+    label: "PAUSER role",
+  },
+  {
+    address: "0x9999999999999999999999999999999999999999",
+    type: "eoa",
+    label: "DEVELOPER role",
+  },
 ];
 
 /** Returns true when the logged-in identity is a Timelock wrapping a Safe */

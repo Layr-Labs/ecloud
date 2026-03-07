@@ -48,6 +48,17 @@ export default class ProfileSet extends Command {
   };
 
   async run() {
+    if (process.env.ECLOUD_REAL_MODE !== "true") {
+      const { flags } = await this.parse(ProfileSet);
+      const { getDemoState } = await import("../../../../utils/demoState");
+      const state = getDemoState();
+      if (!state.app) { this.error("No app deployed yet. Run 'ecloud compute app deploy' first."); }
+      const name = flags.name || state.app!.name;
+      this.log(`\nUpdating profile for: ${chalk.bold(state.app!.name)}`);
+      await new Promise((r) => setTimeout(r, 800));
+      this.log(`\n✅ ${chalk.green(`Profile updated successfully for app '${name}'`)}`);
+      return;
+    }
     return withTelemetry(this, async () => {
       const { args, flags } = await this.parse(ProfileSet);
       const compute = await createComputeClient(flags);
