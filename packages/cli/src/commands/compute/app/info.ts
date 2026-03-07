@@ -247,22 +247,24 @@ async function demoInfo(appIdArg: string | undefined, log: (msg: string) => void
   log(`  Last upgrade:   ${new Date(Date.now() - 3 * 3600 * 1000).toLocaleString()}`);
   log(`  Instance type:  g1-standard-4t`);
   log(`  IP Address:     34.120.45.67`);
-  log("");
-  log("  Team Roles:");
+  if (owner.type !== "eoa") {
+    log("");
+    log("  Team Roles:");
 
-  const pad = (s: string, n: number) => s + " ".repeat(Math.max(0, n - s.length));
-  const roleLabel = (role: string) => chalk.bold(pad(role + ":", 12));
+    const pad = (s: string, n: number) => s + " ".repeat(Math.max(0, n - s.length));
+    const roleLabel = (role: string) => chalk.bold(pad(role + ":", 12));
 
-  for (const [role, members] of Object.entries(DEMO_TEAM)) {
-    members.forEach((m, i) => {
-      const addr = m.address.slice(0, 6) + "..." + m.address.slice(-4);
-      const desc = `${addr} (${m.label})`;
-      if (i === 0) {
-        log(`    ${roleLabel(role)} ${desc}`);
-      } else {
-        log(`    ${" ".repeat(12)} ${desc}`);
-      }
-    });
+    for (const [role, members] of Object.entries(DEMO_TEAM)) {
+      members.forEach((m, i) => {
+        const addr = m.address.slice(0, 6) + "..." + m.address.slice(-4);
+        const desc = `${addr} (${m.label})`;
+        if (i === 0) {
+          log(`    ${roleLabel(role)} ${desc}`);
+        } else {
+          log(`    ${" ".repeat(12)} ${desc}`);
+        }
+      });
+    }
   }
 
   log("");
