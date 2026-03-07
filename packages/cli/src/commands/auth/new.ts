@@ -207,9 +207,18 @@ async function demoNew(log: (msg: string) => void): Promise<void> {
   }
 
   // Timelock for existing EOA or Safe
+  const proposerKind = await select({
+    message: "Is the proposer/executor an EOA or a Safe?",
+    choices: [
+      { name: "EOA  (single private key)", value: "eoa" },
+      { name: "Gnosis Safe  (multi-sig)", value: "safe" },
+    ],
+  });
   const proposer = await input({
-    message: "Proposer/executor address (your EOA or Safe):",
-    default: "0x1234567890abcdef1234567890abcdef12345678",
+    message: "Proposer/executor address:",
+    default: proposerKind === "safe"
+      ? "0x9999aaaa9999aaaa9999aaaa9999aaaa9999aaaa"
+      : "0x1234567890abcdef1234567890abcdef12345678",
   });
   const delay = await input({
     message: "Minimum delay (e.g., \"24h\", \"7d\"):",
@@ -221,17 +230,20 @@ async function demoNew(log: (msg: string) => void): Promise<void> {
   await demoDelay(1000);
 
   const timelockAddr = "0xABCDEF0123456789ABCDEF0123456789ABCDEF01";
+  const isSafe = proposerKind === "safe";
   setDemoState({
     identity: {
       address: timelockAddr,
       type: "timelock",
       label: `Timelock, ${delay} delay`,
+      detail: isSafe ? `via Safe` : undefined,
+      safeAddress: isSafe ? proposer : undefined,
       delay,
     },
   });
 
   log(`${chalk.green("✓")} Timelock deployed: ${chalk.bold(timelockAddr)}`);
   log(`\nMinimum delay:      ${chalk.bold(delay)}`);
-  log(`Proposer/Executor:  ${chalk.bold(proposer)}`);
-  log(`\n${chalk.green("✓")} Logged in as: ${chalk.bold(timelockAddr)} (Timelock, ${delay} delay)`);
+  log(`Proposer/Executor:  ${chalk.bold(proposer)}${isSafe ? chalk.gray(" (Safe)") : ""}`);
+  log(`\n${chalk.green("✓")} Logged in as: ${chalk.bold(timelockAddr)} (Timelock, ${delay} delay${isSafe ? ", via Safe" : ""})`);
 }
