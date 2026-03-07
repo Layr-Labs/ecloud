@@ -208,10 +208,10 @@ ecloud compute app upgrade execute <app-id>    → Safe propose → approved →
 ### PAUSER role (granted by Safe)
 ```
 # Admin grants PAUSER role to 0x5678...
-ecloud compute team grant 0x5678... → Safe propose → approved → done
+ecloud compute team grant 0x5678567856785678567856785678567856785678 → Safe propose → approved → done
 
 # PAUSER acts directly, no Safe needed
-ecloud auth login                   → select PAUSER identity (0x5678...)
+ecloud auth login                   → select PAUSER identity (0x5678...5678)
 ecloud compute app stop             → direct
 ```
 

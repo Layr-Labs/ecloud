@@ -118,7 +118,7 @@ export const DEMO_TEAM = {
     DEMO_IDENTITIES[1], // Timelock(Safe)
   ],
   PAUSER: [
-    { address: "0x5678567856785678567856785678567856785678", type: "safe" as IdentityType, label: "2/3 Safe, no delay" },
+    DEMO_IDENTITIES[3], // EOA with PAUSER role
   ],
   DEVELOPER: [
     { address: "0x9999999999999999999999999999999999999999", type: "eoa" as IdentityType, label: "EOA" },
