@@ -16,8 +16,16 @@ export interface DemoIdentity {
   delay?: string; // for timelocks
 }
 
+export interface PendingSchedule {
+  appId: string;
+  imageRef: string;
+  readyAt: number; // unix timestamp seconds
+  delayLabel: string; // human-readable delay, e.g. "2h"
+}
+
 export interface DemoState {
   identity?: DemoIdentity;
+  pendingSchedule?: PendingSchedule;
 }
 
 export function getDemoState(): DemoState {

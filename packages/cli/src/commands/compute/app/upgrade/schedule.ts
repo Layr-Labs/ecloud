@@ -3,6 +3,7 @@
 import { Command, Args, Flags } from "@oclif/core";
 import { commonFlags } from "../../../../flags";
 import chalk from "chalk";
+import { getDemoState, setDemoState } from "../../../../utils/demoState";
 
 const DEMO_TX = "0x1a2b3c4d5e6f7890abcdef01234567890abcdef01234567890abcdef01234567";
 const DEMO_DIGEST = "sha256:6da6226e847082ed23ac90bd65ff4710171006249ad4e0a12d2ab19be4210dae";
@@ -86,6 +87,18 @@ export default class AppUpgradeSchedule extends Command {
     const appID = args["app-id"] || "0xA1B2C3D4E5F6000000000000000000000000abcd";
     const imageRef = flags["image-ref"] || flags.dockerfile || "myrepo/myapp:latest";
 
+    // Check identity from state
+    const state = getDemoState();
+    const { identity } = state;
+    if (!identity || identity.type !== "timelock") {
+      const hint = !identity
+        ? "Run 'ecloud auth login' first and select a Timelock identity."
+        : identity.type === "safe"
+          ? "You are logged in as a Safe — use 'ecloud compute app upgrade' for direct upgrades."
+          : "You are logged in as an EOA — use 'ecloud compute app upgrade' for direct upgrades.";
+      this.error(`This app is not timelocked. ${hint}`);
+    }
+
     // Simulate build pipeline
     this.log(chalk.gray("\nBuilding image..."));
     await demoDelay(800);
@@ -104,8 +117,11 @@ export default class AppUpgradeSchedule extends Command {
 
     await demoDelay(800);
 
+    // Persist scheduled upgrade so execute can pick it up
+    setDemoState({ ...state, pendingSchedule: { appId: appID, imageRef, readyAt, delayLabel: flags.after } });
+
     this.log(`\n✅ ${chalk.green(`Upgrade scheduled (tx: ${DEMO_TX})`)}`);
     this.log(chalk.cyan(`\nExecutable after: ${chalk.bold(readyDate)}`));
-    this.log(chalk.cyan(`Run to execute:   ecloud compute app upgrade execute --app=${appID}`));
+    this.log(chalk.cyan(`Run to execute:   ecloud compute app upgrade execute --app=${appID} --image-ref=${imageRef}`));
   }
 }

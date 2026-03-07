@@ -1,18 +1,16 @@
 // [DEMO STUB] Network and build calls replaced with simulated output for UX review.
 // Real implementation: taras/gov branch.
 //
-// Demo scenarios (set via env var ECLOUD_DEMO_SCENARIO):
-//   (default)   — upgrade is ready, executes successfully
+// Error scenario overrides (ECLOUD_DEMO_SCENARIO):
 //   not-ready   — delay hasn't elapsed yet
-//   no-schedule — no pending upgrade exists
-//   mismatch    — release hash doesn't match what was scheduled
+//   mismatch    — release hash doesn't match
 import { Command, Args, Flags } from "@oclif/core";
 import { commonFlags } from "../../../../flags";
 import chalk from "chalk";
+import { getDemoState, setDemoState } from "../../../../utils/demoState";
 
 const DEMO_TX = "0x9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d9c8b7a6f5e4d3c2b1a0f9e8";
 const DEMO_DIGEST = "sha256:6da6226e847082ed23ac90bd65ff4710171006249ad4e0a12d2ab19be4210dae";
-const DEMO_READY_IN = 6847; // seconds remaining for the not-ready scenario
 
 function demoDelay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -68,22 +66,37 @@ export default class AppUpgradeExecute extends Command {
 
   async run() {
     const { args, flags } = await this.parse(AppUpgradeExecute);
+    const scenario = process.env.ECLOUD_DEMO_SCENARIO;
 
-    const appID = args["app-id"] || "0xA1B2C3D4E5F6000000000000000000000000abcd";
-    const imageRef = flags["image-ref"] || flags.dockerfile || "myrepo/myapp:latest";
-    const scenario = process.env.ECLOUD_DEMO_SCENARIO || "ready";
+    // 1. Check identity
+    const state = getDemoState();
+    const { identity, pendingSchedule } = state;
+    if (!identity || identity.type !== "timelock") {
+      const hint = !identity
+        ? "Run 'ecloud auth login' first and select a Timelock identity."
+        : identity.type === "safe"
+          ? "You are logged in as a Safe — use 'ecloud compute app upgrade' for direct upgrades."
+          : "You are logged in as an EOA — use 'ecloud compute app upgrade' for direct upgrades.";
+      this.error(`This app is not timelocked. ${hint}`);
+    }
 
-    // Error scenarios
-    if (scenario === "no-schedule") {
+    // 2. Check pending schedule
+    if (!pendingSchedule) {
       this.error(
         "No upgrade is scheduled for this app. Run 'ecloud compute app upgrade schedule' first.",
       );
     }
 
+    const appID = args["app-id"] || pendingSchedule.appId;
+    const imageRef = flags["image-ref"] || flags.dockerfile || pendingSchedule.imageRef;
+
+    // 3. Error scenario overrides
     if (scenario === "not-ready") {
-      const readyDate = new Date(Date.now() + DEMO_READY_IN * 1000).toLocaleString();
+      const remaining = pendingSchedule.readyAt - Math.floor(Date.now() / 1000);
+      const readyDate = new Date(pendingSchedule.readyAt * 1000).toLocaleString();
+      const secs = remaining > 0 ? remaining : 6847;
       this.error(
-        `Upgrade is not ready yet. Executable after ${chalk.bold(readyDate)} (${DEMO_READY_IN}s remaining).`,
+        `Upgrade is not ready yet. Executable after ${chalk.bold(readyDate)} (${secs}s remaining).`,
       );
     }
 
@@ -95,7 +108,7 @@ export default class AppUpgradeExecute extends Command {
       );
     }
 
-    // Happy path
+    // 4. Happy path
     this.log(chalk.cyan("\nScheduled upgrade is ready. Proceeding with execution..."));
     this.log(chalk.yellow("Note: build inputs must exactly match what was used in 'upgrade schedule'."));
 
@@ -107,9 +120,13 @@ export default class AppUpgradeExecute extends Command {
 
     await demoDelay(900);
 
+    // 5. Clear pending schedule from state
+    setDemoState({ ...state, pendingSchedule: undefined });
+
     this.log(
-      `\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${appID}, image: ${imageRef})`)}`)}`,
+      `\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${appID}, image: ${imageRef})`)}` )}`,
     );
+    this.log(`\n${chalk.gray("tx:")} ${chalk.gray(DEMO_TX)}`);
     this.log(
       `\n${chalk.gray("View your app:")} ${chalk.blue.underline(`https://app.eigencloud.xyz/apps/${appID}`)}`,
     );
