@@ -232,7 +232,7 @@ async function demoInfo(appIdArg: string | undefined, log: (msg: string) => void
   const appId = appIdArg || app.appId;
   const appShort = appId.slice(0, 6) + "..." + appId.slice(-4);
 
-  const owner = identity;
+  const owner = app.owner || identity;
   const ownerDisplay = owner
     ? owner.type === "timelock"
       ? `${owner.address.slice(0, 6)}...${owner.address.slice(-4)} (${owner.label}${owner.detail ? ", " + owner.detail : ""})`
@@ -253,7 +253,7 @@ async function demoInfo(appIdArg: string | undefined, log: (msg: string) => void
   log(`  Instance type:  ${app.instanceType}`);
   log(`  IP Address:     ${app.ipAddress}`);
 
-  if (owner && (owner.type === "safe" || isTimelockOverSafe(owner))) {
+  if (owner && (owner.type === "safe" || isTimelockOverSafe(owner) || app.timelocked)) {
     log("");
     log("  Team Roles:");
 

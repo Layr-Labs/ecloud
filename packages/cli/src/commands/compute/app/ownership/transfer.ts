@@ -32,21 +32,29 @@ export default class AppOwnershipTransfer extends Command {
   async run() {
     const { args, flags } = await this.parse(AppOwnershipTransfer);
 
-    const { getDemoState, isTimelockOverSafe, getSafeAddress } = await import("../../../../utils/demoState");
+    const { getDemoState, setDemoState, isTimelockOverSafe, getSafeAddress, DEMO_IDENTITIES, formatIdentity } = await import("../../../../utils/demoState");
     const state = getDemoState();
     const appId = args["app-id"] || state.app?.appId || "0xA1B2C3D4E5F6000000000000000000000000abcd";
-    const newOwner = flags.to;
+    const newOwnerAddr = flags.to;
 
-    this.log(`\nApp:       ${chalk.bold(appId)}`);
-    this.log(`New owner: ${chalk.bold(newOwner)}`);
-    this.log(
-      chalk.yellow(
-        "\nNote: if the new owner is a Timelock deployed by SafeTimelockFactory, timelocked mode will be enabled automatically.",
-      ),
+    // Detect new owner type from known demo identities
+    const newOwnerIdentity = DEMO_IDENTITIES.find(
+      (id) => id.address.toLowerCase() === newOwnerAddr.toLowerCase(),
     );
 
-    await demoDelay(1200);
+    const currentOwner = state.app?.owner || state.identity;
+    const currentOwnerDisplay = currentOwner ? formatIdentity(currentOwner) : chalk.gray("(unknown)");
+    const newOwnerDisplay = newOwnerIdentity
+      ? formatIdentity(newOwnerIdentity)
+      : `${newOwnerAddr.slice(0, 6)}...${newOwnerAddr.slice(-4)}`;
 
+    this.log(`\nApp:           ${chalk.bold(state.app?.name || appId)}`);
+    this.log(`Current owner: ${chalk.bold(currentOwnerDisplay)}`);
+    this.log(`New owner:     ${chalk.bold(newOwnerDisplay)}`);
+
+    await demoDelay(800);
+
+    // Safe simulation if current identity requires it
     const { identity } = state;
     if (identity && (identity.type === "safe" || isTimelockOverSafe(identity))) {
       const safeAddr = getSafeAddress(identity)!;
@@ -56,15 +64,39 @@ export default class AppOwnershipTransfer extends Command {
       await demoDelay(1200);
     }
 
-    this.log(`\n✅ ${chalk.green(`Ownership transferred successfully (tx: ${DEMO_TX})`)}`);
+    // Update app state with new owner
+    const isTimelock = newOwnerIdentity?.type === "timelock";
+    if (state.app) {
+      setDemoState({
+        ...state,
+        app: {
+          ...state.app,
+          owner: newOwnerIdentity,
+          timelocked: isTimelock,
+        },
+      });
+    }
 
-    // Timelocked mode is enabled when the new owner is a Timelock.
-    // In this demo it is always shown — adjust ECLOUD_DEMO_NO_TIMELOCK=true to suppress.
-    const suppressTimelock = process.env.ECLOUD_DEMO_NO_TIMELOCK === "true";
-    if (!suppressTimelock) {
-      this.log(chalk.cyan("\nTimelocked mode enabled. Upgrades now require:"));
-      this.log(chalk.cyan(`  ecloud compute app upgrade schedule ${appId} --after=<duration>`));
+    this.log(`\n✅ ${chalk.green(`Ownership transferred (tx: ${DEMO_TX})`)}`);
+
+    // Post-transfer hint — specific to new owner type
+    if (newOwnerIdentity?.type === "timelock" && isTimelockOverSafe(newOwnerIdentity)) {
+      // Timelock(Safe)
+      this.log(chalk.cyan("\nTimelocked mode enabled. Direct upgrade is now blocked."));
+      this.log(chalk.cyan("Each step also requires Safe approval:"));
+      this.log(chalk.cyan(`  ecloud compute app upgrade schedule ${appId} --after=<delay>   → Safe propose → scheduled`));
+      this.log(chalk.cyan(`  ecloud compute app upgrade execute  ${appId}                   → Safe propose → done`));
+    } else if (newOwnerIdentity?.type === "timelock") {
+      // Timelock(EOA)
+      this.log(chalk.cyan("\nTimelocked mode enabled. Direct upgrade is now blocked."));
+      this.log(chalk.cyan(`  ecloud compute app upgrade schedule ${appId} --after=<delay>`));
       this.log(chalk.cyan(`  ecloud compute app upgrade execute  ${appId}`));
+    } else if (newOwnerIdentity?.type === "safe") {
+      // Safe
+      this.log(chalk.cyan("\nAdmin operations now require Safe threshold approval:"));
+      this.log(chalk.cyan("  ecloud compute app upgrade     → Safe propose → threshold → executed"));
+      this.log(chalk.cyan("  ecloud compute app stop        → Safe propose → threshold → executed"));
+      this.log(chalk.cyan("  ecloud compute app terminate   → Safe propose → threshold → executed"));
     }
   }
 }

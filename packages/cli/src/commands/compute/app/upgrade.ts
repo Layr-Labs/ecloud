@@ -143,7 +143,7 @@ export default class AppUpgrade extends Command {
 
         const scenario = process.env.ECLOUD_DEMO_SCENARIO || identity?.type || "eoa";
 
-        if (scenario === "timelocked" || identity?.type === "timelock") {
+        if (scenario === "timelocked" || identity?.type === "timelock" || demoApp.timelocked) {
           this.error(
             `App ${demoApp.appId} is timelocked (Timelock owner).\n` +
             `Use the two-step timelocked flow instead:\n` +

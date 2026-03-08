@@ -183,6 +183,8 @@ export default class AppDeploy extends Command {
         instanceType,
         ipAddress: "34.120.45.67",
         deployedAt: Math.floor(Date.now() / 1000),
+        owner: state.identity,
+        timelocked: state.identity?.type === "timelock",
       };
       setDemoState({ ...state, app });
 

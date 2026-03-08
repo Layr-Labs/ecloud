@@ -32,6 +32,8 @@ export interface DemoApp {
   ipAddress: string;
   deployedAt: number; // unix timestamp seconds
   lastUpgradeAt?: number;
+  owner?: DemoIdentity; // current app owner (may differ from logged-in identity after transfer)
+  timelocked?: boolean; // true if owner is a Timelock — direct upgrade is blocked
 }
 
 export interface DemoState {
