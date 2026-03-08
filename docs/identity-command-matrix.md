@@ -22,11 +22,6 @@ Demo state is stored in `/tmp/ecloud-demo-state.json` and persists across comman
 rm /tmp/ecloud-demo-state.json
 ```
 
-**Run with real contracts** (Sepolia/mainnet):
-```bash
-ECLOUD_REAL_MODE=true ecloud compute app deploy --image-ref myrepo/myapp:v1
-```
-
 ---
 
 Behaviour of each CLI command per identity type.
