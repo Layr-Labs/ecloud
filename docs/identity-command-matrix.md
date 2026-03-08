@@ -130,6 +130,22 @@ Only available when identity is `Timelock(EOA)` or `Timelock(Safe)`. Blocked for
 > Team roles (ADMIN, PAUSER, DEVELOPER) are only shown in `ecloud compute app info` and `ecloud compute team list` when the app owner is a Safe or Timelock(Safe).
 > ADMIN is the Safe or Timelock address — never an individual EOA in a Safe-governed app.
 
+#### Why you should never grant ADMIN to an EOA in a Safe-governed app
+
+AppController's admin check is purely role-based: it verifies `msg.sender` holds `keccak256(owner, ADMIN)`. It does **not** enforce that the caller went through Safe's threshold signing.
+
+This means: if you grant ADMIN to an EOA, that EOA can call `upgradeApp`, `terminateApp`, `startApp`, etc. **directly** — bypassing the Safe entirely. The entire point of Safe ownership (threshold approval, no single point of failure) is defeated.
+
+**The correct model for Safe-owned apps:**
+
+| Role | Holder | How ops are authorized |
+|---|---|---|
+| ADMIN | Safe (or Timelock) only | Requires Safe threshold signature |
+| PAUSER | Individual EOA | Direct — intentional, for emergency stop without delay |
+| DEVELOPER | Individual EOA | Direct — limited to metadata and observability |
+
+The contract does not hard-enforce this convention today — it is an operational rule. Granting ADMIN to an EOA is technically possible but breaks the security model. Since granting any role requires being ADMIN, and Safe is the sole ADMIN, any such grant would itself require Safe approval — making it a deliberate, visible act rather than an accident.
+
 ---
 
 ## App info
