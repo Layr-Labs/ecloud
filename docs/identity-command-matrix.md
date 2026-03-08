@@ -38,34 +38,24 @@ Behaviour of each CLI command per identity type.
 
 How accounts can be created and upgraded to stronger security models.
 
-```
-                    ecloud auth new → Safe
-                   ┌─────────────────────────────────────────┐
-                   │                                         │
-                   ▼                                         │
-  ecloud auth new → EOA                                    Safe
-         │                                                   │
-         │  ecloud auth new                                  │  ecloud auth new
-         │  → Timelock (EOA proposer)                        │  → Timelock (Safe proposer)
-         │                                                   │    OR
-         ▼                                                   │  ecloud auth new → Safe
-  Timelock(EOA)                                              │  → "Add timelock delay?" → yes
-                                                             ▼
-                                                      Timelock(Safe)
+```mermaid
+graph TD
+    A["ecloud auth new → EOA"] -->|"ecloud auth new\n→ Timelock (EOA proposer)"| B["Timelock(EOA)"]
+    A -->|"ecloud auth new → Safe"| C["Safe"]
+    C -->|"ecloud auth new\n→ Timelock (Safe proposer)"| D["Timelock(Safe)"]
+    C -->|"ecloud auth new → Safe\n→ Add timelock delay? yes"| D
 ```
 
-**App ownership migration** — once you have a Timelock identity, transfer the app:
+**App ownership migration** — transfer the app to a stronger owner:
 
-```
-  App owned by EOA
-        │
-        │  ecloud compute app ownership transfer --to=<safe-addr>
-        ▼
-  App owned by Safe  ──────────────────────────────────────────────────────────────────┐
-        │                                                                              │
-        │  ecloud compute app ownership transfer --to=<timelock-addr>                  │ upgrades now require
-        ▼                                                                              │ Safe propose
-  App owned by Timelock(Safe)  ─────── upgrades now require schedule + execute + Safe propose
+```mermaid
+graph TD
+    E["App owned by EOA"]
+    -->|"ecloud compute app ownership transfer --to=&lt;safe-addr&gt;"| F["App owned by Safe"]
+    -->|"ecloud compute app ownership transfer --to=&lt;timelock-addr&gt;"| G["App owned by Timelock(Safe)"]
+
+    F -. "upgrades require Safe propose" .-> F
+    G -. "upgrades require schedule + execute + Safe propose" .-> G
 ```
 
 **Upgrade behaviour changes with each step:**
