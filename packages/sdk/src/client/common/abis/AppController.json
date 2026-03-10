@@ -202,6 +202,71 @@
   },
   {
     "type": "function",
+    "name": "createAppWithIsolatedBilling",
+    "inputs": [
+      {
+        "name": "salt",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "release",
+        "type": "tuple",
+        "internalType": "structIAppController.Release",
+        "components": [
+          {
+            "name": "rmsRelease",
+            "type": "tuple",
+            "internalType": "structIReleaseManagerTypes.Release",
+            "components": [
+              {
+                "name": "artifacts",
+                "type": "tuple[]",
+                "internalType": "structIReleaseManagerTypes.Artifact[]",
+                "components": [
+                  {
+                    "name": "digest",
+                    "type": "bytes32",
+                    "internalType": "bytes32"
+                  },
+                  {
+                    "name": "registry",
+                    "type": "string",
+                    "internalType": "string"
+                  }
+                ]
+              },
+              {
+                "name": "upgradeByTime",
+                "type": "uint32",
+                "internalType": "uint32"
+              }
+            ]
+          },
+          {
+            "name": "publicEnv",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "encryptedEnv",
+            "type": "bytes",
+            "internalType": "bytes"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "app",
+        "type": "address",
+        "internalType": "contractIApp"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "domainSeparator",
     "inputs": [],
     "outputs": [
@@ -228,6 +293,25 @@
         "name": "",
         "type": "uint32",
         "internalType": "uint32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getBillingType",
+    "inputs": [
+      {
+        "name": "app",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "uint8"
       }
     ],
     "stateMutability": "view"
@@ -312,6 +396,62 @@
     "type": "function",
     "name": "getApps",
     "inputs": [
+      {
+        "name": "offset",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "limit",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "apps",
+        "type": "address[]",
+        "internalType": "contractIApp[]"
+      },
+      {
+        "name": "appConfigsMem",
+        "type": "tuple[]",
+        "internalType": "structIAppController.AppConfig[]",
+        "components": [
+          {
+            "name": "creator",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "operatorSetId",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "latestReleaseBlockNumber",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "status",
+            "type": "uint8",
+            "internalType": "enumIAppController.AppStatus"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getAppsByBillingAccount",
+    "inputs": [
+      {
+        "name": "account",
+        "type": "address",
+        "internalType": "address"
+      },
       {
         "name": "offset",
         "type": "uint256",
