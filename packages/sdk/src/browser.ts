@@ -103,6 +103,8 @@ export {
   getAppsByDeveloper,
   getActiveAppCount,
   getMaxActiveAppsPerUser,
+  getBillingType,
+  getAppsByBillingAccount,
   // Gas estimation
   estimateTransactionGas,
   formatETH,

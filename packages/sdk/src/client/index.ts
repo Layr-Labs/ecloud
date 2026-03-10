@@ -95,6 +95,8 @@ export {
   getBlockTimestamps,
   estimateTransactionGas,
   formatETH,
+  getBillingType,
+  getAppsByBillingAccount,
   type GasEstimate,
   type EstimateGasOptions,
 } from "./common/contract/caller";

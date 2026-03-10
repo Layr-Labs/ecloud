@@ -85,6 +85,13 @@ export default class AppDeploy extends Command {
       options: ["enable", "disable"],
       env: "ECLOUD_RESOURCE_USAGE_MONITORING",
     }),
+    "bill-to": Flags.string({
+      required: false,
+      description: "Billing mode: developer (default) or app (isolated billing)",
+      options: ["developer", "app"],
+      default: "developer",
+      env: "ECLOUD_BILL_TO",
+    }),
     website: Flags.string({
       required: false,
       description: "App website URL (optional)",
@@ -372,6 +379,7 @@ export default class AppDeploy extends Command {
           ? "private"
           : "off";
 
+      const billTo = flags["bill-to"] as "developer" | "app";
       const { prepared, gasEstimate } = isVerifiable
         ? await compute.app.prepareDeployFromVerifiableBuild({
             name: appName,
@@ -381,6 +389,7 @@ export default class AppDeploy extends Command {
             instanceType,
             logVisibility,
             resourceUsageMonitoring,
+            billTo,
           })
         : await compute.app.prepareDeploy({
             name: appName,
@@ -390,6 +399,7 @@ export default class AppDeploy extends Command {
             instanceType,
             logVisibility,
             resourceUsageMonitoring,
+            billTo,
           });
 
       // 9. Show gas estimate and prompt for confirmation on mainnet
