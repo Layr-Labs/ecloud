@@ -53,7 +53,7 @@ ecloud billing subscribe
 
 ```bash
 # Create your app (choose: typescript | python | golang | rust)
-ecloud compute app create my-app typescript
+ecloud compute app create --name my-app --language typescript
 cd my-app
 
 # Configure environment variables
@@ -224,7 +224,7 @@ docker build --platform linux/amd64 -t myregistry/myapp:v1.0 .
 docker push myregistry/myapp:v1.0
 
 # Deploy using the image reference
-ecloud compute app deploy myregistry/myapp:v1.0
+ecloud compute app deploy --image-ref myregistry/myapp:v1.0
 ```
 
 **Requirements:**

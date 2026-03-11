@@ -156,6 +156,26 @@ export default class AppDeploy extends Command {
       const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
       const privateKey = flags["private-key"]!;
 
+      // Early balance check — warn before interactive prompts if wallet has no funds
+      const { publicClient, address } = createViemClients({
+        privateKey,
+        rpcUrl,
+        environment,
+      });
+      const balance = await publicClient.getBalance({ address });
+      if (balance === 0n) {
+        this.log(
+          chalk.yellow(
+            `\nWarning: Wallet ${address} has zero balance on ${environment}.`,
+          ),
+        );
+        this.log(
+          chalk.yellow(
+            `You will need funds to pay for deployment gas fees. Fund your wallet before the transaction step, or the deployment will fail.\n`,
+          ),
+        );
+      }
+
       type VerifiableMode = "none" | "git" | "prebuilt";
       let buildClient: Awaited<ReturnType<typeof createBuildClient>> | undefined;
       const getBuildClient = async () => {
