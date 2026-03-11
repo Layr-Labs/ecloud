@@ -174,7 +174,7 @@ export default class AppDeploy extends Command {
         if (isSepolia) {
           this.log(
             chalk.yellow(
-              `Get Sepolia ETH from https://cloud.google.com/application/web3/faucet/ethereum/sepolia`,
+              `Get Sepolia ETH from https://cloud.google.com/application/web3/faucet/ethereum/sepolia or https://sepoliafaucet.com/`,
             ),
           );
         }
