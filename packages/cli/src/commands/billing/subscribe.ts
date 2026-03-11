@@ -14,8 +14,7 @@ export default class BillingSubscribe extends Command {
   static description = "Create subscription to start deploying apps";
 
   static flags = {
-    "private-key": commonFlags["private-key"],
-    verbose: commonFlags.verbose,
+    ...commonFlags,
     product: Flags.string({
       required: false,
       description: "Product ID",
@@ -81,6 +80,8 @@ export default class BillingSubscribe extends Command {
         await this.config.runCommand("billing:top-up", [
           ...(flags["private-key"] ? ["--private-key", flags["private-key"]] : []),
           ...(flags.verbose ? ["--verbose"] : []),
+          ...(flags.environment ? ["--environment", flags.environment] : []),
+          ...(flags["rpc-url"] ? ["--rpc-url", flags["rpc-url"]] : []),
           "--product", flags.product,
         ]);
         return;

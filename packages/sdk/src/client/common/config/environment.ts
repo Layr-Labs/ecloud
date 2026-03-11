@@ -2,6 +2,7 @@
  * Environment configuration for different networks
  */
 
+import { Address } from "viem";
 import { BillingEnvironmentConfig, EnvironmentConfig } from "../types";
 
 // Chain IDs
@@ -44,6 +45,7 @@ const ENVIRONMENTS: Record<string, Omit<EnvironmentConfig, "chainID">> = {
     kmsServerURL: "http://10.128.0.57:8080",
     userApiServerURL: "https://userapi-compute-sepolia-dev.eigencloud.xyz",
     defaultRPCURL: "https://ethereum-sepolia-rpc.publicnode.com",
+    usdcCreditsAddress: "0xbdA3897c3A428763B59015C64AB766c288C97376" as Address,
   },
   sepolia: {
     name: "sepolia",
