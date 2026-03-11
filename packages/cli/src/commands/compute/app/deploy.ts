@@ -164,14 +164,23 @@ export default class AppDeploy extends Command {
       });
       const balance = await publicClient.getBalance({ address });
       if (balance === 0n) {
+        const isSepolia = environmentConfig.chainID === BigInt(11155111);
         this.log(
-          chalk.yellow(
-            `\nWarning: Wallet ${address} has zero balance on ${environment}.`,
-          ),
+          chalk.yellow(`\nWarning: Wallet ${chalk.bold(address)} has zero balance on ${environment}.`),
         );
         this.log(
+          chalk.yellow(`You will need ETH to pay for deployment gas fees.`),
+        );
+        if (isSepolia) {
+          this.log(
+            chalk.yellow(
+              `Get Sepolia ETH from https://cloud.google.com/application/web3/faucet/ethereum/sepolia`,
+            ),
+          );
+        }
+        this.log(
           chalk.yellow(
-            `You will need funds to pay for deployment gas fees. Fund your wallet before the transaction step, or the deployment will fail.\n`,
+            `Fund your wallet before the transaction step, or the deployment will fail.\n`,
           ),
         );
       }
