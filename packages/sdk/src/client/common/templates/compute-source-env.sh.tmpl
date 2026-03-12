@@ -17,6 +17,21 @@ else
     exit 1
 fi
 
+# Obtain attestation JWT from KMS
+echo "compute-source-env.sh: Requesting attestation JWT from KMS..."
+KMS_AUTH_JWT=$(/usr/local/bin/kms-client attest \
+  --kms-server-url "{{kmsServerURL}}" \
+  --kms-signing-key-file /usr/local/bin/kms-signing-public-key.pem)
+
+if [ $? -ne 0 ] || [ -z "$KMS_AUTH_JWT" ]; then
+    echo "compute-source-env.sh: ERROR - Failed to obtain attestation JWT from KMS"
+    echo "compute-source-env.sh: Exiting - cannot start user workload without attestation"
+    exit 1
+fi
+
+export KMS_AUTH_JWT
+echo "compute-source-env.sh: Successfully obtained attestation JWT"
+
 # Setup TLS if tls-keygen is present (which means TLS was configured at build time)
 setup_tls() {
     # If tls-keygen isn't present, TLS wasn't configured during build
