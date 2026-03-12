@@ -828,7 +828,7 @@ export interface SkuInfo {
 
 const SKU_TIER_NAMES: Record<string, string> = {
   "g1-micro-1v": "Starter 1",
-  "g1-small-1v": "Starter 2",
+  "g1-standard-1v": "Starter 2",
   "g1-custom-2-4096s": "Pro 1",
   "g1-standard-2s": "Pro 2",
   "g1-standard-4t": "Enterprise 1",
