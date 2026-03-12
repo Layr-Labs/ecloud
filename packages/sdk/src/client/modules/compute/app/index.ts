@@ -39,6 +39,12 @@ import {
   transferAppOwnership,
   scheduleAppUpgrade,
   executeGovernedUpgrade,
+  cancelAppUpgrade,
+  grantTeamRole as grantTeamRoleCaller,
+  revokeTeamRole as revokeTeamRoleCaller,
+  getTeamRoleMembers as getTeamRoleMembersCaller,
+  getAppOwner,
+  TeamRole,
   type GasEstimate,
   type AppConfig,
   type PendingUpgrade,
@@ -189,6 +195,14 @@ export interface AppModule {
     release: import("../../../common/types").Release,
     opts?: { gas?: GasEstimate },
   ) => Promise<{ tx: Hex }>;
+
+  // Cancel scheduled upgrade
+  cancelUpgrade: (appId: AppId, opts?: { gas?: GasEstimate }) => Promise<{ tx: Hex }>;
+
+  // Team role management
+  grantTeamRole: (appId: AppId, role: TeamRole, account: Address, opts?: { gas?: GasEstimate }) => Promise<{ tx: Hex }>;
+  revokeTeamRole: (appId: AppId, role: TeamRole, account: Address, opts?: { gas?: GasEstimate }) => Promise<{ tx: Hex }>;
+  getTeamRoleMembers: (appId: AppId, role: TeamRole) => Promise<Address[]>;
 }
 
 export interface AppModuleConfig {
@@ -670,6 +684,86 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           return { tx };
         },
       );
+    },
+
+    async cancelUpgrade(appId, opts) {
+      return withSDKTelemetry(
+        {
+          functionName: "cancelUpgrade",
+          skipTelemetry,
+          properties: { environment: ctx.environment },
+        },
+        async () => {
+          const tx = await cancelAppUpgrade(
+            {
+              walletClient,
+              publicClient,
+              environmentConfig: environment,
+              appID: appId as Address,
+              gas: opts?.gas,
+            },
+            logger,
+          );
+          return { tx };
+        },
+      );
+    },
+
+    async grantTeamRole(appId, role, account, opts) {
+      return withSDKTelemetry(
+        {
+          functionName: "grantTeamRole",
+          skipTelemetry,
+          properties: { environment: ctx.environment },
+        },
+        async () => {
+          const team = await getAppOwner(publicClient, environment, appId as Address);
+          const tx = await grantTeamRoleCaller(
+            {
+              walletClient,
+              publicClient,
+              environmentConfig: environment,
+              team,
+              role,
+              account: account as Address,
+              gas: opts?.gas,
+            },
+            logger,
+          );
+          return { tx };
+        },
+      );
+    },
+
+    async revokeTeamRole(appId, role, account, opts) {
+      return withSDKTelemetry(
+        {
+          functionName: "revokeTeamRole",
+          skipTelemetry,
+          properties: { environment: ctx.environment },
+        },
+        async () => {
+          const team = await getAppOwner(publicClient, environment, appId as Address);
+          const tx = await revokeTeamRoleCaller(
+            {
+              walletClient,
+              publicClient,
+              environmentConfig: environment,
+              team,
+              role,
+              account: account as Address,
+              gas: opts?.gas,
+            },
+            logger,
+          );
+          return { tx };
+        },
+      );
+    },
+
+    async getTeamRoleMembers(appId, role) {
+      const team = await getAppOwner(publicClient, environment, appId as Address);
+      return getTeamRoleMembersCaller(publicClient, environment, team, role);
     },
   };
 }

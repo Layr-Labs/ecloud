@@ -108,12 +108,21 @@ export {
   transferAppOwnership,
   scheduleAppUpgrade,
   executeGovernedUpgrade as executeGovernedUpgradeOnChain,
+  cancelAppUpgrade,
+  grantTeamRole,
+  revokeTeamRole,
+  getTeamRoleMembers,
+  getAppOwner,
+  TeamRole,
   type GasEstimate,
   type EstimateGasOptions,
   type PendingUpgrade,
   type TransferOwnershipOptions,
   type ScheduleUpgradeOptions as ScheduleUpgradeCallerOptions,
   type ExecuteGovernedUpgradeOptions as ExecuteGovernedUpgradeCallerOptions,
+  type CancelUpgradeOptions,
+  type GrantTeamRoleOptions,
+  type RevokeTeamRoleOptions,
 } from "./common/contract/caller";
 
 // Export batch gas estimation and delegation check

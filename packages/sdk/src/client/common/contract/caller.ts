@@ -1449,6 +1449,154 @@ export async function executeGovernedUpgrade(
 }
 
 /**
+ * Cancel a pending scheduled upgrade for a timelocked app.
+ */
+export interface CancelUpgradeOptions {
+  walletClient: WalletClient;
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+  appID: Address;
+  gas?: GasEstimate;
+}
+
+export async function cancelAppUpgrade(
+  options: CancelUpgradeOptions,
+  logger: Logger = noopLogger,
+): Promise<Hex> {
+  const { walletClient, publicClient, environmentConfig, appID, gas } = options;
+
+  const data = encodeFunctionData({
+    abi: AppControllerABI,
+    functionName: "cancelUpgrade",
+    args: [appID],
+  });
+
+  return sendAndWaitForTransaction(
+    {
+      walletClient,
+      publicClient,
+      environmentConfig,
+      to: environmentConfig.appControllerAddress as Address,
+      data,
+      pendingMessage: `Cancelling scheduled upgrade for app ${appID}...`,
+      txDescription: "CancelUpgrade",
+      gas,
+    },
+    logger,
+  );
+}
+
+/**
+ * Team role enum matching the contract's TeamRole enum.
+ */
+export enum TeamRole {
+  ADMIN = 0,
+  PAUSER = 1,
+  DEVELOPER = 2,
+}
+
+export interface GrantTeamRoleOptions {
+  walletClient: WalletClient;
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+  team: Address;
+  role: TeamRole;
+  account: Address;
+  gas?: GasEstimate;
+}
+
+export async function grantTeamRole(
+  options: GrantTeamRoleOptions,
+  logger: Logger = noopLogger,
+): Promise<Hex> {
+  const { walletClient, publicClient, environmentConfig, team, role, account, gas } = options;
+
+  const data = encodeFunctionData({
+    abi: AppControllerABI,
+    functionName: "grantTeamRole",
+    args: [team, role, account],
+  });
+
+  return sendAndWaitForTransaction(
+    {
+      walletClient,
+      publicClient,
+      environmentConfig,
+      to: environmentConfig.appControllerAddress as Address,
+      data,
+      pendingMessage: `Granting ${TeamRole[role]} role to ${account}...`,
+      txDescription: "GrantTeamRole",
+      gas,
+    },
+    logger,
+  );
+}
+
+export interface RevokeTeamRoleOptions {
+  walletClient: WalletClient;
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+  team: Address;
+  role: TeamRole;
+  account: Address;
+  gas?: GasEstimate;
+}
+
+export async function revokeTeamRole(
+  options: RevokeTeamRoleOptions,
+  logger: Logger = noopLogger,
+): Promise<Hex> {
+  const { walletClient, publicClient, environmentConfig, team, role, account, gas } = options;
+
+  const data = encodeFunctionData({
+    abi: AppControllerABI,
+    functionName: "revokeTeamRole",
+    args: [team, role, account],
+  });
+
+  return sendAndWaitForTransaction(
+    {
+      walletClient,
+      publicClient,
+      environmentConfig,
+      to: environmentConfig.appControllerAddress as Address,
+      data,
+      pendingMessage: `Revoking ${TeamRole[role]} role from ${account}...`,
+      txDescription: "RevokeTeamRole",
+      gas,
+    },
+    logger,
+  );
+}
+
+export async function getTeamRoleMembers(
+  publicClient: PublicClient,
+  environmentConfig: EnvironmentConfig,
+  team: Address,
+  role: TeamRole,
+): Promise<Address[]> {
+  return (await publicClient.readContract({
+    address: environmentConfig.appControllerAddress as Address,
+    abi: AppControllerABI,
+    functionName: "getTeamRoleMembers",
+    args: [team, role],
+  })) as Address[];
+}
+
+export async function getAppOwner(
+  publicClient: PublicClient,
+  environmentConfig: EnvironmentConfig,
+  appID: Address,
+): Promise<Address> {
+  return (await publicClient.readContract({
+    address: environmentConfig.appControllerAddress as Address,
+    abi: AppControllerABI,
+    functionName: "getAppOwner",
+    args: [appID],
+  })) as Address;
+}
+
+/**
  * Suspend options
  */
 export interface SuspendOptions {
