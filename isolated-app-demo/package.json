@@ -1,0 +1,14 @@
+{
+  "name": "isolated-app-test",
+  "private": true,
+  "scripts": {
+    "start": "tsx index.ts"
+  },
+  "dependencies": {
+    "@layr-labs/ecloud-sdk": "0.4.0-dev.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0"
+  }
+}
