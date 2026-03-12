@@ -189,6 +189,8 @@ export function createECloudClient(cfg: ClientConfig): ECloudClient {
     billing: createBillingModule({
       verbose: cfg.verbose,
       walletClient,
+      publicClient,
+      environment: cfg.environment,
     }),
   };
 }

@@ -1,30 +1,22 @@
 /**
  * ecloud billing top-up — Purchase EigenCompute credits with USDC
  *
- * Executes USDCCredits.purchaseCreditsFor(amount, account) on-chain via Sepolia.
- * The user's wallet is already loaded (private key is a prerequisite
- * for all billing commands), so we can form and submit the tx directly.
+ * Executes USDCCredits.purchaseCreditsFor(amount, account) on-chain via the SDK
+ * billing module's topUp() method (EIP-7702 batched transaction).
  *
  * Flow:
  *   1. Check current credit balance
- *   2. Read wallet's USDC balance on Sepolia
- *   3. If USDC available → prompt for amount → approve + purchaseCreditsFor → poll for confirmation
+ *   2. Read wallet's USDC balance via SDK
+ *   3. If USDC available → prompt for amount → SDK topUp() → poll for confirmation
  *   4. If no USDC → show wallet address, tell user to fund it
  */
 
 import { Command, Flags } from "@oclif/core";
 import { createBillingClient } from "../../client";
 import { commonFlags } from "../../flags";
-import { createViemClients } from "../../utils/viemClients";
-import {
-  getEnvironmentConfig,
-  USDCCreditsABI,
-  ERC20ABI,
-} from "@layr-labs/ecloud-sdk";
 import { type Address, formatUnits } from "viem";
 import chalk from "chalk";
 import { input } from "@inquirer/prompts";
-import { getPrivateKeyInteractive } from "../../utils/prompts";
 import { withTelemetry } from "../../telemetry";
 
 const POLL_INTERVAL_MS = 5_000;
@@ -56,27 +48,10 @@ export default class BillingTopUp extends Command {
     return withTelemetry(this, async () => {
       const { flags } = await this.parse(BillingTopUp);
 
-      // Create billing client for API calls (getStatus)
+      // Create billing client
       const billing = await createBillingClient(flags);
 
-      // Create viem clients for on-chain interactions
-      const privateKey = await getPrivateKeyInteractive(flags["private-key"]);
-      const { publicClient, walletClient, address: walletAddress } = createViemClients({
-        privateKey,
-        rpcUrl: flags["rpc-url"],
-        environment: flags.environment,
-      });
-
-      // Resolve USDCCredits contract address from environment config
-      const environmentConfig = getEnvironmentConfig(flags.environment);
-      const usdcCreditsAddress = environmentConfig.usdcCreditsAddress;
-      if (!usdcCreditsAddress) {
-        this.error(
-          `USDCCredits contract is not configured for environment "${flags.environment}". ` +
-          `USDC credit purchasing is only available on environments with a deployed USDCCredits contract.`,
-        );
-      }
-
+      const walletAddress = billing.address;
       const targetAccount = (flags.account as Address) ?? walletAddress;
 
       this.log(`\n${chalk.bold("Purchase EigenCompute credits")}`);
@@ -87,38 +62,26 @@ export default class BillingTopUp extends Command {
       }
 
       // ── Step 1: Show current credit balance ──
-      let currentCredits: number | undefined;
+      // Track total credits (remaining + applied) so we detect top-ups even
+      // when new credits are immediately consumed by an outstanding bill.
+      let baselineTotal: number | undefined;
       try {
         const status = await billing.getStatus({
           productId: flags.product as "compute",
         });
-        currentCredits = status.remainingCredits;
-        if (currentCredits !== undefined) {
-          this.log(`  ${chalk.bold("Credits:")} ${chalk.cyan(`$${currentCredits.toFixed(2)}`)}`);
+        const remaining = status.remainingCredits ?? 0;
+        const applied = status.creditsApplied ?? 0;
+        baselineTotal = remaining + applied;
+        if (status.remainingCredits !== undefined) {
+          this.log(`  ${chalk.bold("Credits:")} ${chalk.cyan(`$${status.remainingCredits.toFixed(2)}`)}`);
         }
       } catch {
         this.debug("Could not fetch current credit balance");
       }
 
-      // ── Step 2: Read on-chain state ──
-      const usdcAddress = await publicClient.readContract({
-        address: usdcCreditsAddress,
-        abi: USDCCreditsABI,
-        functionName: "usdc",
-      }) as Address;
-
-      const minimumPurchase = await publicClient.readContract({
-        address: usdcCreditsAddress,
-        abi: USDCCreditsABI,
-        functionName: "minimumPurchase",
-      }) as bigint;
-
-      const usdcBalance = await publicClient.readContract({
-        address: usdcAddress,
-        abi: ERC20ABI,
-        functionName: "balanceOf",
-        args: [walletAddress],
-      }) as bigint;
+      // ── Step 2: Read on-chain state via SDK ──
+      const onChainState = await billing.getTopUpInfo();
+      const { usdcBalance, minimumPurchase } = onChainState;
 
       const balanceFormatted = formatUnits(usdcBalance, 6);
       this.log(`  ${chalk.bold("USDC:")}    ${balanceFormatted} USDC`);
@@ -162,42 +125,14 @@ export default class BillingTopUp extends Command {
 
       this.log(`\n  Purchasing ${chalk.bold(`$${amountFloat.toFixed(2)}`)} in credits...`);
 
-      // ── Step 4: Approve USDC spend if needed ──
-      const currentAllowance = await publicClient.readContract({
-        address: usdcAddress,
-        abi: ERC20ABI,
-        functionName: "allowance",
-        args: [walletAddress, usdcCreditsAddress],
-      }) as bigint;
-
-      if (currentAllowance < amountRaw) {
-        this.log(chalk.gray("  Approving USDC spend..."));
-        const approveTx = await walletClient.writeContract({
-          address: usdcAddress,
-          abi: ERC20ABI,
-          functionName: "approve",
-          args: [usdcCreditsAddress, amountRaw],
-          chain: walletClient.chain,
-          account: walletClient.account!,
-        });
-        await publicClient.waitForTransactionReceipt({ hash: approveTx });
-        this.log(`  ${chalk.green("✓")} Approved`);
-      }
-
-      // ── Step 5: Call purchaseCreditsFor(amount, account) ──
-      this.log(chalk.gray("  Submitting credit purchase..."));
-      const purchaseTx = await walletClient.writeContract({
-        address: usdcCreditsAddress,
-        abi: USDCCreditsABI,
-        functionName: "purchaseCreditsFor",
-        args: [amountRaw, targetAccount],
-        chain: walletClient.chain,
-        account: walletClient.account!,
+      // ── Step 4: Execute on-chain purchase via SDK ──
+      const { txHash } = await billing.topUp({
+        amount: amountRaw,
+        account: targetAccount,
       });
-      const receipt = await publicClient.waitForTransactionReceipt({ hash: purchaseTx });
-      this.log(`  ${chalk.green("✓")} Transaction confirmed: ${receipt.transactionHash}`);
+      this.log(`  ${chalk.green("✓")} Transaction confirmed: ${txHash}`);
 
-      // ── Step 6: Poll billing API for credit confirmation ──
+      // ── Step 5: Poll billing API for credit confirmation ──
       this.log(chalk.gray("\n  Waiting for credits to appear..."));
       const startTime = Date.now();
       while (Date.now() - startTime < POLL_TIMEOUT_MS) {
@@ -206,13 +141,27 @@ export default class BillingTopUp extends Command {
           const status = await billing.getStatus({
             productId: flags.product as "compute",
           });
+          const remaining = status.remainingCredits ?? 0;
+          const applied = status.creditsApplied ?? 0;
+          const currentTotal = remaining + applied;
+          this.debug(`Poll: remaining=${remaining}, applied=${applied}, total=${currentTotal}, baseline=${baselineTotal}`);
           if (
-            status.remainingCredits !== undefined &&
-            (currentCredits === undefined || status.remainingCredits > currentCredits)
+            baselineTotal === undefined || currentTotal > baselineTotal
           ) {
-            this.log(
-              `\n  ${chalk.green("✓")} Credits received! Balance: ${chalk.cyan(`$${status.remainingCredits.toFixed(2)}`)}`,
-            );
+            const creditsAdded = baselineTotal !== undefined ? currentTotal - baselineTotal : undefined;
+            const isMatched = creditsAdded !== undefined && Math.abs(creditsAdded - amountFloat * 2) < 0.01;
+            const appliedFromTopUp = creditsAdded !== undefined ? creditsAdded - remaining : 0;
+
+            this.log(`\n  ${chalk.green("✓")} Credits received: ${chalk.cyan(`$${(creditsAdded ?? amountFloat).toFixed(2)}`)}`);
+            if (isMatched) {
+              this.log(`  ${chalk.green("✓")} Includes $${amountFloat.toFixed(2)} match bonus!`);
+            }
+            if (remaining > 0) {
+              this.log(`  Remaining balance: ${chalk.cyan(`$${remaining.toFixed(2)}`)}`);
+            }
+            if (appliedFromTopUp > 0) {
+              this.log(`  ${chalk.gray(`$${appliedFromTopUp.toFixed(2)} applied to current bill`)}`);
+            }
             this.log();
             return;
           }

@@ -56,6 +56,7 @@ const ENVIRONMENTS: Record<string, Omit<EnvironmentConfig, "chainID">> = {
     kmsServerURL: "http://10.128.15.203:8080",
     userApiServerURL: "https://userapi-compute-sepolia-prod.eigencloud.xyz",
     defaultRPCURL: "https://ethereum-sepolia-rpc.publicnode.com",
+    billingRPCURL: "https://ethereum-rpc.publicnode.com",
   },
   "mainnet-alpha": {
     name: "mainnet-alpha",

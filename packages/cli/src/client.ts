@@ -4,15 +4,11 @@ import {
   createBuildModule,
   getEnvironmentConfig,
   requirePrivateKey,
-  getPrivateKeyWithSource,
-  addHexPrefix,
 } from "@layr-labs/ecloud-sdk";
 import { CommonFlags, validateCommonFlags } from "./flags";
-import { getPrivateKeyInteractive } from "./utils/prompts";
 import { getClientId } from "./utils/version";
 import { createViemClients } from "./utils/viemClients";
-import { createWalletClient, custom, Hex } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import { Hex } from "viem";
 
 export async function createComputeClient(flags: CommonFlags) {
   flags = await validateCommonFlags(flags);
@@ -45,30 +41,32 @@ export async function createComputeClient(flags: CommonFlags) {
   });
 }
 
-export async function createBillingClient(flags: {
-  "private-key"?: string;
-  verbose?: boolean;
-}) {
-  const result = await getPrivateKeyWithSource({
+export async function createBillingClient(flags: CommonFlags) {
+  flags = await validateCommonFlags(flags);
+
+  const environment = flags.environment;
+  const environmentConfig = getEnvironmentConfig(environment);
+  const rpcUrl = flags["rpc-url"] || environmentConfig.billingRPCURL || environmentConfig.defaultRPCURL;
+  const { key: privateKey, source } = await requirePrivateKey({
     privateKey: flags["private-key"],
   });
-  const privateKey = await getPrivateKeyInteractive(result?.key);
 
-  // Create minimal wallet client for signing only - no RPC needed
-  const account = privateKeyToAccount(addHexPrefix(privateKey) as Hex);
-  const walletClient = createWalletClient({
-    account,
-    transport: custom({
-      async request() {
-        throw new Error("RPC not available - billing uses local signing only");
-      },
-    }),
+  if (flags.verbose) {
+    console.log(`Using private key from: ${source}`);
+  }
+
+  const { walletClient, publicClient } = createViemClients({
+    privateKey: privateKey as Hex,
+    rpcUrl,
+    environment,
   });
 
   return createBillingModule({
-    verbose: flags.verbose ?? false,
+    verbose: flags.verbose,
     walletClient,
-    skipTelemetry: true, // CLI already has telemetry, skip SDK telemetry
+    publicClient,
+    environment,
+    skipTelemetry: true,
   });
 }
 

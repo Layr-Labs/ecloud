@@ -8,8 +8,7 @@ export default class BillingStatus extends Command {
   static description = "Show subscription status";
 
   static flags = {
-    "private-key": commonFlags["private-key"],
-    verbose: commonFlags.verbose,
+    ...commonFlags,
     product: Flags.string({
       required: false,
       description: "Product ID",
