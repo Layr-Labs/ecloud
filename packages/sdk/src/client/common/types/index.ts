@@ -60,6 +60,10 @@ export interface PrepareDeployOpts {
   resourceUsageMonitoring?: "enable" | "disable";
   /** Billing mode: developer (default) or app (isolated billing) */
   billTo?: "developer" | "app";
+  /** Skip quota check */
+  skipQuotaCheck?: boolean;
+  /** Optional salt for deterministic app address prediction (32 bytes) */
+  salt?: Uint8Array | Buffer;
 }
 
 /** Options for prepareUpgrade */
@@ -238,6 +242,8 @@ export interface EnvironmentConfig {
   kmsServerURL: string;
   userApiServerURL: string;
   defaultRPCURL: string;
+  billingRPCURL?: string;
+  usdcCreditsAddress?: Address;
 }
 
 export interface Release {

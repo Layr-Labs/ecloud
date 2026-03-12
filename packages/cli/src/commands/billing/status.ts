@@ -8,8 +8,7 @@ export default class BillingStatus extends Command {
   static description = "Show subscription status";
 
   static flags = {
-    "private-key": commonFlags["private-key"],
-    verbose: commonFlags.verbose,
+    ...commonFlags,
     product: Flags.string({
       required: false,
       description: "Product ID",
@@ -118,6 +117,15 @@ export default class BillingStatus extends Command {
       if (result.portalUrl) {
         this.log(`\n${chalk.bold("Payment & Invoices:")}`);
         this.log(`  ${chalk.cyan(result.portalUrl)}`);
+      }
+
+      // Surface top-up option when credits are low or subscription is inactive
+      if (
+        result.subscriptionStatus === "inactive" ||
+        (result.remainingCredits !== undefined && result.remainingCredits < 10)
+      ) {
+        this.log(`\n${chalk.bold("Need more credits?")}`);
+        this.log(`  Run ${chalk.cyan("ecloud billing top-up")} to purchase credits.`);
       }
 
       this.log();

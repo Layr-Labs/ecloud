@@ -97,6 +97,7 @@ export {
   formatETH,
   getBillingType,
   getAppsByBillingAccount,
+  calculateAppID,
   type GasEstimate,
   type EstimateGasOptions,
 } from "./common/contract/caller";
@@ -126,6 +127,10 @@ export {
 } from "./common/utils/userapi";
 
 export { BillingApiClient } from "./common/utils/billingapi";
+
+// Export ABIs for CLI usage
+export { default as USDCCreditsABI } from "./common/abis/USDCCredits.json";
+export { default as ERC20ABI } from "./common/abis/ERC20.json";
 
 export type Environment = "sepolia" | "sepolia-dev" | "mainnet-alpha";
 
@@ -184,6 +189,8 @@ export function createECloudClient(cfg: ClientConfig): ECloudClient {
     billing: createBillingModule({
       verbose: cfg.verbose,
       walletClient,
+      publicClient,
+      environment: cfg.environment,
     }),
   };
 }
