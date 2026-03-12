@@ -24,6 +24,7 @@ import {
 import { type Address, formatUnits } from "viem";
 import chalk from "chalk";
 import { input } from "@inquirer/prompts";
+import { getPrivateKeyInteractive } from "../../utils/prompts";
 import { withTelemetry } from "../../telemetry";
 
 const POLL_INTERVAL_MS = 5_000;
@@ -59,10 +60,7 @@ export default class BillingTopUp extends Command {
       const billing = await createBillingClient(flags);
 
       // Create viem clients for on-chain interactions
-      const privateKey = flags["private-key"];
-      if (!privateKey) {
-        this.error("Private key is required for on-chain transactions");
-      }
+      const privateKey = await getPrivateKeyInteractive(flags["private-key"]);
       const { publicClient, walletClient, address: walletAddress } = createViemClients({
         privateKey,
         rpcUrl: flags["rpc-url"],
