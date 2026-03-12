@@ -39,6 +39,7 @@ import {
   getLinkedAppForDirectory,
 } from "./globalConfig";
 import { listApps, isAppNameAvailable, findAvailableName } from "./appNames";
+import { execSync } from "child_process";
 import { getClientId } from "./version";
 
 // Helper to add hex prefix
@@ -105,6 +106,36 @@ export interface VerifiableGitSourceInputs {
   dependencies: string[];
 }
 
+// Helper to detect current git repo URL and HEAD commit
+function detectGitRepoInfo(): { repoUrl?: string; commitSha?: string } {
+  const git = (cmd: string) =>
+    execSync(cmd, { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+
+  const detectRepoUrl = (): string | undefined => {
+    try {
+      const remote = git("git remote get-url origin")
+        .replace(/^git@github\.com:(.+?)(?:\.git)?$/, "https://github.com/$1")
+        .replace(/\.git$/, "");
+      if (/^https:\/\/github\.com\/[^/]+\/[^/]+/.test(remote)) return remote;
+    } catch {}
+  };
+
+  const detectCommitSha = (): string | undefined => {
+    try {
+      const branch = git("git rev-parse --abbrev-ref HEAD");
+      if (!branch || branch === "HEAD") return;
+      const lsRemote = git(`git ls-remote origin refs/heads/${branch}`);
+      return lsRemote.match(/^([0-9a-f]{40})\s/i)?.[1];
+    } catch {}
+  };
+
+  try {
+    return { repoUrl: detectRepoUrl(), commitSha: detectCommitSha() };
+  } catch {
+    return {};
+  }
+}
+
 /**
  * Prompt: "Build from verifiable source?" (only used when --verifiable is not set)
  */
@@ -129,10 +160,12 @@ export async function promptVerifiableSourceType(): Promise<VerifiableSourceType
  * Prompt for Git-source verifiable build inputs.
  */
 export async function promptVerifiableGitSourceInputs(): Promise<VerifiableGitSourceInputs> {
+  const detected = detectGitRepoInfo();
+
   const repoUrl = (
     await input({
       message: "Enter public git repository URL:",
-      default: "",
+      default: detected.repoUrl ?? "",
       validate: (value) => {
         if (!value.trim()) return "Repository URL is required";
         try {
@@ -167,7 +200,7 @@ export async function promptVerifiableGitSourceInputs(): Promise<VerifiableGitSo
   const gitRef = (
     await input({
       message: "Enter git commit SHA (40 hex chars):",
-      default: "",
+      default: repoUrl === detected.repoUrl ? (detected.commitSha ?? "") : "",
       validate: (value) => {
         const trimmed = value.trim();
         if (!trimmed) return "Commit SHA is required";
