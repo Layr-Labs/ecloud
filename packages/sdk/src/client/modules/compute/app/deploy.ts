@@ -72,6 +72,10 @@ export interface SDKDeployOptions {
   resourceUsageMonitoring?: ResourceUsageMonitoring;
   /** Billing mode: developer (default) or app (isolated billing) */
   billTo?: "developer" | "app";
+  /** Skip quota check */
+  skipQuotaCheck?: boolean;
+  /** Optional salt for deterministic app address prediction (32 bytes) */
+  salt?: Uint8Array | Buffer;
   /** Optional gas params from estimation (use result from prepareDeploy) */
   gas?: GasEstimate;
   /** Skip telemetry (used when called from CLI) - optional */
@@ -130,6 +134,8 @@ export interface VerifiableBuildOptions {
   resourceUsageMonitoring?: ResourceUsageMonitoring;
   /** Billing mode: developer (default) or app (isolated billing) */
   billTo?: "developer" | "app";
+  /** Skip quota check */
+  skipQuotaCheck?: boolean;
   /** Skip telemetry (used when called from CLI) - optional */
   skipTelemetry?: boolean;
 }
@@ -211,11 +217,13 @@ export async function prepareDeployFromVerifiableBuild(
       logger.info(``);
 
       // Check quota (after calculateAppID so we can use app address for isolated billing)
-      logger.debug("Checking quota availability...");
-      await checkQuotaAvailable(
-        preflightCtx,
-        options.billTo === "app" ? appIDToBeDeployed : undefined,
-      );
+      if (!options.skipQuotaCheck) {
+        logger.debug("Checking quota availability...");
+        await checkQuotaAvailable(
+          preflightCtx,
+          options.billTo === "app" ? appIDToBeDeployed : undefined,
+        );
+      }
 
       // Build Release struct WITHOUT Docker/layering
       const release = await createReleaseFromImageDigest(
@@ -407,11 +415,13 @@ export async function deploy(
       logger.info(``);
 
       // 6. Check quota availability (after calculateAppID so we can use app address for isolated billing)
-      logger.debug("Checking quota availability...");
-      await checkQuotaAvailable(
-        preflightCtx,
-        options.billTo === "app" ? appIDToBeDeployed : undefined,
-      );
+      if (!options.skipQuotaCheck) {
+        logger.debug("Checking quota availability...");
+        await checkQuotaAvailable(
+          preflightCtx,
+          options.billTo === "app" ? appIDToBeDeployed : undefined,
+        );
+      }
 
       // 7. Prepare the release (includes build/push if needed, with automatic retry on permission errors)
       logger.info("Preparing release...");
@@ -571,9 +581,9 @@ export async function prepareDeploy(
       const envFilePath = options.envFilePath || "";
       const instanceType = options.instanceType;
 
-      // 4. Generate random salt
-      const salt = generateRandomSalt();
-      logger.debug(`Generated salt: ${Buffer.from(salt).toString("hex")}`);
+      // 4. Generate or use provided salt
+      const salt = options.salt ?? generateRandomSalt();
+      logger.debug(`${options.salt ? "Using provided" : "Generated"} salt: ${Buffer.from(salt).toString("hex")}`);
 
       // 5. Get app ID (calculate from salt and address)
       logger.debug("Calculating app ID...");
@@ -588,11 +598,13 @@ export async function prepareDeploy(
       logger.info(``);
 
       // 6. Check quota availability (after calculateAppID so we can use app address for isolated billing)
-      logger.debug("Checking quota availability...");
-      await checkQuotaAvailable(
-        preflightCtx,
-        options.billTo === "app" ? appIDToBeDeployed : undefined,
-      );
+      if (!options.skipQuotaCheck) {
+        logger.debug("Checking quota availability...");
+        await checkQuotaAvailable(
+          preflightCtx,
+          options.billTo === "app" ? appIDToBeDeployed : undefined,
+        );
+      }
 
       // 7. Prepare the release (includes build/push if needed)
       logger.info("Preparing release...");

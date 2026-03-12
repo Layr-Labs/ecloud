@@ -97,6 +97,7 @@ export {
   formatETH,
   getBillingType,
   getAppsByBillingAccount,
+  calculateAppID,
   type GasEstimate,
   type EstimateGasOptions,
 } from "./common/contract/caller";

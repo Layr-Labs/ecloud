@@ -266,6 +266,8 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           logVisibility: opts.logVisibility,
           resourceUsageMonitoring: opts.resourceUsageMonitoring,
           billTo: opts.billTo,
+          skipQuotaCheck: opts.skipQuotaCheck,
+          salt: opts.salt,
           skipTelemetry,
         },
         logger,
