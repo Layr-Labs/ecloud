@@ -192,6 +192,37 @@ export async function createAuthorizationList(
   return [signedAuthorization];
 }
 
+const TRANSIENT_PATTERNS = [
+  "indexing is in progress",
+  "is not in the chain",
+] as const;
+
+function isTransientReceiptError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  return TRANSIENT_PATTERNS.some((p) => msg.includes(p));
+}
+
+async function waitForReceipt(
+  publicClient: PublicClient,
+  hash: Hex,
+  logger: Logger,
+  { maxRetries = 5, baseDelayMs = 2_000 } = {},
+) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await publicClient.waitForTransactionReceipt({ hash });
+    } catch (error) {
+      if (!isTransientReceiptError(error) || attempt >= maxRetries) throw error;
+
+      const delay = baseDelayMs * 2 ** attempt;
+      logger.debug(
+        `Receipt not available yet (attempt ${attempt + 1}/${maxRetries}), retrying in ${delay}ms...`,
+      );
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+}
+
 /**
  * Execute batch of operations via EIP-7702 delegator
  */
@@ -282,7 +313,7 @@ export async function executeBatch(options: ExecuteBatchOptions, logger: Logger 
   const hash = await walletClient.sendTransaction(txRequest);
   logger.info(`Transaction sent: ${hash}`);
 
-  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  const receipt = await waitForReceipt(publicClient, hash, logger);
 
   if (receipt.status === "reverted") {
     let revertReason = "Unknown reason";
