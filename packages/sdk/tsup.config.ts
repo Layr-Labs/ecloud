@@ -15,7 +15,7 @@ const sdkVersion = process.env.PACKAGE_VERSION || packageJson.version || "0.0.0"
 const posthogApiKey = process.env.POSTHOG_API_KEY_BUILD_TIME;
 
 export default defineConfig({
-  entry: ["src/index.ts", "src/compute.ts", "src/billing.ts", "src/browser.ts"],
+  entry: ["src/index.ts", "src/compute.ts", "src/billing.ts", "src/browser.ts", "src/attest.ts"],
   dts: true,
   format: ["esm", "cjs"],
   clean: true,

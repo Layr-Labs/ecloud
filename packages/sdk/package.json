@@ -31,6 +31,11 @@
       "types": "./dist/browser.d.ts",
       "import": "./dist/browser.js",
       "require": "./dist/browser.cjs"
+    },
+    "./attest": {
+      "types": "./dist/attest.d.ts",
+      "import": "./dist/attest.js",
+      "require": "./dist/attest.cjs"
     }
   },
   "scripts": {
