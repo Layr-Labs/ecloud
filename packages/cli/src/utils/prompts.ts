@@ -818,6 +818,7 @@ export async function getEnvFileInteractive(envFilePath?: string): Promise<strin
  */
 export interface SkuInfo {
   sku: string;
+  friendly_name: string;
   description: string;
   vcpus?: number;
   memory_mb?: number;
@@ -826,19 +827,10 @@ export interface SkuInfo {
   platform?: string;
 }
 
-const SKU_TIER_NAMES: Record<string, string> = {
-  "g1-micro-1v": "Starter 1",
-  "g1-small-1v": "Starter 2",
-  "g1-custom-2-4096s": "Pro 1",
-  "g1-standard-2s": "Pro 2",
-  "g1-standard-4t": "Enterprise 1",
-  "g1-standard-8t": "Enterprise 2",
-};
-
 function formatSkuChoice(it: SkuInfo): string {
   // Rich format when pricing data is available
   if (it.vcpus != null && it.memory_mb != null && it.monthly_price_usd != null && it.hourly_price_usd != null) {
-    const tier = SKU_TIER_NAMES[it.sku] ?? it.sku;
+    const tier = it.friendly_name ?? it.sku;
     const isShared = it.description.toLowerCase().includes("shared");
     const vcpuLabel = isShared ? `Shared ${it.vcpus} vCPU` : `${it.vcpus} vCPU`;
     const memLabel = it.memory_mb >= 1024 ? `${it.memory_mb / 1024} GB` : `${it.memory_mb} MB`;
