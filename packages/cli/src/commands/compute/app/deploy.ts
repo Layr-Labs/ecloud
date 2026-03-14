@@ -149,6 +149,35 @@ export default class AppDeploy extends Command {
       const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
       const privateKey = flags["private-key"]!;
 
+      // Early balance check — warn before interactive prompts if wallet has no funds
+      const { publicClient, address } = createViemClients({
+        privateKey,
+        rpcUrl,
+        environment,
+      });
+      const balance = await publicClient.getBalance({ address });
+      if (balance === 0n) {
+        const isSepolia = environmentConfig.chainID === BigInt(11155111);
+        this.log(
+          chalk.yellow(`\nWarning: Wallet ${chalk.bold(address)} has zero balance on ${environment}.`),
+        );
+        this.log(
+          chalk.yellow(`You will need ETH to pay for deployment gas fees.`),
+        );
+        if (isSepolia) {
+          this.log(
+            chalk.yellow(
+              `Get Sepolia ETH from https://cloud.google.com/application/web3/faucet/ethereum/sepolia or https://sepoliafaucet.com/`,
+            ),
+          );
+        }
+        this.log(
+          chalk.yellow(
+            `Fund your wallet before the transaction step, or the deployment will fail.\n`,
+          ),
+        );
+      }
+
       type VerifiableMode = "none" | "git" | "prebuilt";
       let buildClient: Awaited<ReturnType<typeof createBuildClient>> | undefined;
       const getBuildClient = async () => {
