@@ -1,53 +1,74 @@
 /**
  * Auth Whoami Command
  *
- * Show current authentication status and address
+ * Show stored identities, active identity, and signing key status
  */
 
 import { Command } from "@oclif/core";
 import { getPrivateKeyWithSource, getAddressFromPrivateKey } from "@layr-labs/ecloud-sdk";
 import { commonFlags } from "../../flags";
 import { withTelemetry } from "../../telemetry";
+import {
+  getIdentities,
+  getActiveIdentityAddress,
+  formatIdentity,
+} from "../../utils/globalConfig";
 
 export default class AuthWhoami extends Command {
-  static description = "Show current authentication status and address";
+  static description = "Show stored identities and current authentication status";
 
   static examples = ["<%= config.bin %> <%= command.id %>"];
 
   static flags = {
-    "private-key": {
-      ...commonFlags["private-key"],
-      required: false, // Make optional for whoami
-    },
+    environment: commonFlags.environment,
   };
 
   async run(): Promise<void> {
     return withTelemetry(this, async () => {
       const { flags } = await this.parse(AuthWhoami);
+      const environment = flags.environment as string;
 
-      // Try to get private key from any source
-      const result = await getPrivateKeyWithSource({
-        privateKey: flags["private-key"],
-      });
+      // Signing key status
+      const result = await getPrivateKeyWithSource({ privateKey: undefined });
+      if (result) {
+        const signingAddress = getAddressFromPrivateKey(result.key);
+        this.log(`Signing key: ${signingAddress}  (${result.source})`);
+      } else {
+        this.log(`Signing key: none  (run: ecloud auth login)`);
+      }
 
-      if (!result) {
-        this.log("Not authenticated");
+      this.log("");
+
+      // Identities
+      const identities = getIdentities();
+      const activeAddress = getActiveIdentityAddress(environment);
+
+      if (identities.length === 0) {
+        this.log("Identities: none");
         this.log("");
-        this.log("To authenticate, use one of:");
-        this.log("  ecloud auth login                    # Store key in keyring");
-        this.log("  export ECLOUD_PRIVATE_KEY=0x...      # Use environment variable");
-        this.log("  ecloud <command> --private-key 0x... # Use flag");
+        this.log("Run 'ecloud auth new' to create an identity.");
         return;
       }
 
-      // Get address from private key
-      const address = getAddressFromPrivateKey(result.key);
+      this.log(`Identities (${environment}):`);
+      for (const id of identities) {
+        const isActive = id.address.toLowerCase() === activeAddress?.toLowerCase();
+        const marker = isActive ? "●" : "○";
+        const active = isActive ? "  ← active" : "";
+        this.log(`  ${marker} ${formatIdentity(id)}${active}`);
+      }
 
-      // Display authentication info
-      this.log(`Address: ${address}`);
-      this.log(`Source:  ${result.source}`);
+      // If active identity is the EOA signing key itself (no contract identity active)
+      if (result && activeAddress?.toLowerCase() === getAddressFromPrivateKey(result.key).toLowerCase()) {
+        this.log(`\n  Active: signing key (EOA)`);
+      }
+
       this.log("");
-      this.log("Note: This key is used for all environments (mainnet, sepolia, etc.)");
+      if (!activeAddress) {
+        this.log("No active identity. Run 'ecloud auth login' to select one.");
+      } else {
+        this.log("Run 'ecloud auth login' to switch active identity.");
+      }
     });
   }
 }

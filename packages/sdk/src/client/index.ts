@@ -123,6 +123,14 @@ export {
   type CancelUpgradeOptions,
   type GrantTeamRoleOptions,
   type RevokeTeamRoleOptions,
+  getSafeTimelockFactoryAddress,
+  deploySafe,
+  deployTimelock,
+  discoverTimelockForEOA,
+  CANONICAL_SALT,
+  type DeploySafeOptions,
+  type DeployTimelockOptions,
+  type DiscoveredTimelock,
 } from "./common/contract/caller";
 
 // Export batch gas estimation and delegation check

@@ -36,6 +36,8 @@ import { getChainFromID } from "../utils/helpers";
 
 import AppControllerABI from "../abis/AppController.json";
 import PermissionControllerABI from "../abis/PermissionController.json";
+import SafeTimelockFactoryABI from "../abis/SafeTimelockFactory.json";
+import TimelockControllerABI from "../abis/TimelockController.json";
 
 /**
  * Gas estimation result
@@ -1725,4 +1727,172 @@ export async function undelegate(
   }
 
   return hash;
+}
+
+// ─── SafeTimelockFactory ────────────────────────────────────────────────────
+
+/**
+ * Read the SafeTimelockFactory proxy address from AppController
+ */
+export async function getSafeTimelockFactoryAddress(
+  publicClient: PublicClient,
+  environmentConfig: EnvironmentConfig,
+): Promise<Address> {
+  return publicClient.readContract({
+    address: environmentConfig.appControllerAddress as Address,
+    abi: AppControllerABI as any,
+    functionName: "safeTimelockFactory",
+    args: [],
+  }) as Promise<Address>;
+}
+
+/** Canonical salt used for all factory deployments — ensures deterministic addresses */
+export const CANONICAL_SALT: Hex = "0x0000000000000000000000000000000000000000000000000000000000000000";
+
+export interface DeploySafeOptions {
+  walletClient: WalletClient;
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+  owners: Address[];
+  threshold: number;
+}
+
+/**
+ * Deploy a Gnosis Safe via SafeTimelockFactory
+ */
+export async function deploySafe(
+  options: DeploySafeOptions,
+  logger: Logger = noopLogger,
+): Promise<{ tx: Hex; safe: Address }> {
+  const { walletClient, publicClient, environmentConfig, owners, threshold } = options;
+  const salt = CANONICAL_SALT;
+
+  const factoryAddress = await getSafeTimelockFactoryAddress(publicClient, environmentConfig);
+  const account = walletClient.account!;
+  const chain = getChainFromID(environmentConfig.chainID);
+
+  const data = encodeFunctionData({
+    abi: SafeTimelockFactoryABI,
+    functionName: "deploySafe",
+    args: [{ owners, threshold: BigInt(threshold) }, salt],
+  });
+
+  logger.debug(`Deploying Safe via factory ${factoryAddress}`);
+
+  const hash = await walletClient.sendTransaction({ account, to: factoryAddress, data, chain });
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+
+  if (receipt.status === "reverted") {
+    throw new Error(`deploySafe transaction (${hash}) reverted`);
+  }
+
+  // Parse SafeDeployed event to get the deployed address
+  const safeDeployedTopic = "0x" + Buffer.from("SafeDeployed(address,address,address[],uint256,bytes32)").toString("hex");
+  // Use the second indexed topic (safe address) from the log
+  const log = receipt.logs.find(
+    (l) => l.address.toLowerCase() === factoryAddress.toLowerCase(),
+  );
+  if (!log || log.topics.length < 2) {
+    throw new Error("SafeDeployed event not found in receipt");
+  }
+  const safe = ("0x" + log.topics[2]!.slice(26)) as Address;
+
+  logger.info(`Safe deployed at ${safe}`);
+  return { tx: hash, safe };
+}
+
+export interface DeployTimelockOptions {
+  walletClient: WalletClient;
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+  minDelay: bigint;
+  proposers: Address[];
+  executors: Address[];
+}
+
+/**
+ * Deploy a TimelockController via SafeTimelockFactory
+ */
+export async function deployTimelock(
+  options: DeployTimelockOptions,
+  logger: Logger = noopLogger,
+): Promise<{ tx: Hex; timelock: Address }> {
+  const { walletClient, publicClient, environmentConfig, minDelay, proposers, executors } = options;
+  const salt = CANONICAL_SALT;
+
+  const factoryAddress = await getSafeTimelockFactoryAddress(publicClient, environmentConfig);
+  const account = walletClient.account!;
+  const chain = getChainFromID(environmentConfig.chainID);
+
+  const data = encodeFunctionData({
+    abi: SafeTimelockFactoryABI,
+    functionName: "deployTimelock",
+    args: [{ minDelay, proposers, executors }, salt],
+  });
+
+  logger.debug(`Deploying Timelock via factory ${factoryAddress}`);
+
+  const hash = await walletClient.sendTransaction({ account, to: factoryAddress, data, chain });
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+
+  if (receipt.status === "reverted") {
+    throw new Error(`deployTimelock transaction (${hash}) reverted`);
+  }
+
+  // Parse TimelockDeployed event — second indexed topic is the timelock address
+  const log = receipt.logs.find(
+    (l) => l.address.toLowerCase() === factoryAddress.toLowerCase(),
+  );
+  if (!log || log.topics.length < 2) {
+    throw new Error("TimelockDeployed event not found in receipt");
+  }
+  const timelock = ("0x" + log.topics[2]!.slice(26)) as Address;
+
+  logger.info(`Timelock deployed at ${timelock}`);
+  return { tx: hash, timelock };
+}
+
+export interface DiscoveredTimelock {
+  address: Address;
+  minDelay: bigint;
+}
+
+/**
+ * Discover the canonical Timelock for an EOA address.
+ *
+ * Uses calculateTimelockAddress(eoa, bytes32(0)) to predict the deterministic
+ * address, then checks isTimelock() to see if it has been deployed.
+ * Returns null if no Timelock exists for this EOA.
+ */
+export async function discoverTimelockForEOA(
+  publicClient: PublicClient,
+  environmentConfig: EnvironmentConfig,
+  eoaAddress: Address,
+): Promise<DiscoveredTimelock | null> {
+  const factoryAddress = await getSafeTimelockFactoryAddress(publicClient, environmentConfig);
+
+  const timelockAddress = await publicClient.readContract({
+    address: factoryAddress,
+    abi: SafeTimelockFactoryABI,
+    functionName: "calculateTimelockAddress",
+    args: [eoaAddress, CANONICAL_SALT],
+  }) as Address;
+
+  const exists = await publicClient.readContract({
+    address: factoryAddress,
+    abi: SafeTimelockFactoryABI,
+    functionName: "isTimelock",
+    args: [timelockAddress],
+  }) as boolean;
+
+  if (!exists) return null;
+
+  const minDelay = await publicClient.readContract({
+    address: timelockAddress,
+    abi: TimelockControllerABI,
+    functionName: "getMinDelay",
+    args: [],
+  }) as bigint;
+
+  return { address: timelockAddress, minDelay };
 }

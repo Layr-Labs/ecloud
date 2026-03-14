@@ -14,13 +14,26 @@ import {
   getLegacyKeys,
   getLegacyPrivateKey,
   deleteLegacyPrivateKey,
+  getEnvironmentConfig,
+  discoverTimelockForEOA,
   type LegacyKey,
 } from "@layr-labs/ecloud-sdk";
 import { getHiddenInput, displayWarning } from "../../utils/security";
 import { withTelemetry } from "../../telemetry";
+import { commonFlags } from "../../flags";
+import {
+  getIdentities,
+  addIdentity,
+  replaceAllIdentities,
+  setActiveIdentity,
+  getActiveIdentityAddress,
+  formatIdentity,
+} from "../../utils/globalConfig";
+import { createPublicClientOnly } from "../../utils/viemClients";
+import type { Address } from "viem";
 
 export default class AuthLogin extends Command {
-  static description = "Store your private key in OS keyring";
+  static description = "Store your private key in OS keyring, or switch active identity";
 
   static examples = [
     "<%= config.bin %> auth login",
@@ -37,17 +50,20 @@ export default class AuthLogin extends Command {
       description: "Skip all confirmation prompts",
       default: false,
     }),
+    environment: commonFlags.environment,
+    "rpc-url": commonFlags["rpc-url"],
   };
 
   async run(): Promise<void> {
     return withTelemetry(this, async () => {
       const { flags } = await this.parse(AuthLogin);
       const isNonInteractive = !!flags["private-key"];
+      const environment = flags.environment as string;
 
-      // Check if key already exists
-      const exists = await keyExists();
+      const identities = getIdentities();
 
-      if (exists) {
+      // One or more identities — show selector
+      if (identities.length > 0) {
         if (isNonInteractive) {
           if (!flags.force) {
             this.error(
@@ -55,19 +71,41 @@ export default class AuthLogin extends Command {
             );
           }
         } else {
+          const activeAddress = getActiveIdentityAddress(environment);
+          const choices = [
+            ...identities.map((id) => ({
+              name: formatIdentity(id) + (id.address.toLowerCase() === activeAddress?.toLowerCase() ? "  ✓ active" : ""),
+              value: id.address,
+            })),
+            { name: "─── Replace signing key ───", value: "__key__" },
+          ];
+
+          const selected = await select({
+            message: `Select active identity for ${environment}:`,
+            choices,
+          });
+
+          if (selected !== "__key__") {
+            setActiveIdentity(environment, selected);
+            const id = identities.find((i) => i.address.toLowerCase() === selected.toLowerCase())!;
+            this.log(`\n✓ Active identity: ${formatIdentity(id)}`);
+            return;
+          }
+
+          // User chose to replace signing key — warn before proceeding
           displayWarning([
-            "WARNING: A private key for ecloud already exists!",
-            "Replacing it will cause PERMANENT DATA LOSS if not backed up.",
-            "The previous key will be lost forever.",
+            "WARNING: Replacing the signing key will remove all current identities.",
+            "Contract identities (Safe, Timelock) tied to the old key will be cleared.",
           ]);
+          this.log("");
 
           const confirmReplace = await confirm({
-            message: "Replace existing key?",
+            message: "Replace current signing key?",
             default: false,
           });
 
           if (!confirmReplace) {
-            this.log("\nLogin cancelled.");
+            this.log("\nCancelled.");
             return;
           }
         }
@@ -158,6 +196,41 @@ export default class AuthLogin extends Command {
         this.log(`✓ Address: ${address}`);
         this.log("\nNote: This key will be used for all environments (mainnet, sepolia, etc.)");
         this.log("You can now use ecloud commands without --private-key flag.");
+
+        // Switching signing key — wipe all identities (they belonged to the previous EOA)
+        replaceAllIdentities([{ type: "eoa", address }]);
+        setActiveIdentity(environment, address);
+
+        // Discover canonical Timelock on-chain for this EOA
+        this.log(`\nScanning chain for Timelock associated with ${address}...`);
+        try {
+          const publicClient = createPublicClientOnly({ environment, rpcUrl: flags["rpc-url"] });
+          const environmentConfig = getEnvironmentConfig(environment);
+          const found = await discoverTimelockForEOA(publicClient, environmentConfig, address as Address);
+
+          if (found) {
+            const delayHours = Number(found.minDelay) / 3600;
+            const delayLabel = delayHours >= 24 ? `${delayHours / 24}d` : `${delayHours}h`;
+            this.log(`Found Timelock: ${found.address}  (${delayLabel} delay)`);
+
+            const alreadyKnown = getIdentities().some(
+              (id) => id.address.toLowerCase() === found.address.toLowerCase(),
+            );
+            if (!alreadyKnown) {
+              const addIt = await confirm({ message: "Add this Timelock to your identities?", default: true });
+              if (addIt) {
+                addIdentity({ type: "timelock", address: found.address, delay: delayLabel, environment });
+                this.log(`✓ Timelock added to identities`);
+              }
+            } else {
+              this.log(`✓ Timelock already in your identities`);
+            }
+          } else {
+            this.log(`No Timelock found for this EOA on ${environment}`);
+          }
+        } catch {
+          this.log(`(Timelock scan skipped — chain not reachable)`);
+        }
 
         // Ask if user wants to delete the legacy key (only if save was successful)
         if (selectedKey) {
