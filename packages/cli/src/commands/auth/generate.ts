@@ -10,6 +10,8 @@ import {
   generateNewPrivateKey,
   storePrivateKey,
   keyExists,
+  getPrivateKeyWithSource,
+  getAddressFromPrivateKey,
   getEnvironmentConfig,
   deploySafe,
   deployTimelock,
@@ -122,16 +124,32 @@ Press 'q' to exit and continue...
     if (shouldStore) {
       const exists = await keyExists();
       if (exists) {
+        // Show existing key so user can back it up before it's replaced
+        const existing = await getPrivateKeyWithSource({ privateKey: undefined });
+        if (existing) {
+          const existingAddress = getAddressFromPrivateKey(existing.key);
+          const backupContent = `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Your existing signing key is shown below.
+Back it up before it is replaced.
+
+Address:     ${existingAddress}
+Private key: ${existing.key}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Press 'q' to exit and continue...
+`;
+          await showPrivateKey(backupContent);
+        }
+
         displayWarning([
-          `WARNING: A private key for ecloud already exists!`,
-          "If you continue, the existing key will be PERMANENTLY REPLACED.",
-          "This cannot be undone!",
-          "",
-          "The previous key will be lost forever if you haven't backed it up.",
+          "A signing key already exists.",
+          "Replacing it will clear all current identities.",
+          "Make sure you have backed up your existing key.",
         ]);
-        const confirmReplace = await confirm({ message: `Replace existing key for ecloud?`, default: false });
+        const confirmReplace = await confirm({ message: "Replace existing key?", default: false });
         if (!confirmReplace) {
-          this.log("\nKey not stored. If you did not save your new key when it was displayed, it is now lost and cannot be recovered.");
+          this.log("\nCancelled.");
           return;
         }
       }
@@ -155,13 +173,95 @@ Press 'q' to exit and continue...
   }
 
   private async _runSafe(flags: any): Promise<void> {
-    await validateCommonFlags(flags, { requirePrivateKey: true });
+    // Ensure a signing key exists — generate one if needed
+    let signingKey: string | undefined = flags["private-key"] as string | undefined;
 
-    const ownersRaw = await input({
-      message: "Enter owner addresses (comma-separated):",
-      validate: (v) => (v.trim().length > 0 ? true : "At least one owner is required"),
+    if (!signingKey) {
+      const exists = await keyExists();
+      if (exists) {
+        const existing = await getPrivateKeyWithSource({ privateKey: undefined });
+        if (existing) {
+          const existingAddress = getAddressFromPrivateKey(existing.key);
+          const backupContent = `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Your existing signing key is shown below.
+Back it up before it is replaced.
+
+Address:     ${existingAddress}
+Private key: ${existing.key}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Press 'q' to exit and continue...
+`;
+          await showPrivateKey(backupContent);
+        }
+
+        displayWarning([
+          "A signing key already exists.",
+          "Replacing it will clear all current identities.",
+          "Make sure you have backed up your existing key.",
+        ]);
+        const confirmReplace = await confirm({ message: "Generate new signing key?", default: false });
+        if (!confirmReplace) {
+          this.log("\nCancelled.");
+          return;
+        }
+      }
+
+      const { privateKey, address } = generateNewPrivateKey();
+      const content = `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+A new private key was generated for you.
+
+IMPORTANT: You MUST backup this key now.
+           It will never be shown again.
+
+Address:     ${address}
+Private key: ${privateKey}
+
+⚠️  SECURITY WARNING:
+   • Anyone with this key can control your account
+   • Never share it or commit it to version control
+   • Store it in a secure password manager
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Press 'q' to exit and continue...
+`;
+      const displayed = await showPrivateKey(content);
+      if (!displayed) {
+        this.log("Cancelled.");
+        return;
+      }
+
+      await storePrivateKey(privateKey);
+      replaceAllIdentities([{ type: "eoa", address }]);
+      for (const env of ["sepolia", "sepolia-dev", "mainnet-alpha"]) {
+        setActiveIdentity(env, address);
+      }
+      this.log(`\n✓ Private key stored in OS keyring`);
+      this.log(`✓ Address: ${address}`);
+      this.log("You can now use ecloud commands without --private-key flag.\n");
+      signingKey = privateKey;
+    }
+
+    const environmentConfig = getEnvironmentConfig(flags.environment);
+    const { walletClient, publicClient, address: signerAddress } = createViemClients({
+      privateKey: signingKey,
+      rpcUrl: flags["rpc-url"],
+      environment: flags.environment,
     });
-    const owners = ownersRaw.split(",").map((a) => a.trim() as Address);
+
+    this.log(`Signing key ${signerAddress} will be included as an owner and cannot be removed.\n`);
+
+    const extraOwnersRaw = await input({
+      message: "Additional owner addresses (comma-separated, leave blank for none):",
+      default: "",
+    });
+    const extraOwners = extraOwnersRaw
+      .split(",")
+      .map((a) => a.trim())
+      .filter((a) => a.length > 0) as Address[];
+    const owners: Address[] = [signerAddress, ...extraOwners];
 
     const thresholdRaw = await input({
       message: `Threshold (e.g., ${Math.ceil(owners.length / 2)} of ${owners.length}):`,
@@ -178,14 +278,8 @@ Press 'q' to exit and continue...
     if (addTimelock) {
       delayStr = await input({ message: 'Minimum delay (e.g., "24h", "7d"):', default: "24h" });
     }
-
-    const environmentConfig = getEnvironmentConfig(flags.environment);
-    const { walletClient, publicClient } = createViemClients({
-      privateKey: flags["private-key"] as string,
-      rpcUrl: flags["rpc-url"],
-      environment: flags.environment,
-    });
     const logger = makeLogger(this.log.bind(this), this.warn.bind(this), flags.verbose);
+
 
     this.log("");
     if (addTimelock) {

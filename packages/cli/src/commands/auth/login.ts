@@ -4,13 +4,14 @@
  * Store an existing private key in OS keyring
  */
 
-import { Command, Flags } from "@oclif/core";
+import { Command } from "@oclif/core";
 import { confirm, select } from "@inquirer/prompts";
 import {
   storePrivateKey,
   keyExists,
   validatePrivateKey,
   getAddressFromPrivateKey,
+  getPrivateKeyWithSource,
   getLegacyKeys,
   getLegacyPrivateKey,
   deleteLegacyPrivateKey,
@@ -18,7 +19,7 @@ import {
   discoverTimelockForEOA,
   type LegacyKey,
 } from "@layr-labs/ecloud-sdk";
-import { getHiddenInput, displayWarning } from "../../utils/security";
+import { getHiddenInput, displayWarning, showPrivateKey } from "../../utils/security";
 import { withTelemetry } from "../../telemetry";
 import { commonFlags } from "../../flags";
 import {
@@ -35,21 +36,9 @@ import type { Address } from "viem";
 export default class AuthLogin extends Command {
   static description = "Store your private key in OS keyring, or switch active identity";
 
-  static examples = [
-    "<%= config.bin %> auth login",
-    "<%= config.bin %> auth login --private-key 0x...",
-    "<%= config.bin %> auth login --private-key 0x... --force",
-  ];
+  static examples = ["<%= config.bin %> <%= command.id %>"];
 
   static flags = {
-    "private-key": Flags.string({
-      description: "Private key to store (skips interactive prompt)",
-      env: "ECLOUD_PRIVATE_KEY",
-    }),
-    force: Flags.boolean({
-      description: "Skip all confirmation prompts",
-      default: false,
-    }),
     environment: commonFlags.environment,
     "rpc-url": commonFlags["rpc-url"],
   };
@@ -57,115 +46,120 @@ export default class AuthLogin extends Command {
   async run(): Promise<void> {
     return withTelemetry(this, async () => {
       const { flags } = await this.parse(AuthLogin);
-      const isNonInteractive = !!flags["private-key"];
       const environment = flags.environment as string;
 
       const identities = getIdentities();
 
       // One or more identities — show selector
       if (identities.length > 0) {
-        if (isNonInteractive) {
-          if (!flags.force) {
-            this.error(
-              "A private key already exists. Use --force to replace it.",
-            );
-          }
-        } else {
-          const activeAddress = getActiveIdentityAddress(environment);
-          const choices = [
-            ...identities.map((id) => ({
-              name: formatIdentity(id) + (id.address.toLowerCase() === activeAddress?.toLowerCase() ? "  ✓ active" : ""),
-              value: id.address,
-            })),
-            { name: "─── Replace signing key ───", value: "__key__" },
-          ];
+        const activeAddress = getActiveIdentityAddress(environment);
+        const choices = [
+          ...identities.map((id) => ({
+            name: formatIdentity(id) + (id.address.toLowerCase() === activeAddress?.toLowerCase() ? "  ✓ active" : ""),
+            value: id.address,
+          })),
+          { name: "─── Replace signing key ───", value: "__key__" },
+        ];
 
-          const selected = await select({
-            message: `Select active identity for ${environment}:`,
-            choices,
-          });
+        const selected = await select({
+          message: `Select active identity for ${environment}:`,
+          choices,
+        });
 
-          if (selected !== "__key__") {
-            setActiveIdentity(environment, selected);
-            const id = identities.find((i) => i.address.toLowerCase() === selected.toLowerCase())!;
-            this.log(`\n✓ Active identity: ${formatIdentity(id)}`);
-            return;
-          }
+        if (selected !== "__key__") {
+          setActiveIdentity(environment, selected);
+          const id = identities.find((i) => i.address.toLowerCase() === selected.toLowerCase())!;
+          this.log(`\n✓ Active identity: ${formatIdentity(id)}`);
+          return;
+        }
 
-          // User chose to replace signing key — warn before proceeding
-          displayWarning([
-            "WARNING: Replacing the signing key will remove all current identities.",
-            "Contract identities (Safe, Timelock) tied to the old key will be cleared.",
-          ]);
-          this.log("");
+        // Show existing key for backup before replacing
+        const existing = await getPrivateKeyWithSource({ privateKey: undefined });
+        if (existing) {
+          const existingAddress = getAddressFromPrivateKey(existing.key);
+          const backupContent = `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Your existing signing key is shown below.
+Back it up before it is replaced.
 
-          const confirmReplace = await confirm({
-            message: "Replace current signing key?",
-            default: false,
-          });
+Address:     ${existingAddress}
+Private key: ${existing.key}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-          if (!confirmReplace) {
-            this.log("\nCancelled.");
-            return;
-          }
+Press 'q' to exit and continue...
+`;
+          await showPrivateKey(backupContent);
+        }
+
+        // User chose to replace signing key — warn before proceeding
+        displayWarning([
+          "A signing key already exists.",
+          "Replacing it will clear all current identities.",
+          "Make sure you have backed up your existing key.",
+        ]);
+        this.log("");
+
+        const confirmReplace = await confirm({
+          message: "Replace current signing key?",
+          default: false,
+        });
+
+        if (!confirmReplace) {
+          this.log("\nCancelled.");
+          return;
         }
       }
 
+      // Check for legacy keys from eigenx-cli
+      const legacyKeys = await getLegacyKeys();
       let privateKey: string | null = null;
       let selectedKey: LegacyKey | null = null;
 
-      if (isNonInteractive) {
-        // Use flag value directly
-        privateKey = flags["private-key"]!;
-      } else {
-        // Check for legacy keys from eigenx-cli
-        const legacyKeys = await getLegacyKeys();
+      if (legacyKeys.length > 0) {
+        this.log("\nFound legacy keys from eigenx-cli:");
+        this.log("");
 
-        if (legacyKeys.length > 0) {
-          this.log("\nFound legacy keys from eigenx-cli:");
+        // Display legacy keys
+        for (const key of legacyKeys) {
+          this.log(`  Address: ${key.address}`);
+          this.log(`  Environment: ${key.environment}`);
+          this.log(`  Source: ${key.source}`);
           this.log("");
+        }
 
-          // Display legacy keys
-          for (const key of legacyKeys) {
-            this.log(`  Address: ${key.address}`);
-            this.log(`  Environment: ${key.environment}`);
-            this.log(`  Source: ${key.source}`);
-            this.log("");
-          }
+        const importLegacy = await confirm({
+          message: "Would you like to import one of these legacy keys?",
+          default: false,
+        });
 
-          const importLegacy = await confirm({
-            message: "Would you like to import one of these legacy keys?",
-            default: false,
+        if (importLegacy) {
+          // Create choices for selection
+          const choices = legacyKeys.map((key) => ({
+            name: `${key.address} (${key.environment} - ${key.source})`,
+            value: key,
+          }));
+
+          selectedKey = await select<LegacyKey>({
+            message: "Select a key to import:",
+            choices,
           });
 
-          if (importLegacy) {
-            // Create choices for selection
-            const choices = legacyKeys.map((key) => ({
-              name: `${key.address} (${key.environment} - ${key.source})`,
-              value: key,
-            }));
+          // Retrieve the actual private key
+          privateKey = await getLegacyPrivateKey(selectedKey.environment, selectedKey.source);
 
-            selectedKey = await select<LegacyKey>({
-              message: "Select a key to import:",
-              choices,
-            });
-
-            // Retrieve the actual private key
-            privateKey = await getLegacyPrivateKey(selectedKey.environment, selectedKey.source);
-
-            if (!privateKey) {
-              this.error(`Failed to retrieve legacy key for ${selectedKey.environment}`);
-            }
-
-            this.log(`\nImporting key from ${selectedKey.source}:${selectedKey.environment}`);
+          if (!privateKey) {
+            this.error(`Failed to retrieve legacy key for ${selectedKey.environment}`);
           }
-        }
 
-        // If no legacy key was selected, prompt for private key input
-        if (!privateKey) {
-          privateKey = await getHiddenInput("Enter your private key:");
-          privateKey = privateKey.trim();
+          this.log(`\nImporting key from ${selectedKey.source}:${selectedKey.environment}`);
         }
+      }
+
+      // If no legacy key was selected, prompt for private key input
+      if (!privateKey) {
+        privateKey = await getHiddenInput("Enter your private key:");
+
+        privateKey = privateKey.trim();
       }
 
       if (!validatePrivateKey(privateKey)) {
@@ -177,16 +171,14 @@ export default class AuthLogin extends Command {
 
       this.log(`\nAddress: ${address}`);
 
-      if (!isNonInteractive) {
-        const confirmStore = await confirm({
-          message: "Store this key in OS keyring?",
-          default: true,
-        });
+      const confirmStore = await confirm({
+        message: "Store this key in OS keyring?",
+        default: true,
+      });
 
-        if (!confirmStore) {
-          this.log("\nLogin cancelled.");
-          return;
-        }
+      if (!confirmStore) {
+        this.log("\nLogin cancelled.");
+        return;
       }
 
       // Store in keyring
@@ -194,7 +186,6 @@ export default class AuthLogin extends Command {
         await storePrivateKey(privateKey);
         this.log("\n✓ Private key stored in OS keyring");
         this.log(`✓ Address: ${address}`);
-        this.log("\nNote: This key will be used for all environments (mainnet, sepolia, etc.)");
         this.log("You can now use ecloud commands without --private-key flag.");
 
         // Switching signing key — wipe all identities (they belonged to the previous EOA)
@@ -232,16 +223,47 @@ export default class AuthLogin extends Command {
           this.log(`(Timelock scan skipped — chain not reachable)`);
         }
 
+        // Discover Safes where this EOA is an owner via Safe Transaction Service
+        try {
+          const safeServiceUrl =
+            environment === "mainnet-alpha"
+              ? "https://safe-transaction-mainnet.safe.global"
+              : "https://safe-transaction-sepolia.safe.global";
+          const res = await fetch(`${safeServiceUrl}/api/v1/owners/${address}/safes/`);
+          if (res.ok) {
+            const data = await res.json() as { safes: string[] };
+            const safes = data.safes ?? [];
+            if (safes.length > 0) {
+              this.log(`\nFound ${safes.length} Safe(s) where this EOA is an owner:`);
+              for (const safe of safes) {
+                const alreadyKnown = getIdentities().some(
+                  (id) => id.address.toLowerCase() === safe.toLowerCase(),
+                );
+                if (alreadyKnown) {
+                  this.log(`  ${safe}  (already in identities)`);
+                } else {
+                  const addIt = await confirm({ message: `Add Safe ${safe} to your identities?`, default: true });
+                  if (addIt) {
+                    addIdentity({ type: "safe", address: safe, environment });
+                    this.log(`✓ Safe added to identities`);
+                  }
+                }
+              }
+            }
+          }
+        } catch {
+          // Safe Transaction Service not reachable — skip
+        }
+
         // Ask if user wants to delete the legacy key (only if save was successful)
         if (selectedKey) {
           this.log("");
-
-          const shouldDelete = flags.force || await confirm({
+          const confirmDelete = await confirm({
             message: `Delete the legacy key from ${selectedKey.source}:${selectedKey.environment}?`,
             default: false,
           });
 
-          if (shouldDelete) {
+          if (confirmDelete) {
             const deleted = await deleteLegacyPrivateKey(
               selectedKey.environment,
               selectedKey.source,
