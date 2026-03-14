@@ -214,7 +214,6 @@ Press 'q' to exit and continue...
         } as DeployTimelockOptions,
         logger,
       );
-      addIdentity({ type: "safe", address: safe, environment: flags.environment });
       addIdentity({ type: "timelock", address: timelock, delay: delayStr, safeAddress: safe, environment: flags.environment });
       setActiveIdentity(flags.environment, timelock);
       this.log(`✓ Timelock deployed: ${timelock} (${delayStr} delay, wraps Safe)`);
@@ -245,15 +244,17 @@ Press 'q' to exit and continue...
     const proposerKind = await select({
       message: "Is the proposer/executor an EOA or a Safe?",
       choices: [
-        { name: "EOA  (single private key)", value: "eoa" },
+        { name: "EOA  (signing key)", value: "eoa" },
         { name: "Gnosis Safe  (multi-sig)", value: "safe" },
       ],
     });
 
-    const proposer = await input({
-      message: "Proposer/executor address:",
-      validate: (v) => (v.trim().startsWith("0x") ? true : "Must be a 0x address"),
-    }) as Address;
+    const proposer: Address = proposerKind === "eoa"
+      ? signerAddress
+      : await input({
+          message: "Safe address:",
+          validate: (v) => (v.trim().startsWith("0x") ? true : "Must be a 0x address"),
+        }) as Address;
 
     // Check if a canonical Timelock already exists for this EOA
     if (proposerKind === "eoa") {
