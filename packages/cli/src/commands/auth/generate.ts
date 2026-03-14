@@ -13,6 +13,7 @@ import {
   getEnvironmentConfig,
   deploySafe,
   deployTimelock,
+  discoverTimelockForEOA,
   type DeploySafeOptions,
   type DeployTimelockOptions,
 } from "@layr-labs/ecloud-sdk";
@@ -20,7 +21,7 @@ import { showPrivateKey, displayWarning } from "../../utils/security";
 import { withTelemetry } from "../../telemetry";
 import { commonFlags, validateCommonFlags } from "../../flags";
 import { createViemClients } from "../../utils/viemClients";
-import { addIdentity, setActiveIdentity, replaceAllIdentities } from "../../utils/globalConfig";
+import { addIdentity, setActiveIdentity, replaceAllIdentities, getIdentities } from "../../utils/globalConfig";
 import type { Address } from "viem";
 
 /** Parse human delay strings like "24h", "7d", "30m" into seconds */
@@ -253,6 +254,35 @@ Press 'q' to exit and continue...
       message: "Proposer/executor address:",
       validate: (v) => (v.trim().startsWith("0x") ? true : "Must be a 0x address"),
     }) as Address;
+
+    // Check if a canonical Timelock already exists for this EOA
+    if (proposerKind === "eoa") {
+      const existing = await discoverTimelockForEOA(publicClient, environmentConfig, proposer);
+      if (existing) {
+        const delayHours = Number(existing.minDelay) / 3600;
+        const delayLabel = delayHours >= 24 ? `${delayHours / 24}d` : `${delayHours}h`;
+        const alreadyInConfig = getIdentities().some(
+          (id) => id.address.toLowerCase() === existing.address.toLowerCase(),
+        );
+        if (alreadyInConfig) {
+          this.log(`\nTimelock ${existing.address} is already in your identities.`);
+          const activate = await confirm({ message: "Set it as active identity?", default: true });
+          if (activate) {
+            setActiveIdentity(flags.environment, existing.address);
+            this.log(`✓ Active identity set to Timelock ${existing.address}`);
+          }
+        } else {
+          this.log(`\nA Timelock already exists for this EOA: ${existing.address}  (${delayLabel} delay)`);
+          const addIt = await confirm({ message: "Add it to your identities?", default: true });
+          if (addIt) {
+            addIdentity({ type: "timelock", address: existing.address, delay: delayLabel, environment: flags.environment });
+            setActiveIdentity(flags.environment, existing.address);
+            this.log(`✓ Timelock added and set as active identity`);
+          }
+        }
+        return;
+      }
+    }
 
     const delayStr = await input({
       message: 'Minimum delay (e.g., "24h", "7d"):',
