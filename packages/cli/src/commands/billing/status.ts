@@ -73,10 +73,18 @@ export default class BillingStatus extends Command {
         this.log(`\n${chalk.bold("  Line Items:")}`);
         for (const item of result.lineItems) {
           const product = `${flags.product.charAt(0).toUpperCase()}${flags.product.slice(1)}`;
-          const chain = item.description.toLowerCase().includes("sepolia") ? "Sepolia" : "Mainnet";
-          this.log(
-            `    • ${product} (${chain}): $${item.subtotal.toFixed(2)} (${item.quantity} vCPU hours × $${item.price.toFixed(3)}/vCPU hour)`,
-          );
+          const isChainSpecific = item.description.match(/\b(sepolia|mainnet)\b/i);
+          if (isChainSpecific) {
+            const chain = item.description.toLowerCase().includes("sepolia") ? "Sepolia" : "Mainnet";
+            this.log(
+              `    • ${product} (${chain}): $${item.subtotal.toFixed(2)} (${item.quantity} vCPU hours × $${item.price.toFixed(3)}/vCPU hour)`,
+            );
+          } else {
+            const sku = item.description.split(" ").slice(-2).join(" ") || "Unknown";
+            this.log(
+              `    • ${product} (${sku}): $${item.subtotal.toFixed(2)} (${item.quantity} hours × $${item.price.toFixed(3)}/hour)`,
+            );
+          }
         }
       }
 
