@@ -8,6 +8,7 @@ import { BillingEnvironmentConfig, EnvironmentConfig } from "../types";
 // Chain IDs
 export const SEPOLIA_CHAIN_ID = 11155111;
 export const MAINNET_CHAIN_ID = 1;
+export const LOCAL_CHAIN_ID = 31337; // anvil default
 
 // Common addresses across all chains
 export const CommonAddresses: Record<string, string> = {
@@ -36,6 +37,26 @@ const BILLING_ENVIRONMENTS: Record<"dev" | "prod", BillingEnvironmentConfig> = {
 
 // Chain environment configurations
 const ENVIRONMENTS: Record<string, Omit<EnvironmentConfig, "chainID">> = {
+  /**
+   * Local development environment.
+   * Points all HTTP APIs at localhost:4399 — run a fake EigenCloud API server
+   * that implements the UserAPI and BuildAPI endpoints locally.
+   *
+   * Uses the same contract addresses as sepolia-dev so that an Anvil Sepolia
+   * fork works out of the box:
+   *   anvil --fork-url https://ethereum-sepolia-rpc.publicnode.com
+   */
+  local: {
+    name: "local",
+    build: "dev",
+    appControllerAddress: "0xa86DC1C47cb2518327fB4f9A1627F51966c83B92" as Address,
+    permissionControllerAddress: ChainAddresses[SEPOLIA_CHAIN_ID].PermissionController,
+    erc7702DelegatorAddress: CommonAddresses.ERC7702Delegator,
+    kmsServerURL: "http://localhost:4399",
+    userApiServerURL: "http://localhost:4399",
+    defaultRPCURL: "http://localhost:8545",
+    usdcCreditsAddress: "0xbdA3897c3A428763B59015C64AB766c288C97376" as Address,
+  },
   "sepolia-dev": {
     name: "sepolia",
     build: "dev",
@@ -103,12 +124,13 @@ export function getEnvironmentConfig(environment: string, chainID?: bigint): Env
   }
 
   // Determine chain ID from environment if not provided
-  // Both "sepolia" and "sepolia-dev" use Sepolia chain ID
   const resolvedChainID =
     chainID ||
     (environment === "sepolia" || environment === "sepolia-dev"
       ? SEPOLIA_CHAIN_ID
-      : MAINNET_CHAIN_ID);
+      : environment === "local"
+        ? LOCAL_CHAIN_ID
+        : MAINNET_CHAIN_ID);
 
   return {
     ...env,
@@ -170,7 +192,7 @@ export function getAvailableEnvironments(): string[] {
   const buildType = getBuildType();
 
   if (buildType === "dev") {
-    return ["sepolia-dev"];
+    return ["sepolia-dev", "local"];
   }
 
   // prod build

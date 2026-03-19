@@ -14,6 +14,14 @@ type BuildType = "dev" | "prod";
 type KeyPair = { encryption: string; signing: string };
 
 const KEYS = {
+  // Local development — reuses sepolia dev keys since the fake EigenCloud server
+  // does not perform KMS verification. These keys are not security-sensitive here.
+  local: {
+    dev: {
+      encryption: sepoliaDevEncryption,
+      signing: sepoliaDevSigning,
+    },
+  },
   "mainnet-alpha": {
     prod: {
       encryption: mainnetAlphaProdEncryption,
