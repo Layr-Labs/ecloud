@@ -44,6 +44,9 @@
     "commands": "./dist/commands",
     "dirname": "",
     "topicSeparator": " ",
+    "hooks": {
+      "init": "./dist/hooks/init/version-check"
+    },
     "topics": {
       "auth": {
         "description": "Manage authentication with private keys stored in OS keyring"
