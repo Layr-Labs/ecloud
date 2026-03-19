@@ -49,6 +49,8 @@ describe("version-check init hook", () => {
     vi.clearAllMocks();
     (getCliVersion as Mock).mockReturnValue("1.0.0");
     (getBuildType as Mock).mockReturnValue("prod");
+    (loadGlobalConfig as Mock).mockReturnValue({});
+    (saveGlobalConfig as Mock).mockImplementation(() => {});
   });
 
   it("skips check for upgrade command", async () => {
@@ -196,6 +198,48 @@ describe("version-check init hook", () => {
     expect(global.fetch).not.toHaveBeenCalled();
     expect(confirm).toHaveBeenCalled();
     expect(ctx.log).toHaveBeenCalled();
+  });
+
+  it("detects newer dev prerelease version", async () => {
+    (getCliVersion as Mock).mockReturnValue("1.0.0-dev.1");
+    (getBuildType as Mock).mockReturnValue("dev");
+    mockFetch({ dev: "1.0.0-dev.2" });
+    (confirm as Mock).mockResolvedValue(false);
+    const ctx = createMockContext();
+
+    await hook.call(ctx as any, { id: "auth:login" } as any);
+    expect(confirm).toHaveBeenCalled();
+  });
+
+  it("detects release as newer than prerelease with same version", async () => {
+    (getCliVersion as Mock).mockReturnValue("1.0.0-dev.1");
+    (getBuildType as Mock).mockReturnValue("dev");
+    mockFetch({ dev: "1.0.0" });
+    (confirm as Mock).mockResolvedValue(false);
+    const ctx = createMockContext();
+
+    await hook.call(ctx as any, { id: "auth:login" } as any);
+    expect(confirm).toHaveBeenCalled();
+  });
+
+  it("does not prompt when current dev prerelease is same as latest", async () => {
+    (getCliVersion as Mock).mockReturnValue("1.0.0-dev.1");
+    (getBuildType as Mock).mockReturnValue("dev");
+    mockFetch({ dev: "1.0.0-dev.1" });
+    const ctx = createMockContext();
+
+    await hook.call(ctx as any, { id: "auth:login" } as any);
+    expect(ctx.log).not.toHaveBeenCalled();
+  });
+
+  it("does not prompt when current dev prerelease is newer than latest", async () => {
+    (getCliVersion as Mock).mockReturnValue("1.0.0-dev.3");
+    (getBuildType as Mock).mockReturnValue("dev");
+    mockFetch({ dev: "1.0.0-dev.2" });
+    const ctx = createMockContext();
+
+    await hook.call(ctx as any, { id: "auth:login" } as any);
+    expect(ctx.log).not.toHaveBeenCalled();
   });
 
   it("re-fetches when cache is stale", async () => {

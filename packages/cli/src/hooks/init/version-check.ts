@@ -12,14 +12,48 @@ const NPM_REGISTRY_URL = "https://registry.npmjs.org/@layr-labs/ecloud-cli";
 const VERSION_CHECK_TIMEOUT_MS = 3000;
 const VERSION_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
-function isNewerVersion(current: string, latest: string): boolean {
-  const parseParts = (v: string) => v.replace(/^v/, "").split(".").map(Number);
-  const [cMajor = 0, cMinor = 0, cPatch = 0] = parseParts(current);
-  const [lMajor = 0, lMinor = 0, lPatch = 0] = parseParts(latest);
+function parseVersion(v: string): { major: number; minor: number; patch: number; prerelease: string | null } {
+  const clean = v.replace(/^v/, "");
+  const [core, ...rest] = clean.split("-");
+  const [major = 0, minor = 0, patch = 0] = core.split(".").map(Number);
+  const prerelease = rest.length > 0 ? rest.join("-") : null;
+  return { major, minor, patch, prerelease };
+}
 
-  if (lMajor !== cMajor) return lMajor > cMajor;
-  if (lMinor !== cMinor) return lMinor > cMinor;
-  return lPatch > cPatch;
+function comparePrerelease(a: string | null, b: string | null): number {
+  // No prerelease = release, which is higher than any prerelease
+  if (a === null && b === null) return 0;
+  if (a === null) return 1; // a is release, b is prerelease → a > b
+  if (b === null) return -1; // a is prerelease, b is release → a < b
+
+  // Compare prerelease segments (e.g. "dev.1" vs "dev.2")
+  const aParts = a.split(".");
+  const bParts = b.split(".");
+  for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+    const ap = aParts[i];
+    const bp = bParts[i];
+    if (ap === undefined) return -1;
+    if (bp === undefined) return 1;
+    const aNum = Number(ap);
+    const bNum = Number(bp);
+    if (!isNaN(aNum) && !isNaN(bNum)) {
+      if (aNum !== bNum) return aNum - bNum;
+    } else {
+      if (ap < bp) return -1;
+      if (ap > bp) return 1;
+    }
+  }
+  return 0;
+}
+
+function isNewerVersion(current: string, latest: string): boolean {
+  const c = parseVersion(current);
+  const l = parseVersion(latest);
+
+  if (l.major !== c.major) return l.major > c.major;
+  if (l.minor !== c.minor) return l.minor > c.minor;
+  if (l.patch !== c.patch) return l.patch > c.patch;
+  return comparePrerelease(l.prerelease, c.prerelease) > 0;
 }
 
 async function fetchLatestVersion(distTag: string): Promise<string | null> {
