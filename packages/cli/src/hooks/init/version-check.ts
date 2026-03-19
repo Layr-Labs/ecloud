@@ -5,10 +5,12 @@ import { getBuildType } from "@layr-labs/ecloud-sdk";
 
 import { getCliVersion } from "../../utils/version";
 import { upgradePackage } from "../../commands/upgrade";
+import { loadGlobalConfig, saveGlobalConfig } from "../../utils/globalConfig";
 
 const SKIP_COMMANDS = new Set(["upgrade", "version"]);
 const NPM_REGISTRY_URL = "https://registry.npmjs.org/@layr-labs/ecloud-cli";
 const VERSION_CHECK_TIMEOUT_MS = 3000;
+const VERSION_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 function isNewerVersion(current: string, latest: string): boolean {
   const parseParts = (v: string) => v.replace(/^v/, "").split(".").map(Number);
@@ -47,7 +49,24 @@ const hook: Hook<"init"> = async function (options) {
 
   const buildType = getBuildType();
   const distTag = buildType === "dev" ? "dev" : "latest";
-  const latestVersion = await fetchLatestVersion(distTag);
+
+  const globalConfig = loadGlobalConfig();
+  const now = Date.now();
+  const cacheIsFresh =
+    globalConfig.last_version_check != null &&
+    now - globalConfig.last_version_check < VERSION_CHECK_INTERVAL_MS;
+
+  let latestVersion: string | null;
+  if (cacheIsFresh && globalConfig.last_known_version) {
+    latestVersion = globalConfig.last_known_version;
+  } else {
+    latestVersion = await fetchLatestVersion(distTag);
+    if (latestVersion) {
+      globalConfig.last_version_check = now;
+      globalConfig.last_known_version = latestVersion;
+      saveGlobalConfig(globalConfig);
+    }
+  }
 
   if (!latestVersion || !isNewerVersion(currentVersion, latestVersion)) return;
 

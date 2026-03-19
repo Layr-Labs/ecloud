@@ -16,10 +16,16 @@ vi.mock("../../../commands/upgrade", () => ({
   upgradePackage: vi.fn(),
 }));
 
+vi.mock("../../../utils/globalConfig", () => ({
+  loadGlobalConfig: vi.fn(() => ({})),
+  saveGlobalConfig: vi.fn(),
+}));
+
 import { confirm } from "@inquirer/prompts";
 import { getBuildType } from "@layr-labs/ecloud-sdk";
 import { getCliVersion } from "../../../utils/version";
 import { upgradePackage } from "../../../commands/upgrade";
+import { loadGlobalConfig, saveGlobalConfig } from "../../../utils/globalConfig";
 
 // Import the hook - we need to call it manually
 import hook from "../version-check";
@@ -159,5 +165,56 @@ describe("version-check init hook", () => {
 
     await hook.call(ctx as any, { id: "auth:login" } as any);
     expect(ctx.log).not.toHaveBeenCalled();
+  });
+
+  it("saves fetched version to global config", async () => {
+    mockFetch({ latest: "2.0.0" });
+    (confirm as Mock).mockResolvedValue(false);
+    const ctx = createMockContext();
+
+    await hook.call(ctx as any, { id: "auth:login" } as any);
+
+    expect(saveGlobalConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        last_known_version: "2.0.0",
+        last_version_check: expect.any(Number),
+      }),
+    );
+  });
+
+  it("uses cached version when check is fresh", async () => {
+    global.fetch = vi.fn();
+    (loadGlobalConfig as Mock).mockReturnValue({
+      last_version_check: Date.now() - 1000,
+      last_known_version: "2.0.0",
+    });
+    (confirm as Mock).mockResolvedValue(false);
+    const ctx = createMockContext();
+
+    await hook.call(ctx as any, { id: "auth:login" } as any);
+
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(confirm).toHaveBeenCalled();
+    expect(ctx.log).toHaveBeenCalled();
+  });
+
+  it("re-fetches when cache is stale", async () => {
+    const twentyFiveHoursAgo = Date.now() - 25 * 60 * 60 * 1000;
+    (loadGlobalConfig as Mock).mockReturnValue({
+      last_version_check: twentyFiveHoursAgo,
+      last_known_version: "1.5.0",
+    });
+    mockFetch({ latest: "2.0.0" });
+    (confirm as Mock).mockResolvedValue(false);
+    const ctx = createMockContext();
+
+    await hook.call(ctx as any, { id: "auth:login" } as any);
+
+    expect(global.fetch).toHaveBeenCalled();
+    expect(saveGlobalConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        last_known_version: "2.0.0",
+      }),
+    );
   });
 });
