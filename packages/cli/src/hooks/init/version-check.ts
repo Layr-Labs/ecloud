@@ -123,6 +123,10 @@ const hook: Hook<"init"> = async function (options) {
     } catch {
       this.log(`\n${chalk.yellow("Upgrade failed. Continuing with current version...")}\n`);
     }
+  } else {
+    // Snooze the prompt for another 24 hours
+    globalConfig.last_version_check = now;
+    saveGlobalConfig(globalConfig);
   }
 };
 

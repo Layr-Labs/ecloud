@@ -242,6 +242,25 @@ describe("version-check init hook", () => {
     expect(ctx.log).not.toHaveBeenCalled();
   });
 
+  it("does not re-prompt after user declines (snoozes for 24h)", async () => {
+    mockFetch({ latest: "2.0.0" });
+    (confirm as Mock).mockResolvedValue(false);
+    const ctx = createMockContext();
+
+    await hook.call(ctx as any, { id: "auth:login" } as any);
+
+    expect(upgradePackage).not.toHaveBeenCalled();
+    // Should save last_version_check to snooze the prompt
+    expect(saveGlobalConfig).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        last_version_check: expect.any(Number),
+      }),
+    );
+    // Verify the timestamp is recent (within last 5 seconds)
+    const savedConfig = (saveGlobalConfig as Mock).mock.calls.at(-1)?.[0];
+    expect(savedConfig.last_version_check).toBeGreaterThan(Date.now() - 5000);
+  });
+
   it("re-fetches when cache is stale", async () => {
     const twentyFiveHoursAgo = Date.now() - 25 * 60 * 60 * 1000;
     (loadGlobalConfig as Mock).mockReturnValue({
