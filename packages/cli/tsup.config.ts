@@ -15,7 +15,7 @@ const cliVersion = process.env.PACKAGE_VERSION || packageJson.version || "0.0.0"
 const posthogApiKey = process.env.POSTHOG_API_KEY_BUILD_TIME;
 
 export default defineConfig({
-  entry: ["src/commands/**/*.ts"],
+  entry: ["src/commands/**/*.ts", "src/hooks/**/*.ts"],
   format: ["esm"],
   target: "node18",
   outDir: "dist",
