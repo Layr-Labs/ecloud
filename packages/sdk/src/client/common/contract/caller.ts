@@ -1924,6 +1924,319 @@ export interface DiscoveredTimelock {
  * address, then checks isTimelock() to see if it has been deployed.
  * Returns null if no Timelock exists for this EOA.
  */
+// ─── Timelocked operations via TimelockController ────────────────────────────
+//
+// transferOwnership, terminateApp, and grantTeamRole(ADMIN) are restricted to
+// msg.sender == owner when an app is timelocked. The Timelock IS the owner, so
+// these operations must be enqueued through TimelockController.schedule() and
+// then sent via TimelockController.execute() after the delay elapses.
+//
+// We use predecessor=0 and salt=0 so the operation hash is deterministic from
+// (target, calldata) alone — consistent with how upgrades are queued.
+
+const ZERO_BYTES32 = "0x0000000000000000000000000000000000000000000000000000000000000000" as Hex;
+
+export interface ScheduleTimelockOpOptions {
+  walletClient: WalletClient;
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+  timelockAddress: Address;
+  calldata: Hex;
+  delaySeconds: bigint;
+  gas?: GasEstimate;
+}
+
+/**
+ * Queue an AppController call through a TimelockController.
+ * The wallet must hold the PROPOSER_ROLE on the given Timelock.
+ */
+export async function scheduleTimelockOp(
+  options: ScheduleTimelockOpOptions,
+  logger: Logger = noopLogger,
+): Promise<Hex> {
+  const { walletClient, publicClient, environmentConfig, timelockAddress, calldata, delaySeconds, gas } = options;
+
+  const data = encodeFunctionData({
+    abi: TimelockControllerABI,
+    functionName: "schedule",
+    args: [
+      environmentConfig.appControllerAddress as Address,
+      0n,
+      calldata,
+      ZERO_BYTES32,
+      ZERO_BYTES32,
+      delaySeconds,
+    ],
+  });
+
+  return sendAndWaitForTransaction(
+    {
+      walletClient,
+      publicClient,
+      environmentConfig,
+      to: timelockAddress,
+      data,
+      pendingMessage: `Queuing operation on Timelock ${timelockAddress}...`,
+      txDescription: "TimelockSchedule",
+      gas,
+    },
+    logger,
+  );
+}
+
+export interface ExecuteTimelockOpOptions {
+  walletClient: WalletClient;
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+  timelockAddress: Address;
+  calldata: Hex;
+  gas?: GasEstimate;
+}
+
+/**
+ * Execute a previously queued AppController call through a TimelockController.
+ * The wallet must hold the EXECUTOR_ROLE (or the role must be open).
+ */
+export async function executeTimelockOp(
+  options: ExecuteTimelockOpOptions,
+  logger: Logger = noopLogger,
+): Promise<Hex> {
+  const { walletClient, publicClient, environmentConfig, timelockAddress, calldata, gas } = options;
+
+  const data = encodeFunctionData({
+    abi: TimelockControllerABI,
+    functionName: "execute",
+    args: [
+      environmentConfig.appControllerAddress as Address,
+      0n,
+      calldata,
+      ZERO_BYTES32,
+      ZERO_BYTES32,
+    ],
+  });
+
+  return sendAndWaitForTransaction(
+    {
+      walletClient,
+      publicClient,
+      environmentConfig,
+      to: timelockAddress,
+      data,
+      pendingMessage: `Executing queued operation on Timelock ${timelockAddress}...`,
+      txDescription: "TimelockExecute",
+      gas,
+    },
+    logger,
+  );
+}
+
+/**
+ * Return the timestamp at which a queued operation becomes executable.
+ * Returns 0 if the operation is not scheduled, 1 if it has already been executed.
+ */
+export async function getTimelockOpTimestamp(
+  publicClient: PublicClient,
+  timelockAddress: Address,
+  appControllerAddress: Address,
+  calldata: Hex,
+): Promise<bigint> {
+  const id = (await publicClient.readContract({
+    address: timelockAddress,
+    abi: TimelockControllerABI,
+    functionName: "hashOperation",
+    args: [appControllerAddress as Address, 0n, calldata, ZERO_BYTES32, ZERO_BYTES32],
+  })) as Hex;
+
+  return (await publicClient.readContract({
+    address: timelockAddress,
+    abi: TimelockControllerABI,
+    functionName: "getTimestamp",
+    args: [id],
+  })) as bigint;
+}
+
+/**
+ * Return the scheduled timestamp for a terminateApp operation queued through a Timelock.
+ */
+export async function getTimelockTerminateTimestamp(
+  publicClient: PublicClient,
+  timelockAddress: Address,
+  appControllerAddress: Address,
+  appID: Address,
+): Promise<bigint> {
+  const calldata = encodeFunctionData({ abi: AppControllerABI, functionName: "terminateApp", args: [appID] });
+  return getTimelockOpTimestamp(publicClient, timelockAddress, appControllerAddress, calldata);
+}
+
+/**
+ * Return the scheduled timestamp for a transferOwnership operation queued through a Timelock.
+ */
+export async function getTimelockTransferOwnershipTimestamp(
+  publicClient: PublicClient,
+  timelockAddress: Address,
+  appControllerAddress: Address,
+  appID: Address,
+  newOwner: Address,
+): Promise<bigint> {
+  const calldata = encodeFunctionData({ abi: AppControllerABI, functionName: "transferOwnership", args: [appID, newOwner] });
+  return getTimelockOpTimestamp(publicClient, timelockAddress, appControllerAddress, calldata);
+}
+
+/**
+ * Return the scheduled timestamp for a grantTeamRole(ADMIN) operation queued through a Timelock.
+ */
+export async function getTimelockGrantAdminTimestamp(
+  publicClient: PublicClient,
+  timelockAddress: Address,
+  appControllerAddress: Address,
+  team: Address,
+  account: Address,
+): Promise<bigint> {
+  const calldata = encodeFunctionData({ abi: AppControllerABI, functionName: "grantTeamRole", args: [team, TeamRole.ADMIN, account] });
+  return getTimelockOpTimestamp(publicClient, timelockAddress, appControllerAddress, calldata);
+}
+
+// ─── Per-operation helpers ────────────────────────────────────────────────────
+
+export interface ScheduleTimelockTransferOwnershipOptions {
+  walletClient: WalletClient;
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+  timelockAddress: Address;
+  appID: Address;
+  newOwner: Address;
+  delaySeconds: bigint;
+  gas?: GasEstimate;
+}
+
+export async function scheduleTimelockTransferOwnership(
+  options: ScheduleTimelockTransferOwnershipOptions,
+  logger: Logger = noopLogger,
+): Promise<Hex> {
+  const { appID, newOwner, delaySeconds, timelockAddress, ...base } = options;
+  const calldata = encodeFunctionData({
+    abi: AppControllerABI,
+    functionName: "transferOwnership",
+    args: [appID, newOwner],
+  });
+  return scheduleTimelockOp({ ...base, timelockAddress, calldata, delaySeconds }, logger);
+}
+
+export interface ExecuteTimelockTransferOwnershipOptions {
+  walletClient: WalletClient;
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+  timelockAddress: Address;
+  appID: Address;
+  newOwner: Address;
+  gas?: GasEstimate;
+}
+
+export async function executeTimelockTransferOwnership(
+  options: ExecuteTimelockTransferOwnershipOptions,
+  logger: Logger = noopLogger,
+): Promise<Hex> {
+  const { appID, newOwner, timelockAddress, ...base } = options;
+  const calldata = encodeFunctionData({
+    abi: AppControllerABI,
+    functionName: "transferOwnership",
+    args: [appID, newOwner],
+  });
+  return executeTimelockOp({ ...base, timelockAddress, calldata }, logger);
+}
+
+export interface ScheduleTimelockTerminateAppOptions {
+  walletClient: WalletClient;
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+  timelockAddress: Address;
+  appID: Address;
+  delaySeconds: bigint;
+  gas?: GasEstimate;
+}
+
+export async function scheduleTimelockTerminateApp(
+  options: ScheduleTimelockTerminateAppOptions,
+  logger: Logger = noopLogger,
+): Promise<Hex> {
+  const { appID, delaySeconds, timelockAddress, ...base } = options;
+  const calldata = encodeFunctionData({
+    abi: AppControllerABI,
+    functionName: "terminateApp",
+    args: [appID],
+  });
+  return scheduleTimelockOp({ ...base, timelockAddress, calldata, delaySeconds }, logger);
+}
+
+export interface ExecuteTimelockTerminateAppOptions {
+  walletClient: WalletClient;
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+  timelockAddress: Address;
+  appID: Address;
+  gas?: GasEstimate;
+}
+
+export async function executeTimelockTerminateApp(
+  options: ExecuteTimelockTerminateAppOptions,
+  logger: Logger = noopLogger,
+): Promise<Hex> {
+  const { appID, timelockAddress, ...base } = options;
+  const calldata = encodeFunctionData({
+    abi: AppControllerABI,
+    functionName: "terminateApp",
+    args: [appID],
+  });
+  return executeTimelockOp({ ...base, timelockAddress, calldata }, logger);
+}
+
+export interface ScheduleTimelockGrantTeamAdminOptions {
+  walletClient: WalletClient;
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+  timelockAddress: Address;
+  team: Address;
+  account: Address;
+  delaySeconds: bigint;
+  gas?: GasEstimate;
+}
+
+export async function scheduleTimelockGrantTeamAdmin(
+  options: ScheduleTimelockGrantTeamAdminOptions,
+  logger: Logger = noopLogger,
+): Promise<Hex> {
+  const { team, account, delaySeconds, timelockAddress, ...base } = options;
+  const calldata = encodeFunctionData({
+    abi: AppControllerABI,
+    functionName: "grantTeamRole",
+    args: [team, TeamRole.ADMIN, account],
+  });
+  return scheduleTimelockOp({ ...base, timelockAddress, calldata, delaySeconds }, logger);
+}
+
+export interface ExecuteTimelockGrantTeamAdminOptions {
+  walletClient: WalletClient;
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+  timelockAddress: Address;
+  team: Address;
+  account: Address;
+  gas?: GasEstimate;
+}
+
+export async function executeTimelockGrantTeamAdmin(
+  options: ExecuteTimelockGrantTeamAdminOptions,
+  logger: Logger = noopLogger,
+): Promise<Hex> {
+  const { team, account, timelockAddress, ...base } = options;
+  const calldata = encodeFunctionData({
+    abi: AppControllerABI,
+    functionName: "grantTeamRole",
+    args: [team, TeamRole.ADMIN, account],
+  });
+  return executeTimelockOp({ ...base, timelockAddress, calldata }, logger);
+}
+
 export async function discoverTimelockForEOA(
   publicClient: PublicClient,
   environmentConfig: EnvironmentConfig,

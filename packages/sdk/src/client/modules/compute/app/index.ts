@@ -44,6 +44,16 @@ import {
   revokeTeamRole as revokeTeamRoleCaller,
   getTeamRoleMembers as getTeamRoleMembersCaller,
   getAppOwner,
+  getTimelockOpTimestamp,
+  getTimelockTerminateTimestamp,
+  getTimelockTransferOwnershipTimestamp,
+  getTimelockGrantAdminTimestamp,
+  scheduleTimelockTransferOwnership,
+  executeTimelockTransferOwnership,
+  scheduleTimelockTerminateApp,
+  executeTimelockTerminateApp,
+  scheduleTimelockGrantTeamAdmin,
+  executeTimelockGrantTeamAdmin,
   TeamRole,
   type GasEstimate,
   type AppConfig,
@@ -203,6 +213,19 @@ export interface AppModule {
   grantTeamRole: (appId: AppId, role: TeamRole, account: Address, opts?: { gas?: GasEstimate }) => Promise<{ tx: Hex }>;
   revokeTeamRole: (appId: AppId, role: TeamRole, account: Address, opts?: { gas?: GasEstimate }) => Promise<{ tx: Hex }>;
   getTeamRoleMembers: (appId: AppId, role: TeamRole) => Promise<Address[]>;
+
+  // Timelocked operations — routed through TimelockController.schedule/execute
+  // Use these when the app owner is a Timelock (isTimelocked() === true).
+  getTimelockOpReadyAt: (timelockAddress: Address, appControllerAddress: Address, calldata: Hex) => Promise<bigint>;
+  getTimelockTerminateReadyAt: (appId: AppId, timelockAddress: Address) => Promise<bigint>;
+  getTimelockTransferOwnershipReadyAt: (appId: AppId, timelockAddress: Address, newOwner: Address) => Promise<bigint>;
+  getTimelockGrantAdminReadyAt: (appId: AppId, timelockAddress: Address, account: Address) => Promise<bigint>;
+  scheduleTimelockTransferOwnership: (appId: AppId, timelockAddress: Address, newOwner: Address, delaySeconds: bigint, opts?: { gas?: GasEstimate }) => Promise<{ tx: Hex }>;
+  executeTimelockTransferOwnership: (appId: AppId, timelockAddress: Address, newOwner: Address, opts?: { gas?: GasEstimate }) => Promise<{ tx: Hex }>;
+  scheduleTimelockTerminate: (appId: AppId, timelockAddress: Address, delaySeconds: bigint, opts?: { gas?: GasEstimate }) => Promise<{ tx: Hex }>;
+  executeTimelockTerminate: (appId: AppId, timelockAddress: Address, opts?: { gas?: GasEstimate }) => Promise<{ tx: Hex }>;
+  scheduleTimelockGrantAdmin: (appId: AppId, timelockAddress: Address, account: Address, delaySeconds: bigint, opts?: { gas?: GasEstimate }) => Promise<{ tx: Hex }>;
+  executeTimelockGrantAdmin: (appId: AppId, timelockAddress: Address, account: Address, opts?: { gas?: GasEstimate }) => Promise<{ tx: Hex }>;
 }
 
 export interface AppModuleConfig {
@@ -764,6 +787,103 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
     async getTeamRoleMembers(appId, role) {
       const team = await getAppOwner(publicClient, environment, appId as Address);
       return getTeamRoleMembersCaller(publicClient, environment, team, role);
+    },
+
+    async getTimelockOpReadyAt(timelockAddress, appControllerAddress, calldata) {
+      return getTimelockOpTimestamp(publicClient, timelockAddress, appControllerAddress, calldata);
+    },
+
+    async getTimelockTerminateReadyAt(appId, timelockAddress) {
+      return getTimelockTerminateTimestamp(publicClient, timelockAddress, environment.appControllerAddress as Address, appId as Address);
+    },
+
+    async getTimelockTransferOwnershipReadyAt(appId, timelockAddress, newOwner) {
+      return getTimelockTransferOwnershipTimestamp(publicClient, timelockAddress, environment.appControllerAddress as Address, appId as Address, newOwner);
+    },
+
+    async getTimelockGrantAdminReadyAt(appId, timelockAddress, account) {
+      const team = await getAppOwner(publicClient, environment, appId as Address);
+      return getTimelockGrantAdminTimestamp(publicClient, timelockAddress, environment.appControllerAddress as Address, team, account as Address);
+    },
+
+    async scheduleTimelockTransferOwnership(appId, timelockAddress, newOwner, delaySeconds, opts) {
+      return withSDKTelemetry(
+        { functionName: "scheduleTimelockTransferOwnership", skipTelemetry, properties: { environment: ctx.environment } },
+        async () => {
+          const tx = await scheduleTimelockTransferOwnership(
+            { walletClient, publicClient, environmentConfig: environment, timelockAddress, appID: appId as Address, newOwner, delaySeconds, gas: opts?.gas },
+            logger,
+          );
+          return { tx };
+        },
+      );
+    },
+
+    async executeTimelockTransferOwnership(appId, timelockAddress, newOwner, opts) {
+      return withSDKTelemetry(
+        { functionName: "executeTimelockTransferOwnership", skipTelemetry, properties: { environment: ctx.environment } },
+        async () => {
+          const tx = await executeTimelockTransferOwnership(
+            { walletClient, publicClient, environmentConfig: environment, timelockAddress, appID: appId as Address, newOwner, gas: opts?.gas },
+            logger,
+          );
+          return { tx };
+        },
+      );
+    },
+
+    async scheduleTimelockTerminate(appId, timelockAddress, delaySeconds, opts) {
+      return withSDKTelemetry(
+        { functionName: "scheduleTimelockTerminate", skipTelemetry, properties: { environment: ctx.environment } },
+        async () => {
+          const tx = await scheduleTimelockTerminateApp(
+            { walletClient, publicClient, environmentConfig: environment, timelockAddress, appID: appId as Address, delaySeconds, gas: opts?.gas },
+            logger,
+          );
+          return { tx };
+        },
+      );
+    },
+
+    async executeTimelockTerminate(appId, timelockAddress, opts) {
+      return withSDKTelemetry(
+        { functionName: "executeTimelockTerminate", skipTelemetry, properties: { environment: ctx.environment } },
+        async () => {
+          const tx = await executeTimelockTerminateApp(
+            { walletClient, publicClient, environmentConfig: environment, timelockAddress, appID: appId as Address, gas: opts?.gas },
+            logger,
+          );
+          return { tx };
+        },
+      );
+    },
+
+    async scheduleTimelockGrantAdmin(appId, timelockAddress, account, delaySeconds, opts) {
+      return withSDKTelemetry(
+        { functionName: "scheduleTimelockGrantAdmin", skipTelemetry, properties: { environment: ctx.environment } },
+        async () => {
+          const team = await getAppOwner(publicClient, environment, appId as Address);
+          const tx = await scheduleTimelockGrantTeamAdmin(
+            { walletClient, publicClient, environmentConfig: environment, timelockAddress, team, account: account as Address, delaySeconds, gas: opts?.gas },
+            logger,
+          );
+          return { tx };
+        },
+      );
+    },
+
+    async executeTimelockGrantAdmin(appId, timelockAddress, account, opts) {
+      return withSDKTelemetry(
+        { functionName: "executeTimelockGrantAdmin", skipTelemetry, properties: { environment: ctx.environment } },
+        async () => {
+          const team = await getAppOwner(publicClient, environment, appId as Address);
+          const tx = await executeTimelockGrantTeamAdmin(
+            { walletClient, publicClient, environmentConfig: environment, timelockAddress, team, account: account as Address, gas: opts?.gas },
+            logger,
+          );
+          return { tx };
+        },
+      );
     },
   };
 }
