@@ -309,13 +309,18 @@ import { createECloudClient } from "@layr-labs/ecloud-sdk";
 // Create a client
 const client = createECloudClient({
   privateKey: "0x...",
-  environment: "sepolia", // or "sepolia" or "mainnet-alpha"
+  environment: "sepolia", // or "mainnet-alpha"
   rpcUrl: "https://sepolia.infura.io/v3/...",
 });
 
 // Deploy an application
 const result = await client.compute.app.deploy({
-  image: "myapp:latest",
+  name: "my-app",
+  imageRef: "myregistry/myapp:latest", // or use `dockerfile: "./Dockerfile"` to build
+  instanceType: "g1-standard-4t",       // see available types via CLI
+  logVisibility: "public",              // "public" | "private" | "off"
+  envFile: ".env",                      // optional - path to env file
+  billTo: "developer",                  // optional - "developer" (default) | "app"
 });
 
 console.log(`Deployed app ID: ${result.appId}`);
