@@ -26,6 +26,7 @@ import {
   executeUpgradeBatch,
   scheduleAppUpgrade,
   executeGovernedUpgrade as executeGovernedUpgradeOnChain,
+  getScheduledRelease,
   getPendingAppUpgrade,
   type GasEstimate,
   type PendingUpgrade,
@@ -41,6 +42,7 @@ import {
   LogVisibility,
   ResourceUsageMonitoring,
 } from "../../../common/utils/validation";
+
 import { doPreflightChecks } from "../../../common/utils/preflight";
 import { checkAppLogPermission } from "../../../common/utils/permissions";
 import { defaultLogger } from "../../../common/utils";
@@ -628,15 +630,23 @@ export async function scheduleUpgrade(
 }
 
 /**
- * Options for executeGovernedUpgrade
+ * Options for executeGovernedUpgrade.
+ * No build inputs are needed — the Release is fetched from the AppUpgradeScheduled event.
  */
-export type ExecuteGovernedUpgradeOptions = Omit<SDKUpgradeOptions, "gas"> & { gas?: GasEstimate };
+export interface ExecuteGovernedUpgradeOptions {
+  appId: string | Address;
+  walletClient: WalletClient;
+  publicClient: PublicClient;
+  environment?: string;
+  gas?: GasEstimate;
+  skipTelemetry?: boolean;
+}
 
 /**
  * Execute a previously scheduled upgrade for a governed app.
  *
- * Runs the full build pipeline with the same inputs as scheduleUpgrade to reconstruct
- * the Release, then calls executeUpgrade on-chain (verifying hash match).
+ * Reads the Release directly from the AppUpgradeScheduled event on-chain instead of
+ * rebuilding — no Docker or build inputs required.
  */
 export async function executeGovernedUpgrade(
   options: ExecuteGovernedUpgradeOptions,
@@ -655,9 +665,7 @@ export async function executeGovernedUpgrade(
         logger,
       );
 
-      const appID = validateUpgradeOptions(options as SDKUpgradeOptions);
-      const { logRedirect } = validateLogVisibility(options.logVisibility);
-      const resourceUsageAllow = validateResourceUsageMonitoring(options.resourceUsageMonitoring);
+      const appID = validateAppID(options.appId);
 
       // Check that a scheduled upgrade exists and is ready
       const pending = await getPendingAppUpgrade(preflightCtx.publicClient, preflightCtx.environmentConfig, appID);
@@ -670,26 +678,11 @@ export async function executeGovernedUpgrade(
         throw new Error(`upgrade is not ready yet — ${remaining}s remaining`);
       }
 
-      logger.debug("Checking Docker...");
-      await ensureDockerIsRunning();
-
-      const dockerfilePath = options.dockerfilePath || "";
-      const imageRef = options.imageRef || "";
-      const envFilePath = options.envFilePath || "";
-
-      logger.info("Preparing release (must match scheduled release)...");
-      const { release, finalImageRef } = await prepareRelease(
-        {
-          dockerfilePath,
-          imageRef,
-          envFilePath,
-          logRedirect,
-          resourceUsageAllow,
-          instanceType: options.instanceType,
-          environmentConfig: preflightCtx.environmentConfig,
-          appId: appID,
-        },
-        logger,
+      logger.info("Fetching scheduled release from chain...");
+      const release = await getScheduledRelease(
+        preflightCtx.publicClient,
+        preflightCtx.environmentConfig,
+        appID,
       );
 
       logger.info("Executing scheduled upgrade on-chain...");
@@ -716,7 +709,8 @@ export async function executeGovernedUpgrade(
         logger,
       );
 
-      return { appId: appID, imageRef: finalImageRef, txHash };
+      const imageRef = release.rmsRelease.artifacts[0]?.registry ?? "";
+      return { appId: appID, imageRef, txHash };
     },
   );
 }

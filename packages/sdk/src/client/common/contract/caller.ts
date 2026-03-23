@@ -19,7 +19,7 @@
  */
 
 import { executeBatch, checkERC7702Delegation } from "./eip7702";
-import { Address, Hex, encodeFunctionData, decodeErrorResult, bytesToHex } from "viem";
+import { Address, Hex, encodeFunctionData, decodeErrorResult, bytesToHex, hexToBytes } from "viem";
 import type { WalletClient, PublicClient } from "viem";
 
 import {
@@ -1296,6 +1296,60 @@ export async function getPendingAppUpgrade(
 }
 
 /**
+ * Fetch the scheduled Release struct from chain logs.
+ *
+ * The contract only stores keccak256(abi.encode(release)) on-chain, but the full
+ * Release is emitted in the AppUpgradeScheduled event. We find the event whose
+ * readyAt matches the pending upgrade and decode the Release from it — no rebuild needed.
+ */
+export async function getScheduledRelease(
+  publicClient: PublicClient,
+  environmentConfig: EnvironmentConfig,
+  appID: Address,
+): Promise<Release> {
+  const pending = await getPendingAppUpgrade(publicClient, environmentConfig, appID);
+  if (pending.readyAt === 0n) {
+    throw new Error("no upgrade is scheduled for this app");
+  }
+
+  const eventAbi = (AppControllerABI as any[]).find(
+    (e) => e.type === "event" && e.name === "AppUpgradeScheduled",
+  );
+
+  const logs = await publicClient.getLogs({
+    address: environmentConfig.appControllerAddress as Address,
+    event: eventAbi,
+    args: { app: appID },
+    fromBlock: "earliest",
+  });
+
+  // scheduleUpgrade overwrites any previous pending upgrade, so match on readyAt
+  const match = [...logs].reverse().find((log) => {
+    const { readyAt } = log.args as any;
+    return BigInt(readyAt) === pending.readyAt;
+  });
+
+  if (!match) {
+    throw new Error(
+      "AppUpgradeScheduled event not found for this app — the node may not have full history",
+    );
+  }
+
+  const { release } = match.args as any;
+  return {
+    rmsRelease: {
+      artifacts: release.rmsRelease.artifacts.map((a: any) => ({
+        digest: hexToBytes(a.digest),
+        registry: a.registry,
+      })),
+      upgradeByTime: Number(release.rmsRelease.upgradeByTime),
+    },
+    publicEnv: hexToBytes(release.publicEnv),
+    encryptedEnv: hexToBytes(release.encryptedEnv),
+  };
+}
+
+/**
  * Options for transferring app ownership
  */
 export interface TransferOwnershipOptions {
@@ -1746,7 +1800,14 @@ export async function getSafeTimelockFactoryAddress(
   }) as Promise<Address>;
 }
 
-/** Canonical salt used for all factory deployments — ensures deterministic addresses */
+/**
+ * Canonical salt used for Timelock deployments via SafeTimelockFactory.
+ *
+ * Fixed at zero so that a single private key deterministically derives its
+ * associated Timelock address — you can always reconstruct it from the EOA
+ * without storing any extra state. Safe addresses are discovered via the
+ * Safe Transaction Service API, not derived from this salt.
+ */
 export const CANONICAL_SALT: Hex = "0x0000000000000000000000000000000000000000000000000000000000000000";
 
 export interface DeploySafeOptions {
@@ -1787,7 +1848,6 @@ export async function deploySafe(
   }
 
   // Parse SafeDeployed event to get the deployed address
-  const safeDeployedTopic = "0x" + Buffer.from("SafeDeployed(address,address,address[],uint256,bytes32)").toString("hex");
   // Use the second indexed topic (safe address) from the log
   const log = receipt.logs.find(
     (l) => l.address.toLowerCase() === factoryAddress.toLowerCase(),
