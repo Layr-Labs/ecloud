@@ -1,7 +1,7 @@
 import { Command, Flags } from "@oclif/core";
 import { getEnvironmentConfig, UserApiClient, isMainnet } from "@layr-labs/ecloud-sdk";
 import { withTelemetry } from "../../../telemetry";
-import { commonFlags } from "../../../flags";
+import { commonFlags, applyGasOverrides } from "../../../flags";
 import { createComputeClient } from "../../../client";
 import { createViemClients } from "../../../utils/viemClients";
 import {
@@ -402,8 +402,12 @@ export default class AppDeploy extends Command {
             billTo,
           });
 
-      // 9. Show gas estimate and prompt for confirmation on mainnet
-      this.log(`\nEstimated transaction cost: ${chalk.cyan(gasEstimate.maxCostEth)} ETH`);
+      // 9. Apply gas overrides if provided, show estimate, and prompt for confirmation on mainnet
+      const finalGas = applyGasOverrides(gasEstimate, flags);
+      if (flags["max-fee-per-gas"] || flags["max-priority-fee"]) {
+        this.log(chalk.yellow(`\nGas override active — max fee: ${flags["max-fee-per-gas"] || "estimated"} gwei, priority fee: ${flags["max-priority-fee"] || "estimated"} gwei`));
+      }
+      this.log(`\nEstimated transaction cost: ${chalk.cyan(finalGas.maxCostEth)} ETH`);
 
       if (isMainnet(environmentConfig)) {
         const confirmed = await confirm(`Continue with deployment?`);
@@ -414,7 +418,7 @@ export default class AppDeploy extends Command {
       }
 
       // 10. Execute the deployment
-      const res = await compute.app.executeDeploy(prepared, gasEstimate);
+      const res = await compute.app.executeDeploy(prepared, finalGas);
 
       // 11. Collect app profile while deployment is in progress (optional)
       if (!flags["skip-profile"]) {
