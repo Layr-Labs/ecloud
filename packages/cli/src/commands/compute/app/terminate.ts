@@ -1,6 +1,6 @@
 import { Command, Args, Flags } from "@oclif/core";
 import { createComputeClient } from "../../../client";
-import { commonFlags, applyGasOverrides } from "../../../flags";
+import { commonFlags, applyTxOverrides } from "../../../flags";
 import {
   getEnvironmentConfig,
   estimateTransactionGas,
@@ -73,15 +73,18 @@ export default class AppLifecycleTerminate extends Command {
       });
 
       // Apply gas overrides if provided
-      const finalGas = applyGasOverrides(estimate, flags);
+      const finalTx = await applyTxOverrides(estimate, flags, { publicClient, address });
       if (flags["max-fee-per-gas"] || flags["max-priority-fee"]) {
         this.log(chalk.yellow(`Gas override active — max fee: ${flags["max-fee-per-gas"] || "estimated"} gwei, priority fee: ${flags["max-priority-fee"] || "estimated"} gwei`));
+      }
+      if (finalTx.nonce != null) {
+        this.log(chalk.yellow(`Nonce override active — nonce: ${finalTx.nonce}`));
       }
 
       // Ask for confirmation unless forced
       if (!flags.force) {
         const costInfo = isMainnet(environmentConfig)
-          ? ` (cost: up to ${finalGas.maxCostEth} ETH)`
+          ? ` (cost: up to ${finalTx.maxCostEth} ETH)`
           : "";
         const confirmed = await confirm(`⚠️  Permanently destroy app ${appId}${costInfo}?`);
         if (!confirmed) {
@@ -91,7 +94,7 @@ export default class AppLifecycleTerminate extends Command {
       }
 
       const res = await compute.app.terminate(appId, {
-        gas: finalGas,
+        gas: finalTx,
       });
 
       if (!res.tx) {
