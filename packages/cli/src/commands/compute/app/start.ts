@@ -1,6 +1,6 @@
 import { Command, Args } from "@oclif/core";
 import { createComputeClient } from "../../../client";
-import { commonFlags } from "../../../flags";
+import { commonFlags, applyGasOverrides } from "../../../flags";
 import {
   getEnvironmentConfig,
   estimateTransactionGas,
@@ -67,10 +67,16 @@ export default class AppLifecycleStart extends Command {
         data: callData,
       });
 
+      // Apply gas overrides if provided
+      const finalGas = applyGasOverrides(estimate, flags);
+      if (flags["max-fee-per-gas"] || flags["max-priority-fee"]) {
+        this.log(chalk.yellow(`Gas override active — max fee: ${flags["max-fee-per-gas"] || "estimated"} gwei, priority fee: ${flags["max-priority-fee"] || "estimated"} gwei`));
+      }
+
       // On mainnet, prompt for confirmation with cost
       if (isMainnet(environmentConfig)) {
         const confirmed = await confirm(
-          `This will cost up to ${estimate.maxCostEth} ETH. Continue?`,
+          `This will cost up to ${finalGas.maxCostEth} ETH. Continue?`,
         );
         if (!confirmed) {
           this.log(`\n${chalk.gray(`Start cancelled`)}`);
@@ -79,7 +85,7 @@ export default class AppLifecycleStart extends Command {
       }
 
       const res = await compute.app.start(appId, {
-        gas: estimate,
+        gas: finalGas,
       });
 
       if (!res.tx) {

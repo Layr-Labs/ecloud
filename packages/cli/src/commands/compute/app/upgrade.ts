@@ -1,7 +1,7 @@
 import { Command, Args, Flags } from "@oclif/core";
 import { getEnvironmentConfig, UserApiClient, isMainnet } from "@layr-labs/ecloud-sdk";
 import { withTelemetry } from "../../../telemetry";
-import { commonFlags } from "../../../flags";
+import { commonFlags, applyGasOverrides } from "../../../flags";
 import { createBuildClient, createComputeClient } from "../../../client";
 import { createViemClients } from "../../../utils/viemClients";
 import {
@@ -357,8 +357,12 @@ export default class AppUpgrade extends Command {
             resourceUsageMonitoring,
           });
 
-      // 10. Show gas estimate and prompt for confirmation on mainnet
-      this.log(`\nEstimated transaction cost: ${chalk.cyan(gasEstimate.maxCostEth)} ETH`);
+      // 10. Apply gas overrides if provided, show estimate, and prompt for confirmation on mainnet
+      const finalGas = applyGasOverrides(gasEstimate, flags);
+      if (flags["max-fee-per-gas"] || flags["max-priority-fee"]) {
+        this.log(chalk.yellow(`\nGas override active — max fee: ${flags["max-fee-per-gas"] || "estimated"} gwei, priority fee: ${flags["max-priority-fee"] || "estimated"} gwei`));
+      }
+      this.log(`\nEstimated transaction cost: ${chalk.cyan(finalGas.maxCostEth)} ETH`);
 
       if (isMainnet(environmentConfig)) {
         const confirmed = await confirm(`Continue with upgrade?`);
@@ -369,7 +373,7 @@ export default class AppUpgrade extends Command {
       }
 
       // 11. Execute the upgrade
-      const res = await compute.app.executeUpgrade(prepared, gasEstimate);
+      const res = await compute.app.executeUpgrade(prepared, finalGas);
 
       // 12. Watch until upgrade completes
       await compute.app.watchUpgrade(res.appId);
