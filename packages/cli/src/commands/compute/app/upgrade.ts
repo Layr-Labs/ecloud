@@ -1,7 +1,7 @@
 import { Command, Args, Flags } from "@oclif/core";
 import { getEnvironmentConfig, UserApiClient, isMainnet } from "@layr-labs/ecloud-sdk";
 import { withTelemetry } from "../../../telemetry";
-import { commonFlags, applyGasOverrides } from "../../../flags";
+import { commonFlags, applyTxOverrides } from "../../../flags";
 import { createBuildClient, createComputeClient } from "../../../client";
 import { createViemClients } from "../../../utils/viemClients";
 import {
@@ -288,13 +288,13 @@ export default class AppUpgrade extends Command {
       envFilePath = envFilePath ?? (await getEnvFileInteractive(flags["env-file"]));
 
       // 5. Get current instance type (best-effort, used as default)
+      const { publicClient, walletClient, address } = createViemClients({
+        privateKey,
+        rpcUrl,
+        environment,
+      });
       let currentInstanceType = "";
       try {
-        const { publicClient, walletClient } = createViemClients({
-          privateKey,
-          rpcUrl,
-          environment,
-        });
         const userApiClient = new UserApiClient(
           environmentConfig,
           walletClient,
@@ -358,11 +358,14 @@ export default class AppUpgrade extends Command {
           });
 
       // 10. Apply gas overrides if provided, show estimate, and prompt for confirmation on mainnet
-      const finalGas = applyGasOverrides(gasEstimate, flags);
+      const finalTx = await applyTxOverrides(gasEstimate, flags, { publicClient, address });
       if (flags["max-fee-per-gas"] || flags["max-priority-fee"]) {
         this.log(chalk.yellow(`\nGas override active — max fee: ${flags["max-fee-per-gas"] || "estimated"} gwei, priority fee: ${flags["max-priority-fee"] || "estimated"} gwei`));
       }
-      this.log(`\nEstimated transaction cost: ${chalk.cyan(finalGas.maxCostEth)} ETH`);
+      if (finalTx.nonce != null) {
+        this.log(chalk.yellow(`Nonce override active — nonce: ${finalTx.nonce}`));
+      }
+      this.log(`\nEstimated transaction cost: ${chalk.cyan(finalTx.maxCostEth)} ETH`);
 
       if (isMainnet(environmentConfig)) {
         const confirmed = await confirm(`Continue with upgrade?`);
@@ -373,7 +376,7 @@ export default class AppUpgrade extends Command {
       }
 
       // 11. Execute the upgrade
-      const res = await compute.app.executeUpgrade(prepared, finalGas);
+      const res = await compute.app.executeUpgrade(prepared, finalTx);
 
       // 12. Watch until upgrade completes
       await compute.app.watchUpgrade(res.appId);

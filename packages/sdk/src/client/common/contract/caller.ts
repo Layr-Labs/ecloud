@@ -51,6 +51,8 @@ export interface GasEstimate {
   maxCostWei: bigint;
   /** Maximum cost formatted as ETH string */
   maxCostEth: string;
+  /** Optional nonce override (for replacing stuck transactions) */
+  nonce?: number;
 }
 
 /**
@@ -924,6 +926,7 @@ export async function sendAndWaitForTransaction(
     ...(gas?.maxPriorityFeePerGas && {
       maxPriorityFeePerGas: gas.maxPriorityFeePerGas,
     }),
+    ...(gas?.nonce != null && { nonce: gas.nonce }),
     chain,
   });
 

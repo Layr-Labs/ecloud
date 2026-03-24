@@ -309,6 +309,9 @@ export async function executeBatch(options: ExecuteBatchOptions, logger: Logger 
   if (gas?.maxPriorityFeePerGas) {
     txRequest.maxPriorityFeePerGas = gas.maxPriorityFeePerGas;
   }
+  if (gas?.nonce != null) {
+    txRequest.nonce = gas.nonce;
+  }
 
   const hash = await walletClient.sendTransaction(txRequest);
   logger.info(`Transaction sent: ${hash}`);
