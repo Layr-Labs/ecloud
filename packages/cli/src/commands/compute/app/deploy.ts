@@ -35,6 +35,7 @@ import {
   resolveDockerHubImageDigest,
 } from "../../../utils/dockerhub";
 import { isTlsEnabledFromEnvFile } from "../../../utils/tls";
+import { mergeInlineEnvVars } from "../../../utils/env";
 import type { SubmitBuildRequest } from "@layr-labs/ecloud-sdk";
 
 export default class AppDeploy extends Command {
@@ -62,6 +63,11 @@ export default class AppDeploy extends Command {
       description: 'Environment file to use (default: ".env")',
       default: ".env",
       env: "ECLOUD_ENVFILE_PATH",
+    }),
+    env: Flags.string({
+      required: false,
+      description: "Inline environment variable in KEY=VALUE format (can be specified multiple times)",
+      multiple: true,
     }),
     "log-visibility": Flags.string({
       required: false,
@@ -370,6 +376,11 @@ export default class AppDeploy extends Command {
 
       // 4. Get env file path interactively
       envFilePath = envFilePath ?? (await getEnvFileInteractive(flags["env-file"]));
+
+      // 4b. Merge inline --env KEY=VALUE vars (overrides env file values)
+      if (flags.env && flags.env.length > 0) {
+        envFilePath = mergeInlineEnvVars(envFilePath, flags.env);
+      }
 
       // 5. Get instance type interactively
       const availableTypes = await fetchAvailableInstanceTypes(
