@@ -11,6 +11,8 @@ export interface SubmitBuildRequest {
   caddyfilePath?: string;
   buildContextPath?: string;
   dependencies?: string[];
+  /** When true, allow submission even if another build is already in progress. */
+  force?: boolean;
 }
 
 export interface SubmitBuildResponse {

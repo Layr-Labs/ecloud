@@ -2,7 +2,7 @@ import { Command, Args, Flags } from "@oclif/core";
 import { getEnvironmentConfig, UserApiClient, isMainnet } from "@layr-labs/ecloud-sdk";
 import { withTelemetry } from "../../../telemetry";
 import { commonFlags, applyTxOverrides } from "../../../flags";
-import { createBuildClient, createComputeClient } from "../../../client";
+import { createBillingClient, createBuildClient, createComputeClient } from "../../../client";
 import { createViemClients } from "../../../utils/viemClients";
 import {
   getDockerfileInteractive,
@@ -218,9 +218,16 @@ export default class AppUpgrade extends Command {
         this.log("");
 
         const buildClient = await getBuildClient();
-        const { build, verified } = await runVerifiableBuildAndVerify(buildClient, inputs, {
-          onLog: (chunk) => process.stdout.write(chunk),
-        });
+        const { build, verified } = await runVerifiableBuildAndVerify(
+          buildClient,
+          inputs,
+          { onLog: (chunk) => process.stdout.write(chunk) },
+          async () => {
+            const billing = await createBillingClient(flags);
+            const status = await billing.getStatus({ productId: "compute" });
+            return (status.remainingCredits ?? 0) >= 5;
+          },
+        );
 
         if (!build.imageUrl || !build.imageDigest) {
           this.error(

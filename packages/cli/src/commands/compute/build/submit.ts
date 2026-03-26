@@ -1,10 +1,10 @@
 import { Command, Flags } from "@oclif/core";
 import chalk from "chalk";
 import { validateCommonFlags, commonFlags } from "../../../flags";
-import { createBuildClient } from "../../../client";
+import { createBuildClient, createBillingClient } from "../../../client";
 import { withTelemetry } from "../../../telemetry";
 import type { Build } from "@layr-labs/ecloud-sdk";
-import { BUILD_STATUS } from "@layr-labs/ecloud-sdk";
+import { BUILD_STATUS, ConflictError } from "@layr-labs/ecloud-sdk";
 import { formatVerifiableBuildSummary } from "../../../utils/build";
 import type { VerifyProvenanceResult } from "@layr-labs/ecloud-sdk";
 import { assertCommitSha40, runVerifiableBuildAndVerify } from "../../../utils/verifiableBuild";
@@ -88,18 +88,24 @@ export default class BuildSubmit extends Command {
 
       const client = await createBuildClient(validatedFlags);
 
+      const buildRequest = {
+        repoUrl,
+        gitRef,
+        dockerfilePath,
+        caddyfilePath,
+        buildContextPath,
+        dependencies,
+      };
+
       this.log(chalk.gray("Submitting build..."));
 
       try {
         if (flags["no-follow"]) {
-          const { buildId } = await client.submit({
-            repoUrl,
-            gitRef,
-            dockerfilePath,
-            caddyfilePath,
-            buildContextPath,
-            dependencies,
-          });
+          const { buildId } = await this.submitWithCreditGatedRetry(
+            client,
+            buildRequest,
+            validatedFlags,
+          );
 
           this.log(chalk.green(`Build submitted: ${buildId}`));
 
@@ -121,16 +127,14 @@ export default class BuildSubmit extends Command {
         this.log("");
         const { build, verified } = await runVerifiableBuildAndVerify(
           client,
-          {
-            repoUrl,
-            gitRef,
-            dockerfilePath,
-            caddyfilePath,
-            buildContextPath,
-            dependencies,
-          },
+          buildRequest,
           {
             onLog: (chunk) => process.stdout.write(chunk),
+          },
+          async () => {
+            const billing = await createBillingClient(validatedFlags);
+            const status = await billing.getStatus({ productId: "compute" });
+            return (status.remainingCredits ?? 0) >= 5;
           },
         );
 
@@ -144,6 +148,35 @@ export default class BuildSubmit extends Command {
         throw error;
       }
     });
+  }
+
+  private async submitWithCreditGatedRetry(
+    client: Awaited<ReturnType<typeof createBuildClient>>,
+    request: Parameters<typeof client.submit>[0],
+    flags: Awaited<ReturnType<typeof validateCommonFlags>>,
+  ) {
+    try {
+      return await client.submit(request);
+    } catch (error) {
+      if (!(error instanceof ConflictError)) throw error;
+
+      this.log(chalk.yellow("A build is already in progress. Checking account credits..."));
+      const billing = await createBillingClient(flags);
+      const status = await billing.getStatus({ productId: "compute" });
+      const credits = status.remainingCredits ?? 0;
+
+      if (credits < 5) {
+        this.error(
+          `You have $${credits.toFixed(2)} in credits. At least $5.00 is required to run parallel builds.\n` +
+            `Run ${chalk.cyan("ecloud billing top-up")} to purchase more credits.`,
+        );
+      }
+
+      this.log(
+        chalk.green(`Account has $${credits.toFixed(2)} in credits. Submitting parallel build...`),
+      );
+      return client.submit({ ...request, force: true });
+    }
   }
 
   private async printBuildResult(

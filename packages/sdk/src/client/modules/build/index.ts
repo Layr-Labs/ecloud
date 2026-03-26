@@ -100,6 +100,7 @@ export function createBuildModule(config: BuildModuleConfig): BuildModule {
             caddyfile_path: request.caddyfilePath,
             build_context_path: request.buildContextPath ?? ".",
             dependencies: request.dependencies ?? [],
+            force: request.force,
           });
 
           logger.debug(`Submitted build: ${data.build_id}`);

@@ -4,7 +4,7 @@ import type {
   SubmitBuildRequest,
   VerifyProvenanceSuccess,
 } from "@layr-labs/ecloud-sdk";
-import { BUILD_STATUS } from "@layr-labs/ecloud-sdk";
+import { BUILD_STATUS, ConflictError } from "@layr-labs/ecloud-sdk";
 
 export interface RunVerifiableBuildOptions {
   onLog?: (chunk: string) => void;
@@ -44,14 +44,27 @@ export function assertBuildId(buildId: string): void {
  * - Uses `submit()` + `waitForBuild()` to stream logs.
  * - Fetches canonical build via `get()` so `.dependencies` is populated.
  * - Verifies provenance via `verify()` and throws if not verified.
+ *
+ * @param canForceParallelBuild - Optional callback that returns true if the user has
+ *   sufficient credits (>= $5) to run parallel builds. When provided, a 409 conflict
+ *   (build already in progress) will trigger this check and retry with force if allowed.
  */
 export async function runVerifiableBuildAndVerify(
   client: BuildModule,
   request: SubmitBuildRequest,
   options: RunVerifiableBuildOptions = {},
+  canForceParallelBuild?: () => Promise<boolean>,
 ): Promise<VerifiableBuildResult> {
-  // Submit build
-  const { buildId } = await client.submit(request);
+  // Submit build, retrying with force on conflict if credits allow
+  let buildId: string;
+  try {
+    ({ buildId } = await client.submit(request));
+  } catch (error) {
+    if (!(error instanceof ConflictError) || !canForceParallelBuild) throw error;
+    const allowed = await canForceParallelBuild();
+    if (!allowed) throw error;
+    ({ buildId } = await client.submit({ ...request, force: true }));
+  }
 
   // Wait for completion (streams logs)
   const completed = await client.waitForBuild(buildId, { onLog: options.onLog });

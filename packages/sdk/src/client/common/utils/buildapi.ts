@@ -8,6 +8,7 @@ import { AxiosResponse } from "axios";
 import { Address, type WalletClient } from "viem";
 import { calculateBillingAuthSignature } from "./auth";
 import { requestWithRetry } from "./retry";
+import { ConflictError } from "../../modules/build/errors";
 
 export interface BuildApiClientOptions {
   baseUrl: string;
@@ -76,13 +77,15 @@ export class BuildApiClient {
     caddyfile_path?: string;
     build_context_path: string;
     dependencies: string[];
+    force?: boolean;
   }): Promise<{ build_id: string }> {
+    const path = payload.force ? "/builds?force=true" : "/builds";
     // Use session auth if billingSessionId is available and useSession is enabled
     if (this.useSession && this.billingSessionId) {
-      return this.billingSessionAuthJsonRequest<{ build_id: string }>("/builds", "POST", payload);
+      return this.billingSessionAuthJsonRequest<{ build_id: string }>(path, "POST", payload);
     }
     // Fall back to signature auth (requires walletClient)
-    return this.signatureAuthJsonRequest<{ build_id: string }>("/builds", "POST", payload);
+    return this.signatureAuthJsonRequest<{ build_id: string }>(path, "POST", payload);
   }
 
   async getBuild(buildId: string): Promise<any> {
@@ -255,5 +258,10 @@ function buildApiHttpError(res: AxiosResponse): Error {
   const status = res.status;
   const body = typeof res.data === "string" ? res.data : res.data ? JSON.stringify(res.data) : "";
   const url = res.config?.url ? ` ${res.config.url}` : "";
+
+  if (status === 409) {
+    return new ConflictError(body || "Build already in progress");
+  }
+
   return new Error(`BuildAPI request failed: ${status}${url} - ${body || "Unknown error"}`);
 }
