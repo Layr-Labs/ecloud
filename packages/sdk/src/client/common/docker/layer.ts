@@ -156,16 +156,16 @@ export async function layerRemoteImageIfNeeded(
 
   const docker = new Docker();
 
+  // Pull image first to ensure we have it locally for inspection
+  logger.info(`Pulling image ${imageRef}...`);
+  await pullDockerImage(docker, imageRef, DOCKER_PLATFORM, logger);
+
   // Check if image already has ecloud layering
   const alreadyLayered = await checkIfImageAlreadyLayeredForECloud(docker, imageRef);
   if (alreadyLayered) {
     logger.info("Image already has ecloud layering");
     return imageRef;
   }
-
-  // Pull image to ensure we have it locally
-  logger.info(`Pulling image ${imageRef}...`);
-  await pullDockerImage(docker, imageRef, DOCKER_PLATFORM, logger);
 
   // Prompt for target image (to avoid overwriting source)
   // TODO: Make this configurable via options

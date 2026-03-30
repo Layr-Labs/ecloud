@@ -350,7 +350,12 @@ export default class AppUpgrade extends Command {
           ? "private"
           : "off";
 
-      const { prepared, gasEstimate } = isVerifiable
+      // Use the verifiable build path only for git-source builds where the build
+      // service fully layers the image. For prebuilt image refs, route through
+      // the normal prepareUpgrade path so that layerRemoteImageIfNeeded can
+      // add the ecloud runtime layer (startup script, KMS client, Caddy) if
+      // the image doesn't already have it.
+      const { prepared, gasEstimate } = verifiableMode === "git"
         ? await compute.app.prepareUpgradeFromVerifiableBuild(appID, {
             imageRef,
             imageDigest: verifiableImageDigest!,
