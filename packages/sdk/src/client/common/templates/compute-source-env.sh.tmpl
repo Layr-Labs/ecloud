@@ -106,6 +106,10 @@ setup_tls() {
 # Run TLS setup
 setup_tls
 
+# Export KMS variables for attestation-based JWT auth
+export KMS_SERVER_URL="{{kmsServerURL}}"
+export KMS_PUBLIC_KEY="$(cat /usr/local/bin/kms-signing-public-key.pem)"
+
 echo "compute-source-env.sh: Environment sourced."
 
 # Drop privileges to original user for the application command

@@ -18,6 +18,7 @@ import {
 import { getAppInfosChunked } from "../../../utils/appResolver";
 import { formatAppDisplay, printAppDisplay } from "../../../utils/format";
 import { createViemClients } from "../../../utils/viemClients";
+import { getDashboardUrl } from "../../../utils/dashboard";
 import { getClientId } from "../../../utils/version";
 import chalk from "chalk";
 import { withTelemetry } from "../../../telemetry";
@@ -99,7 +100,9 @@ export default class AppList extends Command {
       }
 
       // Create UserAPI client
-      const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, getClientId());
+      const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, {
+        clientId: getClientId(),
+      });
 
       // Fetch all data in parallel
       const [appInfos, releaseBlockNumbers] = await Promise.all([
@@ -109,12 +112,14 @@ export default class AppList extends Command {
           }
           return [];
         }),
-        getAppLatestReleaseBlockNumbers(publicClient, environmentConfig, filteredApps).catch((err) => {
-          if (flags.verbose) {
-            this.warn(`Could not fetch release block numbers: ${err}`);
-          }
-          return new Map<Address, number>();
-        }) as Promise<Map<Address, number>>,
+        getAppLatestReleaseBlockNumbers(publicClient, environmentConfig, filteredApps).catch(
+          (err) => {
+            if (flags.verbose) {
+              this.warn(`Could not fetch release block numbers: ${err}`);
+            }
+            return new Map<Address, number>();
+          },
+        ) as Promise<Map<Address, number>>,
       ]);
 
       // Get unique block numbers and fetch their timestamps
@@ -206,6 +211,10 @@ export default class AppList extends Command {
           singleAddress: true,
           showProfile: false,
         });
+
+        // Show dashboard link
+        const dashboardUrl = getDashboardUrl(environment, appItems[i].appAddr);
+        this.log(`    Dashboard:      ${chalk.blue.underline(dashboardUrl)}`);
 
         // Add separator between apps
         if (i < appItems.length - 1) {

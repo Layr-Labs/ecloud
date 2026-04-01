@@ -1,7 +1,7 @@
 import { Command, Flags } from "@oclif/core";
 import { getEnvironmentConfig, UserApiClient, isMainnet } from "@layr-labs/ecloud-sdk";
 import { withTelemetry } from "../../../telemetry";
-import { commonFlags } from "../../../flags";
+import { commonFlags, applyTxOverrides } from "../../../flags";
 import { createComputeClient } from "../../../client";
 import { createViemClients } from "../../../utils/viemClients";
 import {
@@ -10,6 +10,7 @@ import {
   getOrPromptAppName,
   getEnvFileInteractive,
   getInstanceTypeInteractive,
+  type SkuInfo,
   getLogSettingsInteractive,
   getResourceUsageMonitoringInteractive,
   getAppProfileInteractive,
@@ -28,11 +29,13 @@ import chalk from "chalk";
 import { createBuildClient } from "../../../client";
 import { formatVerifiableBuildSummary } from "../../../utils/build";
 import { assertCommitSha40, runVerifiableBuildAndVerify } from "../../../utils/verifiableBuild";
+import { getDashboardUrl } from "../../../utils/dashboard";
 import {
   assertEigencloudContainersImageRef,
   resolveDockerHubImageDigest,
 } from "../../../utils/dockerhub";
 import { isTlsEnabledFromEnvFile } from "../../../utils/tls";
+import { mergeInlineEnvVars } from "../../../utils/env";
 import type { SubmitBuildRequest } from "@layr-labs/ecloud-sdk";
 
 export default class AppDeploy extends Command {
@@ -61,6 +64,11 @@ export default class AppDeploy extends Command {
       default: ".env",
       env: "ECLOUD_ENVFILE_PATH",
     }),
+    env: Flags.string({
+      required: false,
+      description: "Inline environment variable in KEY=VALUE format (can be specified multiple times)",
+      multiple: true,
+    }),
     "log-visibility": Flags.string({
       required: false,
       description: "Log visibility setting: public, private, or off",
@@ -69,7 +77,7 @@ export default class AppDeploy extends Command {
     }),
     "instance-type": Flags.string({
       required: false,
-      description: "Machine instance type to use e.g. g1-standard-4t, g1-standard-8t",
+      description: "Machine instance type (e.g., g1-standard-4t, g1-standard-2s, g1-micro-1v)",
       env: "ECLOUD_INSTANCE_TYPE",
     }),
     "skip-profile": Flags.boolean({
@@ -128,6 +136,12 @@ export default class AppDeploy extends Command {
       description: "Dependency digests for verifiable build (git source mode) (sha256:...)",
       multiple: true,
     }),
+    "build-caddyfile": Flags.string({
+      description:
+        "Optional path to Caddyfile inside the repo (relative to build context). If omitted, auto-detected from env file TLS settings",
+      required: false,
+      env: "ECLOUD_BUILD_CADDYFILE",
+    }),
   };
 
   async run() {
@@ -140,6 +154,35 @@ export default class AppDeploy extends Command {
       const environmentConfig = getEnvironmentConfig(environment);
       const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
       const privateKey = flags["private-key"]!;
+
+      // Early balance check — warn before interactive prompts if wallet has no funds
+      const { publicClient, address } = createViemClients({
+        privateKey,
+        rpcUrl,
+        environment,
+      });
+      const balance = await publicClient.getBalance({ address });
+      if (balance === 0n) {
+        const isSepolia = environmentConfig.chainID === BigInt(11155111);
+        this.log(
+          chalk.yellow(`\nWarning: Wallet ${chalk.bold(address)} has zero balance on ${environment}.`),
+        );
+        this.log(
+          chalk.yellow(`You will need ETH to pay for deployment gas fees.`),
+        );
+        if (isSepolia) {
+          this.log(
+            chalk.yellow(
+              `Get Sepolia ETH from https://cloud.google.com/application/web3/faucet/ethereum/sepolia or https://sepoliafaucet.com/`,
+            ),
+          );
+        }
+        this.log(
+          chalk.yellow(
+            `Fund your wallet before the transaction step, or the deployment will fail.\n`,
+          ),
+        );
+      }
 
       type VerifiableMode = "none" | "git" | "prebuilt";
       let buildClient: Awaited<ReturnType<typeof createBuildClient>> | undefined;
@@ -227,7 +270,7 @@ export default class AppDeploy extends Command {
               repoUrl: flags.repo!,
               gitRef: flags.commit!,
               dockerfilePath: flags["build-dockerfile"],
-              caddyfilePath: undefined,
+              caddyfilePath: flags["build-caddyfile"],
               buildContextPath: flags["build-context"],
               dependencies: flags["build-dependencies"],
             }
@@ -334,8 +377,14 @@ export default class AppDeploy extends Command {
       // 4. Get env file path interactively
       envFilePath = envFilePath ?? (await getEnvFileInteractive(flags["env-file"]));
 
+      // 4b. Merge inline --env KEY=VALUE vars (overrides env file values)
+      if (flags.env && flags.env.length > 0) {
+        envFilePath = mergeInlineEnvVars(envFilePath, flags.env);
+      }
+
       // 5. Get instance type interactively
       const availableTypes = await fetchAvailableInstanceTypes(
+        environment,
         environmentConfig,
         privateKey,
         rpcUrl,
@@ -363,7 +412,13 @@ export default class AppDeploy extends Command {
           ? "private"
           : "off";
 
-      const { prepared, gasEstimate } = isVerifiable
+      // Isolated billing is not yet available in the CLI.
+      // Use the verifiable build path only for git-source builds where the build
+      // service fully layers the image. For prebuilt image refs, route through
+      // the normal prepareDeploy path so that layerRemoteImageIfNeeded can
+      // add the ecloud runtime layer (startup script, KMS client, Caddy) if
+      // the image doesn't already have it.
+      const { prepared, gasEstimate } = verifiableMode === "git"
         ? await compute.app.prepareDeployFromVerifiableBuild({
             name: appName,
             imageRef,
@@ -372,6 +427,7 @@ export default class AppDeploy extends Command {
             instanceType,
             logVisibility,
             resourceUsageMonitoring,
+            billTo: "developer",
           })
         : await compute.app.prepareDeploy({
             name: appName,
@@ -381,10 +437,18 @@ export default class AppDeploy extends Command {
             instanceType,
             logVisibility,
             resourceUsageMonitoring,
+            billTo: "developer",
           });
 
-      // 9. Show gas estimate and prompt for confirmation on mainnet
-      this.log(`\nEstimated transaction cost: ${chalk.cyan(gasEstimate.maxCostEth)} ETH`);
+      // 9. Apply gas overrides if provided, show estimate, and prompt for confirmation on mainnet
+      const finalTx = await applyTxOverrides(gasEstimate, flags, { publicClient, address });
+      if (flags["max-fee-per-gas"] || flags["max-priority-fee"]) {
+        this.log(chalk.yellow(`\nGas override active — max fee: ${flags["max-fee-per-gas"] || "estimated"} gwei, priority fee: ${flags["max-priority-fee"] || "estimated"} gwei`));
+      }
+      if (finalTx.nonce != null) {
+        this.log(chalk.yellow(`Nonce override active — nonce: ${finalTx.nonce}`));
+      }
+      this.log(`\nEstimated transaction cost: ${chalk.cyan(finalTx.maxCostEth)} ETH`);
 
       if (isMainnet(environmentConfig)) {
         const confirmed = await confirm(`Continue with deployment?`);
@@ -395,7 +459,7 @@ export default class AppDeploy extends Command {
       }
 
       // 10. Execute the deployment
-      const res = await compute.app.executeDeploy(prepared, gasEstimate);
+      const res = await compute.app.executeDeploy(prepared, finalTx);
 
       // 11. Collect app profile while deployment is in progress (optional)
       if (!flags["skip-profile"]) {
@@ -471,6 +535,10 @@ export default class AppDeploy extends Command {
       this.log(
         `\n✅ ${chalk.green(`App deployed successfully ${chalk.bold(`(id: ${res.appId}, ip: ${ipAddress})`)}`)}`,
       );
+
+      // Show dashboard link
+      const dashboardUrl = getDashboardUrl(environment, res.appId);
+      this.log(`\n${chalk.gray("View your app:")} ${chalk.blue.underline(dashboardUrl)}`);
     });
   }
 }
@@ -479,21 +547,22 @@ export default class AppDeploy extends Command {
  * Fetch available instance types from backend
  */
 async function fetchAvailableInstanceTypes(
+  environment: string,
   environmentConfig: any,
   privateKey: string,
   rpcUrl: string,
-): Promise<Array<{ sku: string; description: string }>> {
+): Promise<SkuInfo[]> {
   try {
     const { publicClient, walletClient } = createViemClients({
       privateKey,
       rpcUrl,
-      environment: environmentConfig.name,
+      environment,
     });
     const userApiClient = new UserApiClient(
       environmentConfig,
       walletClient,
       publicClient,
-      getClientId(),
+      { clientId: getClientId() },
     );
 
     const skuList = await userApiClient.getSKUs();
@@ -505,6 +574,6 @@ async function fetchAvailableInstanceTypes(
   } catch (err: any) {
     console.warn(`Failed to fetch instance types: ${err.message}`);
     // Return a default fallback
-    return [{ sku: "g1-standard-4t", description: "Standard 4-thread instance" }];
+    return [{ sku: "g1-standard-4t", description: "4 vCPUs, 16 GB memory, TDX" }];
   }
 }

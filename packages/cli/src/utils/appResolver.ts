@@ -247,7 +247,7 @@ export class AppResolver {
         this.environmentConfig,
         walletClient,
         publicClient,
-        getClientId(),
+        { clientId: getClientId() },
       );
       const appInfos = await getAppInfosChunked(userApiClient, apps);
 

@@ -2,7 +2,7 @@
  * Core types for ECloud SDK
  */
 
-import { Address, Hex } from "viem";
+import { Address, Hex, SignAuthorizationReturnType } from "viem";
 import { GasEstimate } from "../contract/caller";
 
 export type AppId = Address;
@@ -22,6 +22,8 @@ export interface DeployAppOpts {
   instanceType: string;
   /** Log visibility setting - required */
   logVisibility: logVisibility;
+  /** Billing mode: developer (default) or app (isolated billing) */
+  billTo?: "developer" | "app";
   /** Optional gas params from estimation */
   gas?: GasEstimate;
 }
@@ -56,6 +58,12 @@ export interface PrepareDeployOpts {
   logVisibility: logVisibility;
   /** Resource usage monitoring setting - optional */
   resourceUsageMonitoring?: "enable" | "disable";
+  /** Billing mode: developer (default) or app (isolated billing) */
+  billTo?: "developer" | "app";
+  /** Skip quota check */
+  skipQuotaCheck?: boolean;
+  /** Optional salt for deterministic app address prediction (32 bytes) */
+  salt?: Uint8Array | Buffer;
 }
 
 /** Options for prepareUpgrade */
@@ -90,6 +98,8 @@ export interface PrepareDeployFromVerifiableBuildOpts {
   logVisibility: logVisibility;
   /** Resource usage monitoring setting - optional */
   resourceUsageMonitoring?: "enable" | "disable";
+  /** Billing mode: developer (default) or app (isolated billing) */
+  billTo?: "developer" | "app";
 }
 
 /** Options for prepareUpgradeFromVerifiableBuild */
@@ -137,6 +147,8 @@ export interface PreparedDeployData {
   salt: Uint8Array;
   /** Batch executions to be sent */
   executions: Array<{ target: Address; value: bigint; callData: Hex }>;
+  /** Pre-created authorization list for gas estimation accuracy (optional) */
+  authorizationList?: SignAuthorizationReturnType[];
 }
 
 /** Data-only batch for upgrade (clients provided by module) */
@@ -145,6 +157,8 @@ export interface PreparedUpgradeData {
   appId: AppId;
   /** Batch executions to be sent */
   executions: Array<{ target: Address; value: bigint; callData: Hex }>;
+  /** Pre-created authorization list for gas estimation accuracy (optional) */
+  authorizationList?: SignAuthorizationReturnType[];
 }
 
 /** Prepared deployment ready for execution */
@@ -228,6 +242,8 @@ export interface EnvironmentConfig {
   kmsServerURL: string;
   userApiServerURL: string;
   defaultRPCURL: string;
+  billingRPCURL?: string;
+  usdcCreditsAddress?: Address;
 }
 
 export interface Release {
@@ -266,6 +282,16 @@ export interface Logger {
   warn(message: string, ...args: any[]): void;
   error(message: string, ...args: any[]): void;
 }
+
+/**
+ * No-op logger for browser usage when logging is not needed
+ */
+export const noopLogger: Logger = {
+  debug: () => {},
+  info: () => {},
+  warn: () => {},
+  error: () => {},
+};
 
 /**
  * Profile information for an app
@@ -317,6 +343,20 @@ export interface SubscriptionLineItem {
   quantity: number;
   currency: string;
   subtotal: number;
+}
+
+export interface CreateSubscriptionOptions {
+  /** URL to redirect to after successful checkout */
+  successUrl?: string;
+  /** URL to redirect to if checkout is canceled */
+  cancelUrl?: string;
+  /** URL to return if return link is clicked from stripe portal */
+  returnUrl?: string;
+}
+
+export interface GetSubscriptionOptions {
+  /** URL to return to from the billing portal */
+  returnUrl?: string;
 }
 
 export interface CreateSubscriptionResponse {
@@ -373,9 +413,36 @@ export interface ProductSubscriptionResponse {
 
 export interface SubscriptionOpts {
   productId?: ProductID;
+  /** URL to redirect to after successful checkout */
+  successUrl?: string;
+  /** URL to redirect to if checkout is canceled */
+  cancelUrl?: string;
 }
 
 // Billing environment configuration
 export interface BillingEnvironmentConfig {
   billingApiServerURL: string;
+}
+
+/**
+ * Progress callback for sequential deployment
+ * Called after each step completes
+ */
+export type DeployProgressCallback = (step: DeployStep, txHash?: Hex) => void;
+
+/**
+ * Steps in sequential deployment flow
+ */
+export type DeployStep = "createApp" | "acceptAdmin" | "setPublicLogs" | "complete";
+
+/**
+ * Result from sequential deployment
+ */
+export interface SequentialDeployResult {
+  appId: AppId;
+  txHashes: {
+    createApp: Hex;
+    acceptAdmin: Hex;
+    setPublicLogs?: Hex;
+  };
 }

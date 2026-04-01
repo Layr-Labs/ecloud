@@ -1,15 +1,12 @@
 import { Command, Flags } from "@oclif/core";
 import chalk from "chalk";
 import { privateKeyToAccount } from "viem/accounts";
-import type { Build } from "@layr-labs/ecloud-sdk";
 import { addHexPrefix } from "@layr-labs/ecloud-sdk";
 import { commonFlags, validateCommonFlags } from "../../../flags";
 import { createBuildClient } from "../../../client";
 import { withTelemetry } from "../../../telemetry";
 import { formatBuildStatus } from "../../../utils/buildInfo";
-import Table from "cli-table3";
 import {
-  terminalWidth,
   formatRepoDisplay,
   formatImageDisplay,
   provenanceSummary,
@@ -70,76 +67,29 @@ export default class BuildList extends Command {
         return;
       }
 
-      type Row = {
-        buildId: string;
-        status: string;
-        repo: string;
-        commit: string;
-        image: string;
-        created: string;
-        prov: string;
-      };
-
-      // Keep raw-ish values; we will truncate based on terminal width.
-      const rows: Row[] = builds.map((b: Build) => ({
-        buildId: b.buildId || "-",
-        status: formatBuildStatus(b.status),
-        repo: formatRepoDisplay(b.repoUrl || "-"),
-        commit: b.gitRef || "-",
-        image: formatImageDisplay(b.imageUrl || "-"),
-        created: formatHumanTime(b.createdAt),
-        prov: provenanceSummary({
-          provenanceJson: b.provenanceJson,
-          provenanceSignature: b.provenanceSignature,
-          dependencies: b.dependencies,
-        }),
-      }));
-
-      const tw = terminalWidth();
-      // With 7 columns, narrow terminals get hard to read. Fall back to stacked output.
-      const shouldStack = tw < 110;
-
       this.log("");
       this.log(chalk.bold(`Builds for ${billingAddress} (${validatedFlags.environment}):`));
       this.log("");
 
-      if (shouldStack) {
-        for (const r of rows) {
-          this.log(`${r.status}  ${chalk.cyan(r.buildId)}  ${r.created}`);
-          this.log(`  Repo:   ${r.repo}`);
-          this.log(`  Commit: ${r.commit}`);
-          this.log(`  Image:  ${r.image}`);
-          this.log(`  Prov:   ${r.prov}`);
-          this.log(chalk.gray("  ───────────────────────────────────────────────────────────────"));
-        }
-      } else {
-        // Allocate flexible width to the "wide" columns (repo/commit/image) based on terminal width.
-        // cli-table3 adds 8 border chars (left + right + 6 between columns).
-        const fixed = 37 + 10 + 20 + 14 + 8; // id + status + created + prov + borders
-        const remaining = Math.max(30, tw - fixed);
-        const repoW = Math.max(18, Math.floor(remaining * 0.28));
-        const commitW = Math.max(18, Math.floor(remaining * 0.36));
-        const imageW = Math.max(18, remaining - repoW - commitW);
-
-        const table = new Table({
-          head: [
-            chalk.bold("ID"),
-            chalk.bold("Status"),
-            chalk.bold("Repo"),
-            chalk.bold("Commit"),
-            chalk.bold("Image"),
-            chalk.bold("Created"),
-            chalk.bold("Prov"),
-          ],
-          colWidths: [37, 10, repoW, commitW, imageW, 20, 14],
-          wordWrap: true,
-          style: { "padding-left": 0, "padding-right": 1, head: [], border: [] },
+      for (const b of builds) {
+        const buildId = b.buildId || "-";
+        const status = formatBuildStatus(b.status);
+        const repo = formatRepoDisplay(b.repoUrl || "-");
+        const commit = b.gitRef || "-";
+        const image = formatImageDisplay(b.imageUrl || "-");
+        const created = formatHumanTime(b.createdAt);
+        const prov = provenanceSummary({
+          provenanceJson: b.provenanceJson,
+          provenanceSignature: b.provenanceSignature,
+          dependencies: b.dependencies,
         });
 
-        for (const r of rows) {
-          table.push([r.buildId, r.status, r.repo, r.commit, r.image, r.created, r.prov]);
-        }
-        this.log(table.toString());
+        this.log(`${status}  ${chalk.cyan(buildId)}  ${created}`);
+        this.log(`  Repo:   ${repo}`);
+        this.log(`  Commit: ${commit}`);
+        this.log(`  Image:  ${image}`);
+        this.log(`  Prov:   ${prov}`);
+        this.log(chalk.gray("  ───────────────────────────────────────────────────────────────"));
       }
 
       this.log("");

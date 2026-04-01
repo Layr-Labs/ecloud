@@ -4,6 +4,7 @@ import { createBillingClient } from "../../client";
 import { commonFlags } from "../../flags";
 import chalk from "chalk";
 import open from "open";
+import { select } from "@inquirer/prompts";
 import { withTelemetry } from "../../telemetry";
 
 const PAYMENT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
@@ -13,8 +14,7 @@ export default class BillingSubscribe extends Command {
   static description = "Create subscription to start deploying apps";
 
   static flags = {
-    "private-key": commonFlags["private-key"],
-    verbose: commonFlags.verbose,
+    ...commonFlags,
     product: Flags.string({
       required: false,
       description: "Product ID",
@@ -58,12 +58,41 @@ export default class BillingSubscribe extends Command {
         return;
       }
 
-      // Open checkout URL in browser
+      // Payment method selection: credit card or USDC
+      const paymentMethod = await select({
+        message: "How would you like to pay for EigenCompute?",
+        choices: [
+          {
+            value: "card",
+            name: "Credit card",
+            description: "Pay via Stripe checkout (opens browser)",
+          },
+          {
+            value: "usdc",
+            name: "Purchase credits with USDC",
+            description: "Pay on-chain — no credit card needed",
+          },
+        ],
+      });
+
+      // USDC path: delegate to `ecloud billing top-up`
+      if (paymentMethod === "usdc") {
+        await this.config.runCommand("billing:top-up", [
+          ...(flags["private-key"] ? ["--private-key", flags["private-key"]] : []),
+          ...(flags.verbose ? ["--verbose"] : []),
+          ...(flags.environment ? ["--environment", flags.environment] : []),
+          ...(flags["rpc-url"] ? ["--rpc-url", flags["rpc-url"]] : []),
+          "--product", flags.product,
+        ]);
+        return;
+      }
+
+      // Credit card path (existing flow, unchanged)
       this.log(`\nOpening checkout for wallet ${chalk.bold(billing.address)}...`);
       this.log(chalk.gray(`\nURL: ${result.checkoutUrl}`));
+      this.log(chalk.gray(`\nPrefer to pay with USDC? Run: ecloud billing top-up`));
       await open(result.checkoutUrl);
 
-      // Poll for subscription status
       this.log(`\n${chalk.gray("Waiting for payment confirmation...")}`);
 
       const startTime = Date.now();
@@ -76,7 +105,6 @@ export default class BillingSubscribe extends Command {
             productId: flags.product as "compute",
           });
 
-          // Check if subscription is now active or trialing
           if (isSubscriptionActive(status.subscriptionStatus)) {
             this.log(
               `\n${chalk.green("✓")} Subscription activated successfully for ${flags.product}!`,
@@ -89,7 +117,6 @@ export default class BillingSubscribe extends Command {
         }
       }
 
-      // Timeout reached
       this.log(`\n${chalk.yellow("⚠")} Payment confirmation timed out after 5 minutes.`);
       this.log(
         chalk.gray(`If you completed payment, run 'ecloud billing status' to check status.`),

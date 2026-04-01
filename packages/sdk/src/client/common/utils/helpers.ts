@@ -2,7 +2,7 @@
  * General utility helpers
  */
 
-import { extractChain, createPublicClient, createWalletClient, http } from "viem";
+import { extractChain, createPublicClient, createWalletClient, http, fallback } from "viem";
 import type { Chain, Hex, PublicClient, WalletClient } from "viem";
 import { sepolia } from "viem/chains";
 import { privateKeyToAccount } from "viem/accounts";
@@ -45,7 +45,7 @@ export function getChainFromID(chainID: bigint, fallback: Chain = sepolia): Chai
  */
 export function createClients(options: {
   privateKey: string | Hex;
-  rpcUrl: string;
+  rpcUrl: string | string[];
   chainId: bigint;
 }): {
   walletClient: WalletClient;
@@ -57,15 +57,18 @@ export function createClients(options: {
   const account = privateKeyToAccount(privateKeyHex);
   const chain = getChainFromID(chainId);
 
+  const transport =
+    typeof rpcUrl === "string" ? http(rpcUrl) : fallback(rpcUrl.map((url) => http(url)));
+
   const publicClient = createPublicClient({
     chain,
-    transport: http(rpcUrl),
+    transport,
   });
 
   const walletClient = createWalletClient({
     account,
     chain,
-    transport: http(rpcUrl),
+    transport,
   });
 
   return { walletClient, publicClient };

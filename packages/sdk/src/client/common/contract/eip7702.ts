@@ -12,7 +12,7 @@ import type {
   SendTransactionParameters,
   SignAuthorizationReturnType,
 } from "viem";
-import { EnvironmentConfig, Logger } from "../types";
+import { EnvironmentConfig, Logger, noopLogger } from "../types";
 
 import ERC7702DelegatorABI from "../abis/ERC7702Delegator.json";
 
@@ -63,6 +63,7 @@ export interface EstimateBatchGasOptions {
   publicClient: PublicClient;
   account: Address;
   executions: Execution[];
+  authorizationList?: SignAuthorizationReturnType[];
 }
 
 /**
@@ -71,7 +72,7 @@ export interface EstimateBatchGasOptions {
  * Use this to get cost estimate before prompting user for confirmation.
  */
 export async function estimateBatchGas(options: EstimateBatchGasOptions): Promise<GasEstimate> {
-  const { publicClient, account, executions } = options;
+  const { publicClient, account, executions, authorizationList } = options;
 
   const executeBatchData = encodeExecuteBatchData(executions);
 
@@ -83,6 +84,7 @@ export async function estimateBatchGas(options: EstimateBatchGasOptions): Promis
       account,
       to: account,
       data: executeBatchData,
+      authorizationList,
     }),
   ]);
 
@@ -113,6 +115,8 @@ export interface ExecuteBatchOptions {
   pendingMessage: string;
   /** Optional gas params from estimation */
   gas?: GasEstimate;
+  /** Optional pre-created authorization list (skips internal creation if provided) */
+  authorizationList?: SignAuthorizationReturnType[];
 }
 
 /**
@@ -134,11 +138,104 @@ export async function checkERC7702Delegation(
 }
 
 /**
+ * Options for creating an authorization list
+ */
+export interface CreateAuthorizationListOptions {
+  walletClient: WalletClient;
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+}
+
+/**
+ * Create an authorization list for EIP-7702 delegation if needed
+ *
+ * Returns undefined if the account is already delegated.
+ * Use this to create the auth list before gas estimation to get accurate estimates.
+ */
+export async function createAuthorizationList(
+  options: CreateAuthorizationListOptions,
+): Promise<SignAuthorizationReturnType[] | undefined> {
+  const { walletClient, publicClient, environmentConfig } = options;
+
+  const account = walletClient.account;
+  if (!account) {
+    throw new Error("Wallet client must have an account");
+  }
+
+  // Check if already delegated
+  const isDelegated = await checkERC7702Delegation(
+    publicClient,
+    account.address,
+    environmentConfig.erc7702DelegatorAddress as Address,
+  );
+
+  if (isDelegated) {
+    return undefined;
+  }
+
+  // Create authorization
+  const transactionNonce = await publicClient.getTransactionCount({
+    address: account.address,
+    blockTag: "pending",
+  });
+
+  const chainId = await publicClient.getChainId();
+  const authorizationNonce = transactionNonce + 1;
+
+  const signedAuthorization = await walletClient.signAuthorization({
+    account,
+    contractAddress: environmentConfig.erc7702DelegatorAddress as Address,
+    chainId: chainId,
+    nonce: Number(authorizationNonce),
+  });
+
+  return [signedAuthorization];
+}
+
+const TRANSIENT_PATTERNS = [
+  "indexing is in progress",
+  "is not in the chain",
+] as const;
+
+function isTransientReceiptError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  return TRANSIENT_PATTERNS.some((p) => msg.includes(p));
+}
+
+async function waitForReceipt(
+  publicClient: PublicClient,
+  hash: Hex,
+  logger: Logger,
+  { maxRetries = 5, baseDelayMs = 2_000 } = {},
+) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await publicClient.waitForTransactionReceipt({ hash });
+    } catch (error) {
+      if (!isTransientReceiptError(error) || attempt >= maxRetries) throw error;
+
+      const delay = baseDelayMs * 2 ** attempt;
+      logger.debug(
+        `Receipt not available yet (attempt ${attempt + 1}/${maxRetries}), retrying in ${delay}ms...`,
+      );
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+}
+
+/**
  * Execute batch of operations via EIP-7702 delegator
  */
-export async function executeBatch(options: ExecuteBatchOptions, logger: Logger): Promise<Hex> {
-  const { walletClient, publicClient, environmentConfig, executions, pendingMessage, gas } =
-    options;
+export async function executeBatch(options: ExecuteBatchOptions, logger: Logger = noopLogger): Promise<Hex> {
+  const {
+    walletClient,
+    publicClient,
+    environmentConfig,
+    executions,
+    pendingMessage,
+    gas,
+    authorizationList: providedAuthList,
+  } = options;
 
   const account = walletClient.account;
   if (!account) {
@@ -152,35 +249,37 @@ export async function executeBatch(options: ExecuteBatchOptions, logger: Logger)
 
   const executeBatchData = encodeExecuteBatchData(executions);
 
-  // Check if account is delegated
-  const isDelegated = await checkERC7702Delegation(
-    publicClient,
-    account.address,
-    environmentConfig.erc7702DelegatorAddress as Address,
-  );
+  // Use provided authorization list or create one if needed
+  let authorizationList: Array<SignAuthorizationReturnType> = providedAuthList || [];
+  if (authorizationList.length === 0) {
+    // Check if account is delegated
+    const isDelegated = await checkERC7702Delegation(
+      publicClient,
+      account.address,
+      environmentConfig.erc7702DelegatorAddress as Address,
+    );
 
-  // 4. Create authorization if needed
-  let authorizationList: Array<SignAuthorizationReturnType> = [];
+    // Create authorization if needed
+    if (!isDelegated) {
+      const transactionNonce = await publicClient.getTransactionCount({
+        address: account.address,
+        blockTag: "pending",
+      });
 
-  if (!isDelegated) {
-    const transactionNonce = await publicClient.getTransactionCount({
-      address: account.address,
-      blockTag: "pending",
-    });
+      const chainId = await publicClient.getChainId();
+      const authorizationNonce = transactionNonce + 1;
 
-    const chainId = await publicClient.getChainId();
-    const authorizationNonce = transactionNonce + 1;
+      logger.debug("Using wallet client signing for EIP-7702 authorization");
 
-    logger.debug("Using wallet client signing for EIP-7702 authorization");
+      const signedAuthorization = await walletClient.signAuthorization({
+        account,
+        contractAddress: environmentConfig.erc7702DelegatorAddress as Address,
+        chainId: chainId,
+        nonce: Number(authorizationNonce),
+      });
 
-    const signedAuthorization = await walletClient.signAuthorization({
-      account: account.address,
-      contractAddress: environmentConfig.erc7702DelegatorAddress as Address,
-      chainId: chainId,
-      nonce: Number(authorizationNonce),
-    });
-
-    authorizationList = [signedAuthorization];
+      authorizationList = [signedAuthorization];
+    }
   }
 
   // 5. Show pending message
@@ -201,17 +300,23 @@ export async function executeBatch(options: ExecuteBatchOptions, logger: Logger)
   }
 
   // Add gas params if provided
+  if (gas?.gasLimit) {
+    txRequest.gas = gas.gasLimit;
+  }
   if (gas?.maxFeePerGas) {
     txRequest.maxFeePerGas = gas.maxFeePerGas;
   }
   if (gas?.maxPriorityFeePerGas) {
     txRequest.maxPriorityFeePerGas = gas.maxPriorityFeePerGas;
   }
+  if (gas?.nonce != null) {
+    txRequest.nonce = gas.nonce;
+  }
 
   const hash = await walletClient.sendTransaction(txRequest);
   logger.info(`Transaction sent: ${hash}`);
 
-  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  const receipt = await waitForReceipt(publicClient, hash, logger);
 
   if (receipt.status === "reverted") {
     let revertReason = "Unknown reason";

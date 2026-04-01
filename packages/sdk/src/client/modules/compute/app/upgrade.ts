@@ -26,7 +26,7 @@ import {
   executeUpgradeBatch,
   type GasEstimate,
 } from "../../../common/contract/caller";
-import { estimateBatchGas } from "../../../common/contract/eip7702";
+import { estimateBatchGas, createAuthorizationList } from "../../../common/contract/eip7702";
 import { watchUntilUpgradeComplete } from "../../../common/contract/watcher";
 import {
   validateAppID,
@@ -185,17 +185,27 @@ export async function prepareUpgradeFromVerifiableBuild(
         imageRef: options.imageRef,
       });
 
+      // Create authorization list if not delegated (for accurate gas estimation)
+      logger.debug("Checking delegation status...");
+      const authorizationList = await createAuthorizationList({
+        walletClient: batch.walletClient,
+        publicClient: batch.publicClient,
+        environmentConfig: batch.environmentConfig,
+      });
+
       logger.debug("Estimating gas...");
       const gasEstimate = await estimateBatchGas({
         publicClient: batch.publicClient,
         account: batch.walletClient.account!.address,
         executions: batch.executions,
+        authorizationList,
       });
 
       // Extract only data fields for public type (clients stay internal)
       const data: PreparedUpgradeData = {
         appId: batch.appId,
         executions: batch.executions,
+        authorizationList,
       };
 
       return {
@@ -462,18 +472,28 @@ export async function prepareUpgrade(
         imageRef: finalImageRef,
       });
 
-      // 7. Estimate gas for the batch
+      // 7. Create authorization list if not delegated (for accurate gas estimation)
+      logger.debug("Checking delegation status...");
+      const authorizationList = await createAuthorizationList({
+        walletClient: batch.walletClient,
+        publicClient: batch.publicClient,
+        environmentConfig: batch.environmentConfig,
+      });
+
+      // 8. Estimate gas for the batch
       logger.debug("Estimating gas...");
       const gasEstimate = await estimateBatchGas({
         publicClient: batch.publicClient,
         account: batch.walletClient.account!.address,
         executions: batch.executions,
+        authorizationList,
       });
 
       // Extract only data fields for public type (clients stay internal)
       const data: PreparedUpgradeData = {
         appId: batch.appId,
         executions: batch.executions,
+        authorizationList,
       };
 
       return {

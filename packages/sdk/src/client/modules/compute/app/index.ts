@@ -2,7 +2,14 @@
  * Main App namespace entry point
  */
 
-import { parseAbi, encodeFunctionData, Hex, type WalletClient, type PublicClient } from "viem";
+import {
+  parseAbi,
+  encodeFunctionData,
+  Hex,
+  type Address,
+  type WalletClient,
+  type PublicClient,
+} from "viem";
 import {
   deploy as deployApp,
   prepareDeploy as prepareDeployFn,
@@ -25,7 +32,10 @@ import {
   sendAndWaitForTransaction,
   undelegate,
   isDelegated,
+  getBillingType,
+  getAppsByBillingAccount,
   type GasEstimate,
+  type AppConfig,
 } from "../../../common/contract/caller";
 import { withSDKTelemetry } from "../../../common/telemetry/wrapper";
 import { UserApiClient } from "../../../common/utils/userapi";
@@ -146,6 +156,14 @@ export interface AppModule {
   stop: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: Hex | false }>;
   terminate: (appId: AppId, opts?: LifecycleOpts) => Promise<{ tx: Hex | false }>;
 
+  // Billing
+  getBillingType: (appId: AppId) => Promise<number>;
+  getAppsByBillingAccount: (
+    account: Address,
+    offset: bigint,
+    limit: bigint,
+  ) => Promise<{ apps: Address[]; appConfigs: AppConfig[] }>;
+
   // Delegation
   isDelegated: () => Promise<boolean>;
   undelegate: () => Promise<{ tx: Hex | false }>;
@@ -247,6 +265,9 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           imageRef: opts.imageRef,
           logVisibility: opts.logVisibility,
           resourceUsageMonitoring: opts.resourceUsageMonitoring,
+          billTo: opts.billTo,
+          skipQuotaCheck: opts.skipQuotaCheck,
+          salt: opts.salt,
           skipTelemetry,
         },
         logger,
@@ -266,6 +287,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           imageDigest: opts.imageDigest,
           logVisibility: opts.logVisibility,
           resourceUsageMonitoring: opts.resourceUsageMonitoring,
+          billTo: opts.billTo,
           skipTelemetry,
         },
         logger,
@@ -378,7 +400,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
             environment,
             walletClient,
             publicClient,
-            ctx.clientId,
+            ctx.clientId ? { clientId: ctx.clientId } : undefined,
           );
           return userApiClient.uploadAppProfile(appId, profile.name, {
             website: profile.website,
@@ -506,6 +528,14 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           return { tx };
         },
       );
+    },
+
+    async getBillingType(appId) {
+      return getBillingType(publicClient, environment, appId);
+    },
+
+    async getAppsByBillingAccount(account, offset, limit) {
+      return getAppsByBillingAccount(publicClient, environment, account, offset, limit);
     },
 
     async isDelegated() {

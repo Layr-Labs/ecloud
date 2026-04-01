@@ -4,10 +4,8 @@ import {
   createBuildModule,
   getEnvironmentConfig,
   requirePrivateKey,
-  getPrivateKeyWithSource,
 } from "@layr-labs/ecloud-sdk";
 import { CommonFlags, validateCommonFlags } from "./flags";
-import { getPrivateKeyInteractive } from "./utils/prompts";
 import { getClientId } from "./utils/version";
 import { createViemClients } from "./utils/viemClients";
 import { Hex } from "viem";
@@ -43,33 +41,32 @@ export async function createComputeClient(flags: CommonFlags) {
   });
 }
 
-export async function createBillingClient(flags: {
-  "private-key"?: string;
-  verbose?: boolean;
-  environment?: string;
-  "rpc-url"?: string;
-}) {
-  const result = await getPrivateKeyWithSource({
+export async function createBillingClient(flags: CommonFlags) {
+  flags = await validateCommonFlags(flags);
+
+  const environment = flags.environment;
+  const environmentConfig = getEnvironmentConfig(environment);
+  const rpcUrl = flags["rpc-url"] || environmentConfig.billingRPCURL || environmentConfig.defaultRPCURL;
+  const { key: privateKey, source } = await requirePrivateKey({
     privateKey: flags["private-key"],
   });
-  const privateKey = await getPrivateKeyInteractive(result?.key);
 
-  // Get environment config for RPC URL
-  const environment = flags.environment || "mainnet";
-  const environmentConfig = getEnvironmentConfig(environment);
-  const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
+  if (flags.verbose) {
+    console.log(`Using private key from: ${source}`);
+  }
 
-  // Create wallet client from private key
-  const { walletClient } = createViemClients({
+  const { walletClient, publicClient } = createViemClients({
     privateKey: privateKey as Hex,
     rpcUrl,
     environment,
   });
 
   return createBillingModule({
-    verbose: flags.verbose ?? false,
+    verbose: flags.verbose,
     walletClient,
-    skipTelemetry: true, // CLI already has telemetry, skip SDK telemetry
+    publicClient,
+    environment,
+    skipTelemetry: true,
   });
 }
 
@@ -79,19 +76,23 @@ export async function createBuildClient(flags: CommonFlags) {
   flags = await validateCommonFlags(flags, { requirePrivateKey: false });
 
   // Get environment config for RPC URL
-  const environment = flags.environment || "mainnet";
+  const environment = flags.environment;
   const environmentConfig = getEnvironmentConfig(environment);
   const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
 
-  const { walletClient } = createViemClients({
-    privateKey: flags["private-key"] as Hex,
-    rpcUrl,
-    environment,
-  });
+  // Only create walletClient if we have a private key - createViemClients throws if privateKey is undefined
+  let walletClient;
+  if (flags["private-key"]) {
+    walletClient = createViemClients({
+      privateKey: flags["private-key"] as Hex,
+      rpcUrl,
+      environment,
+    }).walletClient;
+  }
 
   return createBuildModule({
     verbose: flags.verbose,
-    walletClient: flags["private-key"] ? walletClient : undefined,
+    walletClient,
     environment,
     clientId: getClientId(),
     skipTelemetry: true, // CLI already has telemetry, skip SDK telemetry

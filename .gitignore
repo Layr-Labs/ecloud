@@ -28,3 +28,4 @@ yarn-error.log*
 
 # oclif autocomplete cache (if enabled later)
 _autocomplete/
+.feature-clone

@@ -31,9 +31,8 @@ export default class BuildInfo extends Command {
   async run(): Promise<void> {
     return withTelemetry(this, async () => {
       const { args, flags } = await this.parse(BuildInfo);
-      const validatedFlags = await validateCommonFlags(flags, {
-        requirePrivateKey: !args.buildId,
-      });
+      // Auth is required (you can view any build, not just your own)
+      const validatedFlags = await validateCommonFlags(flags);
       const client = await createBuildClient(validatedFlags);
 
       let buildId = args.buildId;

@@ -4,19 +4,52 @@
  * This is a standalone HTTP client that talks to the (compute) UserAPI host.
  */
 
-import axios, { AxiosResponse } from "axios";
+import { AxiosResponse } from "axios";
 import { Address, type WalletClient } from "viem";
 import { calculateBillingAuthSignature } from "./auth";
+import { requestWithRetry } from "./retry";
+
+export interface BuildApiClientOptions {
+  baseUrl: string;
+  walletClient?: WalletClient;
+  clientId?: string;
+  /** Use session-based auth (cookies) instead of signature-based auth */
+  useSession?: boolean;
+  /**
+   * Billing session ID (value of the billing_session cookie).
+   * When provided with useSession=true, this is sent via X-Billing-Session header
+   * to authenticate with the billing API for subscription verification.
+   * Required for submitBuild when using session auth.
+   */
+  billingSessionId?: string;
+}
 
 export class BuildApiClient {
   private readonly baseUrl: string;
   private readonly walletClient?: WalletClient;
   private readonly clientId?: string;
+  private readonly useSession: boolean;
+  private billingSessionId?: string;
 
-  constructor(options: { baseUrl: string; walletClient?: WalletClient; clientId?: string }) {
-    this.baseUrl = options.baseUrl.replace(/\/+$/, "");
+  constructor(options: BuildApiClientOptions) {
+    // Strip trailing slashes without regex to avoid ReDoS
+    let url = options.baseUrl;
+    while (url.endsWith("/")) {
+      url = url.slice(0, -1);
+    }
+    this.baseUrl = url;
     this.clientId = options.clientId;
     this.walletClient = options.walletClient;
+    this.useSession = options.useSession ?? false;
+    this.billingSessionId = options.billingSessionId;
+  }
+
+  /**
+   * Update the billing session ID.
+   * Call this after logging into the billing API to enable session-based auth for builds.
+   */
+  setBillingSessionId(sessionId: string | undefined): void {
+    this.billingSessionId = sessionId;
   }
 
   /**
@@ -30,6 +63,12 @@ export class BuildApiClient {
     return account.address;
   }
 
+  /**
+   * Submit a new build request.
+   * Supports two auth modes (session auth is tried first when billingSessionId is available):
+   * 1. Session-based auth: X-Billing-Session header (forwarded billing_session cookie)
+   * 2. Signature-based auth: Authorization + X-Account + X-eigenx-expiry headers (requires walletClient)
+   */
   async submitBuild(payload: {
     repo_url: string;
     git_ref: string;
@@ -38,7 +77,12 @@ export class BuildApiClient {
     build_context_path: string;
     dependencies: string[];
   }): Promise<{ build_id: string }> {
-    return this.authenticatedJsonRequest<{ build_id: string }>("/builds", "POST", payload);
+    // Use session auth if billingSessionId is available and useSession is enabled
+    if (this.useSession && this.billingSessionId) {
+      return this.billingSessionAuthJsonRequest<{ build_id: string }>("/builds", "POST", payload);
+    }
+    // Fall back to signature auth (requires walletClient)
+    return this.signatureAuthJsonRequest<{ build_id: string }>("/builds", "POST", payload);
   }
 
   async getBuild(buildId: string): Promise<any> {
@@ -53,8 +97,11 @@ export class BuildApiClient {
     return this.publicJsonRequest(`/builds/verify/${encodeURIComponent(identifier)}`);
   }
 
+  /**
+   * Get build logs. Supports session auth (identity verification only, no billing check).
+   */
   async getLogs(buildId: string): Promise<string> {
-    return this.authenticatedTextRequest(`/builds/${encodeURIComponent(buildId)}/logs`);
+    return this.sessionOrSignatureTextRequest(`/builds/${encodeURIComponent(buildId)}/logs`);
   }
 
   async listBuilds(params: {
@@ -62,31 +109,37 @@ export class BuildApiClient {
     limit?: number;
     offset?: number;
   }): Promise<any[]> {
-    const res: AxiosResponse = await axios({
+    const res = await requestWithRetry({
       url: `${this.baseUrl}/builds`,
       method: "GET",
       params,
       headers: this.clientId ? { "x-client-id": this.clientId } : undefined,
       timeout: 60_000,
       validateStatus: () => true,
+      withCredentials: this.useSession,
     });
     if (res.status < 200 || res.status >= 300) throw buildApiHttpError(res);
     return res.data as any[];
   }
 
   private async publicJsonRequest(path: string): Promise<any> {
-    const res: AxiosResponse = await axios({
+    const res = await requestWithRetry({
       url: `${this.baseUrl}${path}`,
       method: "GET",
       headers: this.clientId ? { "x-client-id": this.clientId } : undefined,
       timeout: 60_000,
       validateStatus: () => true,
+      withCredentials: this.useSession,
     });
     if (res.status < 200 || res.status >= 300) throw buildApiHttpError(res);
     return res.data;
   }
 
-  private async authenticatedJsonRequest<T>(
+  /**
+   * Make a request that ALWAYS requires signature auth (for billing verification).
+   * Used for endpoints like POST /builds that need to verify subscription status.
+   */
+  private async signatureAuthJsonRequest<T>(
     path: string,
     method: "POST" | "GET",
     body?: unknown,
@@ -112,43 +165,86 @@ export class BuildApiClient {
     headers["X-eigenx-expiry"] = expiry.toString();
     headers["X-Account"] = this.address;
 
-    const res: AxiosResponse = await axios({
+    const res = await requestWithRetry({
       url: `${this.baseUrl}${path}`,
       method,
       headers,
       data: body,
       timeout: 60_000,
       validateStatus: () => true,
+      withCredentials: this.useSession,
     });
     if (res.status < 200 || res.status >= 300) throw buildApiHttpError(res);
     return res.data as T;
   }
 
-  private async authenticatedTextRequest(path: string): Promise<string> {
-    if (!this.walletClient?.account) {
-      throw new Error("WalletClient with account required for authenticated requests");
+  /**
+   * Make a request using billing session auth (for billing verification without wallet signature).
+   * Forwards the billing_session cookie value via X-Billing-Session header.
+   * Used for endpoints that need to verify subscription status when using session-based auth.
+   */
+  private async billingSessionAuthJsonRequest<T>(
+    path: string,
+    method: "POST" | "GET",
+    body?: unknown,
+  ): Promise<T> {
+    if (!this.billingSessionId) {
+      throw new Error("billingSessionId required for session-based billing auth");
     }
 
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "X-Billing-Session": this.billingSessionId,
+    };
+    if (this.clientId) headers["x-client-id"] = this.clientId;
+
+    const res = await requestWithRetry({
+      url: `${this.baseUrl}${path}`,
+      method,
+      headers,
+      data: body,
+      timeout: 60_000,
+      validateStatus: () => true,
+      withCredentials: this.useSession,
+    });
+    if (res.status < 200 || res.status >= 300) throw buildApiHttpError(res);
+    return res.data as T;
+  }
+
+  /**
+   * Make an authenticated request that can use session OR signature auth.
+   * When useSession is true, relies on cookies for identity verification.
+   * Used for endpoints that only need identity verification (not billing).
+   */
+  private async sessionOrSignatureTextRequest(path: string): Promise<string> {
     const headers: Record<string, string> = {};
     if (this.clientId) headers["x-client-id"] = this.clientId;
 
-    const expiry = BigInt(Math.floor(Date.now() / 1000) + 60);
-    const { signature } = await calculateBillingAuthSignature({
-      walletClient: this.walletClient,
-      product: "compute",
-      expiry,
-    });
-    headers.Authorization = `Bearer ${signature}`;
-    headers["X-eigenx-expiry"] = expiry.toString();
-    headers["X-Account"] = this.address;
+    // When using session auth, rely on cookies instead of signature headers
+    if (!this.useSession) {
+      if (!this.walletClient?.account) {
+        throw new Error("WalletClient with account required for authenticated requests");
+      }
 
-    const res: AxiosResponse = await axios({
+      const expiry = BigInt(Math.floor(Date.now() / 1000) + 60);
+      const { signature } = await calculateBillingAuthSignature({
+        walletClient: this.walletClient,
+        product: "compute",
+        expiry,
+      });
+      headers.Authorization = `Bearer ${signature}`;
+      headers["X-eigenx-expiry"] = expiry.toString();
+      headers["X-Account"] = this.address;
+    }
+
+    const res = await requestWithRetry({
       url: `${this.baseUrl}${path}`,
       method: "GET",
       headers,
       timeout: 60_000,
       responseType: "text",
       validateStatus: () => true,
+      withCredentials: this.useSession,
     });
     if (res.status < 200 || res.status >= 300) throw buildApiHttpError(res);
     return typeof res.data === "string" ? res.data : JSON.stringify(res.data);

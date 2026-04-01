@@ -6,6 +6,7 @@
  */
 
 import { input, select, password, confirm as inquirerConfirm } from "@inquirer/prompts";
+import chalk from "chalk";
 import fs from "fs";
 import path from "path";
 import os from "os";
@@ -38,6 +39,7 @@ import {
   getLinkedAppForDirectory,
 } from "./globalConfig";
 import { listApps, isAppNameAvailable, findAvailableName } from "./appNames";
+import { execSync } from "child_process";
 import { getClientId } from "./version";
 
 // Helper to add hex prefix
@@ -104,6 +106,36 @@ export interface VerifiableGitSourceInputs {
   dependencies: string[];
 }
 
+// Helper to detect current git repo URL and HEAD commit
+function detectGitRepoInfo(): { repoUrl?: string; commitSha?: string } {
+  const git = (cmd: string) =>
+    execSync(cmd, { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+
+  const detectRepoUrl = (): string | undefined => {
+    try {
+      const remote = git("git remote get-url origin")
+        .replace(/^git@github\.com:(.+?)(?:\.git)?$/, "https://github.com/$1")
+        .replace(/\.git$/, "");
+      if (/^https:\/\/github\.com\/[^/]+\/[^/]+/.test(remote)) return remote;
+    } catch {}
+  };
+
+  const detectCommitSha = (): string | undefined => {
+    try {
+      const branch = git("git rev-parse --abbrev-ref HEAD");
+      if (!branch || branch === "HEAD") return;
+      const lsRemote = git(`git ls-remote origin refs/heads/${branch}`);
+      return lsRemote.match(/^([0-9a-f]{40})\s/i)?.[1];
+    } catch {}
+  };
+
+  try {
+    return { repoUrl: detectRepoUrl(), commitSha: detectCommitSha() };
+  } catch {
+    return {};
+  }
+}
+
 /**
  * Prompt: "Build from verifiable source?" (only used when --verifiable is not set)
  */
@@ -128,10 +160,12 @@ export async function promptVerifiableSourceType(): Promise<VerifiableSourceType
  * Prompt for Git-source verifiable build inputs.
  */
 export async function promptVerifiableGitSourceInputs(): Promise<VerifiableGitSourceInputs> {
+  const detected = detectGitRepoInfo();
+
   const repoUrl = (
     await input({
       message: "Enter public git repository URL:",
-      default: "",
+      default: detected.repoUrl ?? "",
       validate: (value) => {
         if (!value.trim()) return "Repository URL is required";
         try {
@@ -166,7 +200,7 @@ export async function promptVerifiableGitSourceInputs(): Promise<VerifiableGitSo
   const gitRef = (
     await input({
       message: "Enter git commit SHA (40 hex chars):",
-      default: "",
+      default: repoUrl === detected.repoUrl ? (detected.commitSha ?? "") : "",
       validate: (value) => {
         const trimmed = value.trim();
         if (!trimmed) return "Commit SHA is required";
@@ -782,10 +816,42 @@ export async function getEnvFileInteractive(envFilePath?: string): Promise<strin
 /**
  * Prompt for instance type
  */
+export interface SkuInfo {
+  sku: string;
+  friendly_name: string;
+  description: string;
+  vcpus?: number;
+  memory_mb?: number;
+  monthly_price_usd?: number;
+  hourly_price_usd?: number;
+  platform?: string;
+}
+
+function formatSkuChoice(it: SkuInfo): string {
+  // Rich format when pricing data is available
+  if (it.vcpus != null && it.memory_mb != null && it.monthly_price_usd != null && it.hourly_price_usd != null) {
+    const tier = it.friendly_name ?? it.sku;
+    const isShared = it.description.toLowerCase().includes("shared");
+    const vcpuLabel = isShared ? `Shared ${it.vcpus} vCPU` : `${it.vcpus} vCPU`;
+    const memLabel = it.memory_mb >= 1024 ? `${it.memory_mb / 1024} GB` : `${it.memory_mb} MB`;
+    const specs = `${vcpuLabel} + ${memLabel}`;
+    const pricing = `$${it.hourly_price_usd.toFixed(2)}/hr ($${it.monthly_price_usd.toFixed(2)}/mo)`;
+
+    const platform = it.platform ?? "";
+    const tierPad = tier.padEnd(14);
+    const specsPad = specs.padEnd(22);
+    const platformPad = platform.padEnd(20);
+    return `${tierPad} ${specsPad} ${platformPad} ${pricing}`.trimEnd();
+  }
+
+  // Fallback: description only
+  return `${it.sku} - ${it.description}`;
+}
+
 export async function getInstanceTypeInteractive(
   instanceType: string | undefined,
   defaultSKU: string,
-  availableTypes: Array<{ sku: string; description: string }>,
+  availableTypes: SkuInfo[],
 ): Promise<string> {
   if (instanceType) {
     // Validate provided instance type
@@ -798,20 +864,24 @@ export async function getInstanceTypeInteractive(
   }
 
   const isCurrentType = defaultSKU !== "";
-  if (defaultSKU === "" && availableTypes.length > 0) {
-    defaultSKU = availableTypes[0].sku;
+
+  // Show pricing header and platform descriptions
+  const hasPricing = availableTypes.some((t) => t.monthly_price_usd != null);
+  if (hasPricing) {
+    console.log("\nPay for what you use \u2014 no upfront costs, per-hour billing.\n");
+    console.log(`  ${chalk.bold("Shielded VM (vTPM)")}: Verified boot and runtime attestation.`);
+    console.log(`  ${chalk.bold("SEV-SNP (TEE)")}: Verified boot, runtime attestation, and hardware-encrypted memory (AMD).`);
+    console.log(`  ${chalk.bold("TDX (TEE)")}: Verified boot, runtime attestation, and hardware-encrypted memory (Intel).\n`);
   }
 
   if (isCurrentType && defaultSKU) {
-    console.log(`\nSelect instance type (current: ${defaultSKU}):`);
-  } else {
-    console.log("\nSelect instance type:");
+    console.log(`Current instance type: ${defaultSKU}\n`);
   }
 
   const choices = availableTypes.map((it) => {
-    let name = `${it.sku} - ${it.description}`;
-    if (it.sku === defaultSKU) {
-      name += isCurrentType ? " (current)" : " (default)";
+    let name = formatSkuChoice(it);
+    if (isCurrentType && it.sku === defaultSKU) {
+      name += " (current)";
     }
     return { name, value: it.sku };
   });
@@ -1056,7 +1126,7 @@ async function getAppIDInteractive(options: GetAppIDOptions): Promise<Address> {
         environmentConfig,
         walletClient,
         publicClient,
-        getClientId(),
+        { clientId: getClientId() },
       );
       const appInfos = await getAppInfosChunked(userApiClient, apps);
 
