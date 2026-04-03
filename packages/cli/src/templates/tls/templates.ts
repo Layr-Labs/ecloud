@@ -11,27 +11,35 @@ export function getCaddyfileTemplate(): string {
   return caddyfileTemplate;
 }
 
+export interface TlsEnvVars {
+  domain: string;
+  appPort: string;
+  acmeStaging: boolean;
+  enableCaddyLogs: boolean;
+}
+
 /**
- * Embedded .env.example.tls content
- * (embedded directly since .env files are gitignored)
+ * Generate the TLS env block with user-provided values for .env
  */
-export const ENV_EXAMPLE_TLS = `# TLS Configuration
-# Set these variables to enable TLS for your application
-
-# Your domain name (required for TLS)
-DOMAIN=yourdomain.com
-
-# Port your application listens on
-APP_PORT=3000
-
-# Enable Caddy debug logs
-ENABLE_CADDY_LOGS=false
-
-# Use Let's Encrypt staging environment (for testing)
-# Set to true to avoid rate limits during development
-ACME_STAGING=false
-
-# Force certificate reissue even if a valid one exists
-# Useful when you need to update SANs or force a renewal
+export function getTlsEnvBlock(vars: TlsEnvVars): string {
+  return `
+# TLS Configuration
+DOMAIN=${vars.domain}
+APP_PORT=${vars.appPort}
+ENABLE_CADDY_LOGS=${vars.enableCaddyLogs}
+ACME_STAGING=${vars.acmeStaging}
 ACME_FORCE_ISSUE=false
+`;
+}
+
+/**
+ * Placeholder TLS block for .env.example
+ */
+export const TLS_ENV_EXAMPLE_BLOCK = `
+# TLS Configuration
+# DOMAIN=yourdomain.com
+# APP_PORT=3000
+# ENABLE_CADDY_LOGS=false
+# ACME_STAGING=false
+# ACME_FORCE_ISSUE=false
 `;

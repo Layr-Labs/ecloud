@@ -9,13 +9,15 @@
     "README.md"
   ],
   "bin": {
-    "ecloud": "./bin/run.js"
+    "ecloud": "./bin/run.js",
+    "ecloud-dev": "./bin/run.js"
   },
   "dependencies": {
     "@inquirer/prompts": "^7.10.1",
     "@layr-labs/ecloud-sdk": "workspace:*",
     "@napi-rs/keyring": "^1.0.5",
     "@oclif/core": "^4.8.0",
+    "@oclif/plugin-autocomplete": "^3.2.40",
     "axios": "^1.13.2",
     "chalk": "^5.6.2",
     "cli-table3": "^0.6.5",
@@ -44,6 +46,9 @@
     "commands": "./dist/commands",
     "dirname": "",
     "topicSeparator": " ",
+    "plugins": [
+      "@oclif/plugin-autocomplete"
+    ],
     "hooks": {
       "init": "./dist/hooks/init/version-check"
     },
