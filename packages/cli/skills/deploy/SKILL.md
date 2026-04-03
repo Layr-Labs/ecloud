@@ -70,7 +70,11 @@ Fail:
 ```bash
 ecloud compute environment show
 ```
-Two environments exist: `sepolia` (testnet, default) and `mainnet-alpha` (real USDC).
+Two environments exist:
+- `sepolia` — **Testnet (default).** Uses Sepolia ETH for gas. Deploy here first to test. Billing subscription flow is the same but uses test payment methods. All on-chain records are on Sepolia. Dashboard: `verify-sepolia.eigencloud.xyz`.
+- `mainnet-alpha` — **Production.** Uses real ETH for gas, real USDC for payments. Apps are publicly visible on the mainnet verify dashboard: `verify.eigencloud.xyz`. Use when the app is ready for real users and real funds.
+
+**Always develop and test on sepolia first, then redeploy to mainnet-alpha for production.**
 
 Pass: output shows the intended environment.
 Fix: `ecloud compute env set sepolia --yes` (or `mainnet-alpha`).
@@ -170,6 +174,8 @@ ecloud compute app deploy \
 
 On success, stdout contains the app ID (`0x` followed by 40 hex chars) and a dashboard URL. **Save the app ID** — all subsequent commands need it.
 
+**Important:** The `--name` flag sets the CLI lookup name only, NOT the display name on the verify dashboard. To set the dashboard profile (name, description, website), run `ecloud compute app profile set` after deploy — see Gate 4.
+
 ### Path B: Verifiable build (from git source)
 
 The platform clones the repo, builds inside the TEE, and records the build hash onchain for provenance verification.
@@ -266,6 +272,46 @@ Exit 0 + JSON with provenance data = verified.
 
 ---
 
+## Gate 4: Post-deploy setup
+
+### Set app profile (dashboard display name)
+
+The verify dashboard shows "(unnamed)" until you set a profile:
+
+```bash
+ecloud compute app profile set <app-id> \
+  --name "MyApp" \
+  --description "What the app does" \
+  --website "https://myapp.com" \
+  --x-url "https://x.com/myapp"
+```
+
+**Constraints:** Profile name cannot contain spaces. Use hyphens or camelCase (e.g., `CitiBike-MPP` not `Citi Bike MPP`).
+
+Dashboard URLs:
+- Sepolia: `https://verify-sepolia.eigencloud.xyz/app/<app-id>`
+- Mainnet: `https://verify.eigencloud.xyz/app/<app-id>`
+
+### Verifiable builds (recommended for production)
+
+Without `--verifiable`, the dashboard shows `Build: -` and `Provenance: -`, undermining the trust story. To upgrade an existing dev-image deploy to a verifiable build:
+
+```bash
+ecloud compute app upgrade <app-id> \
+  --verifiable \
+  --repo https://github.com/org/repo \
+  --commit <full-40-char-sha> \
+  --build-dockerfile Dockerfile
+```
+
+The repo must be public. After upgrade, verify provenance:
+```bash
+ecloud compute app releases <app-id> --full
+ecloud compute build verify <image-digest-or-commit> --json
+```
+
+---
+
 ## Upgrade
 
 ```bash
@@ -346,6 +392,10 @@ ecloud compute app info <app-id> --address-count 5  # show more derived addresse
 | Status stuck on `Deploying` | Large image or infrastructure delay | `ecloud compute app logs <app-id>` for diagnostics |
 | Auth errors | Key not in keyring or expired | `ecloud auth whoami` to diagnose → `ecloud auth login` to fix |
 | Wrong environment | Deployed to sepolia instead of mainnet (or vice versa) | `ecloud compute env show` → `ecloud compute env set <env> --yes` |
+| Logs return 425 error | Normal during provisioning (1-2+ min after deploy) | Wait and retry, or use `--watch` to stream when available |
+| App shows "(unnamed)" on dashboard | `--name` only sets CLI name, not dashboard profile | `ecloud compute app profile set <app-id> --name "Name"` |
+| Profile name rejected | Spaces not allowed in profile names | Use hyphens or camelCase |
+| Mainnet app unreachable despite "Running" status | Mainnet networking can take 5+ min after deploy (longer than sepolia) | Keep polling — sepolia ~30s, mainnet can be several minutes |
 
 ---
 
@@ -357,5 +407,9 @@ ecloud compute app info <app-id> --address-count 5  # show more derived addresse
 - **KMS**: single KMS node in GCP during Mainnet Alpha. Threshold KMS is in development. Keys are derived deterministically after the KMS verifies TEE attestation + onchain whitelisted code.
 - **EVM derivation path**: `m/44'/60'/0'/0/0` (and incrementing). **Solana**: `m/44'/501'/0'/0'`.
 - **App releases JSON schema** includes: `appId`, `imageDigest` (sha256), `registryUrl`, `publicEnv`, `encryptedEnv`, `upgradeByTime` (unix timestamp), `createdAt`, `createdAtBlock`.
+
+- **TEE attestation is internal-only (as of April 2026).** The TDX attestation JWT exists inside the container at `/run/container_launcher/attestation_verifier_claims_token` but is consumed by KMS at boot and never surfaced to external callers. HTTP response headers contain no attestation proof. The verify dashboard "Attestations" section may show "Loading..." with no data. Public runtime attestations are on the platform roadmap but not yet shipped.
+- **Mainnet provisioning is slower than sepolia.** Sepolia apps are typically reachable within 30-60 seconds. Mainnet apps may show `Running` status with memory usage but have no network connectivity for 5+ minutes. This is a known discrepancy.
+- **`tee-0x` hostname appears regardless of instance type.** Log hostnames show `tee-<app-id>` even on vTPM (`g1-micro-1v`) instances, not just TDX instances. Do not use the hostname to infer attestation type.
 
 For full CLI flag details, run `ecloud <command> --help`.
