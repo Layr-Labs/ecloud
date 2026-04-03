@@ -51,6 +51,8 @@ export interface GasEstimate {
   maxCostWei: bigint;
   /** Maximum cost formatted as ETH string */
   maxCostEth: string;
+  /** Optional nonce override (for replacing stuck transactions) */
+  nonce?: number;
 }
 
 /**
@@ -204,6 +206,7 @@ export interface PrepareDeployBatchOptions {
   release: Release;
   publicLogs: boolean;
   imageRef: string;
+  billTo?: "developer" | "app";
 }
 
 /**
@@ -253,9 +256,10 @@ export async function prepareDeployBatch(
     encryptedEnv: bytesToHex(release.encryptedEnv) as Hex,
   };
 
+  const functionName = options.billTo === "app" ? "createAppWithIsolatedBilling" : "createApp";
   const createData = encodeFunctionData({
     abi: AppControllerABI,
-    functionName: "createApp",
+    functionName,
     args: [saltHex, releaseForViem],
   });
 
@@ -922,6 +926,7 @@ export async function sendAndWaitForTransaction(
     ...(gas?.maxPriorityFeePerGas && {
       maxPriorityFeePerGas: gas.maxPriorityFeePerGas,
     }),
+    ...(gas?.nonce != null && { nonce: gas.nonce }),
     chain,
   });
 
@@ -1089,6 +1094,42 @@ export async function getAppsByDeveloper(
     apps: result[0],
     appConfigs: result[1],
   };
+}
+
+/**
+ * Get billing type for an app (0 = DEFAULT, 1 = ISOLATED)
+ */
+export async function getBillingType(
+  publicClient: PublicClient,
+  environmentConfig: EnvironmentConfig,
+  app: Address,
+): Promise<number> {
+  const result = await publicClient.readContract({
+    address: environmentConfig.appControllerAddress,
+    abi: AppControllerABI,
+    functionName: "getBillingType",
+    args: [app],
+  });
+  return Number(result);
+}
+
+/**
+ * Get apps by billing account (paginated)
+ */
+export async function getAppsByBillingAccount(
+  publicClient: PublicClient,
+  environmentConfig: EnvironmentConfig,
+  account: Address,
+  offset: bigint,
+  limit: bigint,
+): Promise<{ apps: Address[]; appConfigs: AppConfig[] }> {
+  const result = (await publicClient.readContract({
+    address: environmentConfig.appControllerAddress,
+    abi: AppControllerABI,
+    functionName: "getAppsByBillingAccount",
+    args: [account, offset, limit],
+  })) as [Address[], AppConfig[]];
+  return { apps: result[0], appConfigs: result[1] };
 }
 
 /**

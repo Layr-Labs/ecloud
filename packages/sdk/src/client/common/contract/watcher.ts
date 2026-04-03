@@ -78,6 +78,8 @@ export async function watchUntilRunning(
   };
 
   // Main watch loop
+  const startTime = Date.now();
+  let lastLoggedStatus: string | undefined;
   while (true) {
     try {
       // Fetch app info
@@ -90,6 +92,13 @@ export async function watchUntilRunning(
       const appInfo = info[0];
       const currentStatus = appInfo.status;
       const currentIP = appInfo.ip || "";
+
+      // Log status changes and elapsed time
+      const elapsed = Math.round((Date.now() - startTime) / 1000);
+      if (currentStatus !== lastLoggedStatus) {
+        logger.info(`Status: ${currentStatus} (${elapsed}s)`);
+        lastLoggedStatus = currentStatus;
+      }
 
       // Check stop condition
       if (stopCondition(currentStatus, currentIP)) {

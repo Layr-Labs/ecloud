@@ -259,7 +259,15 @@ export class UserApiClient {
    * Get available SKUs (instance types) from UserAPI
    */
   async getSKUs(): Promise<{
-    skus: Array<{ sku: string; description: string }>;
+    skus: Array<{
+      sku: string;
+      description: string;
+      vcpus?: number;
+      memory_mb?: number;
+      monthly_price_usd?: number;
+      hourly_price_usd?: number;
+      platform?: string;
+    }>;
   }> {
     const endpoint = `${this.config.userApiServerURL}/skus`;
     const response = await this.makeAuthenticatedRequest(endpoint);

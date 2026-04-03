@@ -1,7 +1,7 @@
 import { Command, Args, Flags } from "@oclif/core";
 import { getEnvironmentConfig, UserApiClient, isMainnet } from "@layr-labs/ecloud-sdk";
 import { withTelemetry } from "../../../telemetry";
-import { commonFlags } from "../../../flags";
+import { commonFlags, applyTxOverrides } from "../../../flags";
 import { createBuildClient, createComputeClient } from "../../../client";
 import { createViemClients } from "../../../utils/viemClients";
 import {
@@ -9,6 +9,7 @@ import {
   getImageReferenceInteractive,
   getEnvFileInteractive,
   getInstanceTypeInteractive,
+  type SkuInfo,
   getLogSettingsInteractive,
   getResourceUsageMonitoringInteractive,
   getOrPromptAppID,
@@ -31,6 +32,7 @@ import {
   resolveDockerHubImageDigest,
 } from "../../../utils/dockerhub";
 import { isTlsEnabledFromEnvFile } from "../../../utils/tls";
+import { mergeInlineEnvVars } from "../../../utils/env";
 import type { SubmitBuildRequest } from "@layr-labs/ecloud-sdk";
 
 export default class AppUpgrade extends Command {
@@ -61,6 +63,11 @@ export default class AppUpgrade extends Command {
       default: ".env",
       env: "ECLOUD_ENVFILE_PATH",
     }),
+    env: Flags.string({
+      required: false,
+      description: "Inline environment variable in KEY=VALUE format (can be specified multiple times)",
+      multiple: true,
+    }),
     "log-visibility": Flags.string({
       required: false,
       description: "Log visibility setting: public, private, or off",
@@ -69,7 +76,7 @@ export default class AppUpgrade extends Command {
     }),
     "instance-type": Flags.string({
       required: false,
-      description: "Machine instance type to use e.g. g1-standard-4t, g1-standard-8t",
+      description: "Machine instance type (e.g., g1-standard-4t, g1-standard-2s, g1-micro-1v)",
       env: "ECLOUD_INSTANCE_TYPE",
     }),
     "resource-usage-monitoring": Flags.string({
@@ -286,14 +293,19 @@ export default class AppUpgrade extends Command {
       // 4. Get env file path interactively
       envFilePath = envFilePath ?? (await getEnvFileInteractive(flags["env-file"]));
 
+      // 4b. Merge inline --env KEY=VALUE vars (overrides env file values)
+      if (flags.env && flags.env.length > 0) {
+        envFilePath = mergeInlineEnvVars(envFilePath, flags.env);
+      }
+
       // 5. Get current instance type (best-effort, used as default)
+      const { publicClient, walletClient, address } = createViemClients({
+        privateKey,
+        rpcUrl,
+        environment,
+      });
       let currentInstanceType = "";
       try {
-        const { publicClient, walletClient } = createViemClients({
-          privateKey,
-          rpcUrl,
-          environment: environmentConfig.name,
-        });
         const userApiClient = new UserApiClient(
           environmentConfig,
           walletClient,
@@ -310,6 +322,7 @@ export default class AppUpgrade extends Command {
 
       // 6. Get instance type interactively
       const availableTypes = await fetchAvailableInstanceTypes(
+        environment,
         environmentConfig,
         privateKey,
         rpcUrl,
@@ -337,7 +350,12 @@ export default class AppUpgrade extends Command {
           ? "private"
           : "off";
 
-      const { prepared, gasEstimate } = isVerifiable
+      // Use the verifiable build path only for git-source builds where the build
+      // service fully layers the image. For prebuilt image refs, route through
+      // the normal prepareUpgrade path so that layerRemoteImageIfNeeded can
+      // add the ecloud runtime layer (startup script, KMS client, Caddy) if
+      // the image doesn't already have it.
+      const { prepared, gasEstimate } = verifiableMode === "git"
         ? await compute.app.prepareUpgradeFromVerifiableBuild(appID, {
             imageRef,
             imageDigest: verifiableImageDigest!,
@@ -355,8 +373,15 @@ export default class AppUpgrade extends Command {
             resourceUsageMonitoring,
           });
 
-      // 10. Show gas estimate and prompt for confirmation on mainnet
-      this.log(`\nEstimated transaction cost: ${chalk.cyan(gasEstimate.maxCostEth)} ETH`);
+      // 10. Apply gas overrides if provided, show estimate, and prompt for confirmation on mainnet
+      const finalTx = await applyTxOverrides(gasEstimate, flags, { publicClient, address });
+      if (flags["max-fee-per-gas"] || flags["max-priority-fee"]) {
+        this.log(chalk.yellow(`\nGas override active — max fee: ${flags["max-fee-per-gas"] || "estimated"} gwei, priority fee: ${flags["max-priority-fee"] || "estimated"} gwei`));
+      }
+      if (finalTx.nonce != null) {
+        this.log(chalk.yellow(`Nonce override active — nonce: ${finalTx.nonce}`));
+      }
+      this.log(`\nEstimated transaction cost: ${chalk.cyan(finalTx.maxCostEth)} ETH`);
 
       if (isMainnet(environmentConfig)) {
         const confirmed = await confirm(`Continue with upgrade?`);
@@ -367,7 +392,7 @@ export default class AppUpgrade extends Command {
       }
 
       // 11. Execute the upgrade
-      const res = await compute.app.executeUpgrade(prepared, gasEstimate);
+      const res = await compute.app.executeUpgrade(prepared, finalTx);
 
       // 12. Watch until upgrade completes
       await compute.app.watchUpgrade(res.appId);
@@ -394,15 +419,16 @@ export default class AppUpgrade extends Command {
  * Fetch available instance types from backend
  */
 async function fetchAvailableInstanceTypes(
+  environment: string,
   environmentConfig: any,
   privateKey: string,
   rpcUrl: string,
-): Promise<Array<{ sku: string; description: string }>> {
+): Promise<SkuInfo[]> {
   try {
     const { publicClient, walletClient } = createViemClients({
       privateKey,
       rpcUrl,
-      environment: environmentConfig.name,
+      environment,
     });
     const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, { clientId: getClientId() });
 
@@ -415,6 +441,6 @@ async function fetchAvailableInstanceTypes(
   } catch (err: any) {
     console.warn(`Failed to fetch instance types: ${err.message}`);
     // Return a default fallback
-    return [{ sku: "g1-standard-4t", description: "Standard 4-thread instance" }];
+    return [{ sku: "g1-standard-4t", description: "4 vCPUs, 16 GB memory, TDX" }];
   }
 }

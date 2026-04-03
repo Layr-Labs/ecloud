@@ -70,6 +70,12 @@ export interface SDKDeployOptions {
   logVisibility: LogVisibility;
   /** Resource usage monitoring setting - optional, defaults to 'enable' */
   resourceUsageMonitoring?: ResourceUsageMonitoring;
+  /** Billing mode: developer (default) or app (isolated billing) */
+  billTo?: "developer" | "app";
+  /** Skip quota check */
+  skipQuotaCheck?: boolean;
+  /** Optional salt for deterministic app address prediction (32 bytes) */
+  salt?: Uint8Array | Buffer;
   /** Optional gas params from estimation (use result from prepareDeploy) */
   gas?: GasEstimate;
   /** Skip telemetry (used when called from CLI) - optional */
@@ -126,6 +132,10 @@ export interface VerifiableBuildOptions {
   logVisibility: LogVisibility;
   /** Resource usage monitoring setting - optional, defaults to 'enable' */
   resourceUsageMonitoring?: ResourceUsageMonitoring;
+  /** Billing mode: developer (default) or app (isolated billing) */
+  billTo?: "developer" | "app";
+  /** Skip quota check */
+  skipQuotaCheck?: boolean;
   /** Skip telemetry (used when called from CLI) - optional */
   skipTelemetry?: boolean;
 }
@@ -190,9 +200,6 @@ export async function prepareDeployFromVerifiableBuild(
         logger,
       );
 
-      logger.debug("Checking quota availability...");
-      await checkQuotaAvailable(preflightCtx);
-
       // Generate salt
       const salt = generateRandomSalt();
       logger.debug(`Generated salt: ${Buffer.from(salt).toString("hex")}`);
@@ -208,6 +215,15 @@ export async function prepareDeployFromVerifiableBuild(
       logger.info(``);
       logger.info(`App ID: ${appIDToBeDeployed}`);
       logger.info(``);
+
+      // Check quota (after calculateAppID so we can use app address for isolated billing)
+      if (!options.skipQuotaCheck) {
+        logger.debug("Checking quota availability...");
+        await checkQuotaAvailable(
+          preflightCtx,
+          options.billTo === "app" ? appIDToBeDeployed : undefined,
+        );
+      }
 
       // Build Release struct WITHOUT Docker/layering
       const release = await createReleaseFromImageDigest(
@@ -233,6 +249,7 @@ export async function prepareDeployFromVerifiableBuild(
           release,
           publicLogs,
           imageRef: options.imageRef,
+          billTo: options.billTo,
         },
         logger,
       );
@@ -370,11 +387,7 @@ export async function deploy(
         logger,
       );
 
-      // 3. Check quota availability
-      logger.debug("Checking quota availability...");
-      await checkQuotaAvailable(preflightCtx);
-
-      // 4. Check if docker is running, else try to start it
+      // 3. Check if docker is running, else try to start it
       logger.debug("Checking Docker...");
       await ensureDockerIsRunning();
 
@@ -385,11 +398,11 @@ export async function deploy(
       const envFilePath = options.envFilePath || "";
       const instanceType = options.instanceType;
 
-      // 5. Generate random salt
+      // 4. Generate random salt
       const salt = generateRandomSalt();
       logger.debug(`Generated salt: ${Buffer.from(salt).toString("hex")}`);
 
-      // 6. Get app ID (calculate from salt and address)
+      // 5. Get app ID (calculate from salt and address)
       logger.debug("Calculating app ID...");
       const appIDToBeDeployed = await calculateAppID({
         publicClient: preflightCtx.publicClient,
@@ -400,6 +413,15 @@ export async function deploy(
       logger.info(``);
       logger.info(`App ID: ${appIDToBeDeployed}`);
       logger.info(``);
+
+      // 6. Check quota availability (after calculateAppID so we can use app address for isolated billing)
+      if (!options.skipQuotaCheck) {
+        logger.debug("Checking quota availability...");
+        await checkQuotaAvailable(
+          preflightCtx,
+          options.billTo === "app" ? appIDToBeDeployed : undefined,
+        );
+      }
 
       // 7. Prepare the release (includes build/push if needed, with automatic retry on permission errors)
       logger.info("Preparing release...");
@@ -460,8 +482,12 @@ export async function deploy(
  * Check quota availability - verifies that the user has deployment quota available
  * by checking their allowlist status on the contract
  */
-async function checkQuotaAvailable(preflightCtx: PreflightContext): Promise<void> {
-  const { publicClient, environmentConfig, selfAddress: userAddress } = preflightCtx;
+async function checkQuotaAvailable(
+  preflightCtx: PreflightContext,
+  quotaAddress?: Address,
+): Promise<void> {
+  const { publicClient, environmentConfig } = preflightCtx;
+  const userAddress = quotaAddress || preflightCtx.selfAddress;
 
   // Check user's quota limit from contract
   let maxQuota: number;
@@ -544,11 +570,7 @@ export async function prepareDeploy(
         logger,
       );
 
-      // 3. Check quota availability
-      logger.debug("Checking quota availability...");
-      await checkQuotaAvailable(preflightCtx);
-
-      // 4. Check if docker is running, else try to start it
+      // 3. Check if docker is running, else try to start it
       logger.debug("Checking Docker...");
       await ensureDockerIsRunning();
 
@@ -559,11 +581,11 @@ export async function prepareDeploy(
       const envFilePath = options.envFilePath || "";
       const instanceType = options.instanceType;
 
-      // 5. Generate random salt
-      const salt = generateRandomSalt();
-      logger.debug(`Generated salt: ${Buffer.from(salt).toString("hex")}`);
+      // 4. Generate or use provided salt
+      const salt = options.salt ?? generateRandomSalt();
+      logger.debug(`${options.salt ? "Using provided" : "Generated"} salt: ${Buffer.from(salt).toString("hex")}`);
 
-      // 6. Get app ID (calculate from salt and address)
+      // 5. Get app ID (calculate from salt and address)
       logger.debug("Calculating app ID...");
       const appIDToBeDeployed = await calculateAppID({
         publicClient: preflightCtx.publicClient,
@@ -574,6 +596,15 @@ export async function prepareDeploy(
       logger.info(``);
       logger.info(`App ID: ${appIDToBeDeployed}`);
       logger.info(``);
+
+      // 6. Check quota availability (after calculateAppID so we can use app address for isolated billing)
+      if (!options.skipQuotaCheck) {
+        logger.debug("Checking quota availability...");
+        await checkQuotaAvailable(
+          preflightCtx,
+          options.billTo === "app" ? appIDToBeDeployed : undefined,
+        );
+      }
 
       // 7. Prepare the release (includes build/push if needed)
       logger.info("Preparing release...");
@@ -602,6 +633,7 @@ export async function prepareDeploy(
           release,
           publicLogs,
           imageRef: finalImageRef,
+          billTo: options.billTo,
         },
         logger,
       );

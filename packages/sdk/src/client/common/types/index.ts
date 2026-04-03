@@ -22,6 +22,8 @@ export interface DeployAppOpts {
   instanceType: string;
   /** Log visibility setting - required */
   logVisibility: logVisibility;
+  /** Billing mode: developer (default) or app (isolated billing) */
+  billTo?: "developer" | "app";
   /** Optional gas params from estimation */
   gas?: GasEstimate;
 }
@@ -56,6 +58,12 @@ export interface PrepareDeployOpts {
   logVisibility: logVisibility;
   /** Resource usage monitoring setting - optional */
   resourceUsageMonitoring?: "enable" | "disable";
+  /** Billing mode: developer (default) or app (isolated billing) */
+  billTo?: "developer" | "app";
+  /** Skip quota check */
+  skipQuotaCheck?: boolean;
+  /** Optional salt for deterministic app address prediction (32 bytes) */
+  salt?: Uint8Array | Buffer;
 }
 
 /** Options for prepareUpgrade */
@@ -90,6 +98,8 @@ export interface PrepareDeployFromVerifiableBuildOpts {
   logVisibility: logVisibility;
   /** Resource usage monitoring setting - optional */
   resourceUsageMonitoring?: "enable" | "disable";
+  /** Billing mode: developer (default) or app (isolated billing) */
+  billTo?: "developer" | "app";
 }
 
 /** Options for prepareUpgradeFromVerifiableBuild */
@@ -232,6 +242,8 @@ export interface EnvironmentConfig {
   kmsServerURL: string;
   userApiServerURL: string;
   defaultRPCURL: string;
+  billingRPCURL?: string;
+  usdcCreditsAddress?: Address;
 }
 
 export interface Release {

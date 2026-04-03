@@ -8,8 +8,7 @@ export default class BillingStatus extends Command {
   static description = "Show subscription status";
 
   static flags = {
-    "private-key": commonFlags["private-key"],
-    verbose: commonFlags.verbose,
+    ...commonFlags,
     product: Flags.string({
       required: false,
       description: "Product ID",
@@ -74,10 +73,18 @@ export default class BillingStatus extends Command {
         this.log(`\n${chalk.bold("  Line Items:")}`);
         for (const item of result.lineItems) {
           const product = `${flags.product.charAt(0).toUpperCase()}${flags.product.slice(1)}`;
-          const chain = item.description.toLowerCase().includes("sepolia") ? "Sepolia" : "Mainnet";
-          this.log(
-            `    • ${product} (${chain}): $${item.subtotal.toFixed(2)} (${item.quantity} vCPU hours × $${item.price.toFixed(3)}/vCPU hour)`,
-          );
+          const isChainSpecific = item.description.match(/\b(sepolia|mainnet)\b/i);
+          if (isChainSpecific) {
+            const chain = item.description.toLowerCase().includes("sepolia") ? "Sepolia" : "Mainnet";
+            this.log(
+              `    • ${product} (${chain}): $${item.subtotal.toFixed(2)} (${item.quantity} vCPU hours × $${item.price.toFixed(3)}/vCPU hour)`,
+            );
+          } else {
+            const sku = item.description.split(" ").slice(-2).join(" ") || "Unknown";
+            this.log(
+              `    • ${product} (${sku}): $${item.subtotal.toFixed(2)} (${item.quantity} hours × $${item.price.toFixed(3)}/hour)`,
+            );
+          }
         }
       }
 
@@ -118,6 +125,15 @@ export default class BillingStatus extends Command {
       if (result.portalUrl) {
         this.log(`\n${chalk.bold("Payment & Invoices:")}`);
         this.log(`  ${chalk.cyan(result.portalUrl)}`);
+      }
+
+      // Surface top-up option when credits are low or subscription is inactive
+      if (
+        result.subscriptionStatus === "inactive" ||
+        (result.remainingCredits !== undefined && result.remainingCredits < 10)
+      ) {
+        this.log(`\n${chalk.bold("Need more credits?")}`);
+        this.log(`  Run ${chalk.cyan("ecloud billing top-up")} to purchase credits.`);
       }
 
       this.log();
