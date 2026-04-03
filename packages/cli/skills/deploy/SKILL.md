@@ -358,4 +358,4 @@ ecloud compute app info <app-id> --address-count 5  # show more derived addresse
 - **EVM derivation path**: `m/44'/60'/0'/0/0` (and incrementing). **Solana**: `m/44'/501'/0'/0'`.
 - **App releases JSON schema** includes: `appId`, `imageDigest` (sha256), `registryUrl`, `publicEnv`, `encryptedEnv`, `upgradeByTime` (unix timestamp), `createdAt`, `createdAtBlock`.
 
-For full CLI flag reference, env var overrides, TLS setup, profile management, and scaffolding templates: read [references/cli-reference.md](references/cli-reference.md).
+For full CLI flag details, run `ecloud <command> --help`.
