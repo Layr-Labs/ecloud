@@ -212,6 +212,34 @@ ACME_FORCE_ISSUE=true  # Only if staging cert exists
 - Test with staging certificates first to avoid rate limits
 - DNS changes may take a few minutes to propagate
 
+## Shell Autocomplete
+
+Enable tab-completion for commands and flags in your shell:
+
+### Bash
+
+```bash
+ecloud autocomplete bash
+```
+
+Follow the printed instructions to add the completion script to your `~/.bashrc` (or `~/.bash_profile`).
+
+### Zsh
+
+```bash
+ecloud autocomplete zsh
+```
+
+Follow the printed instructions to add the completion script to your `~/.zshrc`.
+
+### After CLI Upgrades
+
+Refresh the completion cache so new commands and flags are available:
+
+```bash
+ecloud autocomplete --refresh-cache
+```
+
 ## Advanced Usage
 
 ### Building and Pushing Images Manually
