@@ -371,15 +371,60 @@ async function getCredentialsFromHelper(
       return undefined;
     }
 
+    // Validate credsStore to prevent command injection in helper name
+    // Docker credential helpers should only contain alphanumeric, dash, and underscore
+    if (!/^[a-zA-Z0-9_-]+$/.test(credsStore)) {
+      console.warn(`Invalid credential store name: ${credsStore}`);
+      return undefined;
+    }
+
+    // Validate registry to prevent injection
+    // Registry names should not contain shell metacharacters
+    if (/[`$;&|<>(){}[\]\\'"!]/.test(registry)) {
+      console.warn(`Invalid registry name contains shell metacharacters: ${registry}`);
+      return undefined;
+    }
+
     // Use Docker credential helper to get credentials
-    // Format: docker-credential-<helper> get <serverURL>
-    const { execSync } = await import("child_process");
+    // Format: docker-credential-<helper> get (with registry URL on stdin)
     const helper = `docker-credential-${credsStore}`;
 
     try {
-      const output = execSync(`echo "${registry}" | ${helper} get`, {
-        encoding: "utf-8",
+      // Use spawn instead of execSync to avoid shell injection
+      // The helper reads from stdin and writes JSON to stdout
+      const output = await new Promise<string>((resolve, reject) => {
+        const proc = child_process.spawn(helper, ["get"], {
+          stdio: ["pipe", "pipe", "pipe"],
+        });
+
+        let stdout = "";
+        let stderr = "";
+
+        proc.stdout.on("data", (data) => {
+          stdout += data.toString();
+        });
+
+        proc.stderr.on("data", (data) => {
+          stderr += data.toString();
+        });
+
+        proc.on("error", (error) => {
+          reject(new Error(`Failed to execute credential helper: ${error.message}`));
+        });
+
+        proc.on("close", (code) => {
+          if (code === 0) {
+            resolve(stdout);
+          } else {
+            reject(new Error(`Credential helper exited with code ${code}: ${stderr}`));
+          }
+        });
+
+        // Write registry to stdin and close
+        proc.stdin.write(registry);
+        proc.stdin.end();
       });
+
       const creds = JSON.parse(output);
       if (creds.Username && creds.Secret) {
         return { username: creds.Username, password: creds.Secret };
