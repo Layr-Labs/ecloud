@@ -406,10 +406,10 @@ ecloud
 │   │   ├── start             — KEY: write (identity determines flow)
 │   │   ├── stop              — KEY: write (PAUSER can stop directly)
 │   │   ├── terminate         — KEY: write (identity determines flow)
-│   │   ├── info              — no key (takes app ID as argument)
-│   │   ├── list              — no key (queries all identity addresses from config)
-│   │   ├── releases          — no key (takes app ID as argument)
-│   │   ├── logs              — no key (takes app ID as argument)
+│   │   ├── info              — KEY: read (API auth via EOA signature, backend resolves Safe/Timelock)
+│   │   ├── list              — KEY: read (queries all identity addresses, grouped by owner)
+│   │   ├── releases          — KEY: read (API auth via EOA signature)
+│   │   ├── logs              — KEY: read (API auth via EOA signature)
 │   │   ├── profile set       — KEY: write (DEVELOPER can set profile)
 │   │   ├── configure tls     — KEY: write
 │   │   ├── upgrade
@@ -464,12 +464,12 @@ ecloud
 
 **Key types:**
 - **KEY: write** — private key signs on-chain transactions. Active identity determines the flow (direct / Safe propose / Timelock schedule).
-- **KEY: read** — private key used only to derive address for filtering.
-- **no key** — works without credentials. Read commands use identity addresses from config.
+- **KEY: read** — private key signs API requests (backend verifies EOA signature and resolves Safe/Timelock ownership on-chain).
+- **no key** — works without credentials.
 
 ### `compute app list` — grouped by identity
 
-`list` queries apps across all identities in config, grouped by owner:
+`list` queries apps across all identity addresses, grouped by owner:
 
 ```
 ecloud compute app list
@@ -485,6 +485,21 @@ Timelock 0x333...789 (24h delay, wraps Safe 0x111)
   staging       stopped   docker.io/staging:v1
 ```
 
-No private key required — uses identity addresses from config. Falls back to signing key address if no identities are configured.
+Requires private key for API authentication. The backend resolves Safe/Timelock ownership on-chain — EOA signature is sufficient to access apps owned by Safes and Timelocks the EOA controls.
+
+### Backend ownership resolution
+
+When the API receives an EOA-signed request for an app owned by a Safe or Timelock, it resolves the ownership chain on-chain:
+
+```
+1. caller == app owner?                               → grant access
+2. app owner is Safe → caller in Safe.getOwners()?    → grant access
+3. app owner is Timelock → caller is proposer?         → grant access
+4. app owner is Timelock(Safe) → proposer is Safe
+   → caller in Safe.getOwners()?                       → grant access
+5. caller has team role (ADMIN/PAUSER/DEVELOPER)?      → grant access
+```
+
+All checks are on-chain reads — no extra headers needed from the CLI.
 
 See `docs/identity-command-matrix.md` for the full command × identity permission matrix.

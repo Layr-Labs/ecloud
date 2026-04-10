@@ -5,10 +5,9 @@ import {
   getAppLatestReleaseBlockNumbers,
   getBlockTimestamps,
   UserApiClient,
-  getPrivateKeyWithSource,
-  getAddressFromPrivateKey,
 } from "@layr-labs/ecloud-sdk";
-import { commonFlags } from "../../../flags";
+import { commonFlags, validateCommonFlags } from "../../../flags";
+import { privateKeyToAccount } from "viem/accounts";
 import { Address, Hex } from "viem";
 import { getAppName } from "../../../utils/appNames";
 import {
@@ -18,7 +17,7 @@ import {
 } from "../../../utils/prompts";
 import { getAppInfosChunked } from "../../../utils/appResolver";
 import { formatAppDisplay, printAppDisplay } from "../../../utils/format";
-import { createPublicClientOnly, createViemClients } from "../../../utils/viemClients";
+import { createViemClients } from "../../../utils/viemClients";
 import { getDashboardUrl } from "../../../utils/dashboard";
 import { getClientId } from "../../../utils/version";
 import { getIdentities, getActiveIdentityAddress, formatIdentity } from "../../../utils/globalConfig";
@@ -41,13 +40,30 @@ export default class AppList extends Command {
     return withTelemetry(this, async () => {
       const { flags } = await this.parse(AppList);
 
-      const environment = flags.environment as string;
-      const environmentConfig = getEnvironmentConfig(environment);
-      const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
+      // Validate flags — private key is required for API authentication
+      const validatedFlags = await validateCommonFlags(flags);
 
-      // Collect addresses to query — from identities if available, else from signing key
+      const environment = validatedFlags.environment;
+      const environmentConfig = getEnvironmentConfig(environment);
+      const rpcUrl = validatedFlags["rpc-url"] || environmentConfig.defaultRPCURL;
+      const privateKey = validatedFlags["private-key"]!;
+
+      const account = privateKeyToAccount(privateKey as Hex);
+      const eoaAddress = account.address;
+
+      const { publicClient, walletClient } = createViemClients({
+        privateKey,
+        rpcUrl,
+        environment,
+      });
+
+      const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, {
+        clientId: getClientId(),
+      });
+
+      // Collect addresses to query — EOA + all identity addresses
       const identities = getIdentities();
-      let addressesToQuery: { address: Address; label: string }[] = [];
+      const addressesToQuery: { address: Address; label: string }[] = [];
 
       if (identities.length > 0) {
         for (const id of identities) {
@@ -57,33 +73,11 @@ export default class AppList extends Command {
           });
         }
       } else {
-        // Fallback: derive address from signing key
-        const keyResult = await getPrivateKeyWithSource({ privateKey: flags["private-key"] });
-        if (!keyResult) {
-          this.error("No signing key found. Run 'ecloud auth generate' or 'ecloud auth login' first.");
-        }
-        const address = getAddressFromPrivateKey(keyResult.key);
+        // No identities configured — query just the EOA
         addressesToQuery.push({
-          address: address as Address,
-          label: `${address.slice(0, 6)}...${address.slice(-4)}  (EOA)`,
+          address: eoaAddress,
+          label: `${eoaAddress.slice(0, 6)}...${eoaAddress.slice(-4)}  (EOA)`,
         });
-      }
-
-      // Create clients — use publicClient only for reads, walletClient only if we have a key
-      const keyResult = await getPrivateKeyWithSource({ privateKey: flags["private-key"] });
-      let publicClient: any;
-      let walletClient: any;
-
-      if (keyResult) {
-        const clients = createViemClients({
-          privateKey: keyResult.key,
-          rpcUrl,
-          environment,
-        });
-        publicClient = clients.publicClient;
-        walletClient = clients.walletClient;
-      } else {
-        publicClient = createPublicClientOnly({ environment, rpcUrl });
       }
 
       const activeAddress = getActiveIdentityAddress(environment);
@@ -92,6 +86,7 @@ export default class AppList extends Command {
       console.log();
 
       for (const { address, label } of addressesToQuery) {
+        // Query apps owned by this address from blockchain
         const result = await getAllAppsByDeveloper(publicClient, environmentConfig, address);
 
         // Filter out terminated unless --all
@@ -117,30 +112,35 @@ export default class AppList extends Command {
         this.log(chalk.bold(`${label}${activeMarker}`));
         console.log();
 
-        // Create UserAPI client if we have a wallet
-        let userApiClient: UserApiClient | null = null;
-        if (walletClient) {
-          userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, {
-            clientId: getClientId(),
-          });
-        }
-
-        // Fetch app info and release data
+        // Fetch app info from UserAPI (authenticated with EOA signature — backend
+        // resolves Safe/Timelock ownership) and release data from blockchain
         const [appInfos, releaseBlockNumbers] = await Promise.all([
-          userApiClient
-            ? getAppInfosChunked(userApiClient, filteredApps, 1).catch(() => [])
-            : Promise.resolve([]),
+          getAppInfosChunked(userApiClient, filteredApps, 1).catch((err) => {
+            if (flags.verbose) {
+              this.warn(`Could not fetch app info from UserAPI: ${err}`);
+            }
+            return [];
+          }),
           getAppLatestReleaseBlockNumbers(publicClient, environmentConfig, filteredApps).catch(
-            () => new Map<Address, number>(),
+            (err) => {
+              if (flags.verbose) {
+                this.warn(`Could not fetch release block numbers: ${err}`);
+              }
+              return new Map<Address, number>();
+            },
           ) as Promise<Map<Address, number>>,
         ]);
 
+        // Get unique block numbers and fetch their timestamps
         const blockNumbers = Array.from(releaseBlockNumbers.values()).filter((n) => n > 0);
         const blockTimestamps =
           blockNumbers.length > 0
-            ? await getBlockTimestamps(publicClient, blockNumbers).catch(
-                () => new Map<number, number>(),
-              )
+            ? await getBlockTimestamps(publicClient, blockNumbers).catch((err) => {
+                if (flags.verbose) {
+                  this.warn(`Could not fetch block timestamps: ${err}`);
+                }
+                return new Map<number, number>();
+              })
             : new Map<number, number>();
 
         // Build and sort app items
