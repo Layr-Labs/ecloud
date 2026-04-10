@@ -8,6 +8,7 @@ import { Command, Flags } from "@oclif/core";
 import { confirm } from "@inquirer/prompts";
 import { deletePrivateKey, getPrivateKey, getAddressFromPrivateKey } from "@layr-labs/ecloud-sdk";
 import { withTelemetry } from "../../telemetry";
+import { replaceAllIdentities } from "../../utils/globalConfig";
 
 export default class AuthLogout extends Command {
   static description = "Remove private key from OS keyring";
@@ -61,9 +62,10 @@ export default class AuthLogout extends Command {
         const deleted = await deletePrivateKey();
 
         if (deleted) {
-          this.log("\n✓ Successfully removed key from keyring");
-          this.log("\nYou will need to provide --private-key flag for future commands,");
-          this.log("or run 'ecloud auth login' to store a key again.");
+          replaceAllIdentities([]);
+          this.log("\n✓ Signing key removed from keyring");
+          this.log("✓ All identities cleared");
+          this.log("\nRun 'ecloud auth generate' or 'ecloud auth login' to set up again.");
         } else {
           this.log("\nFailed to remove key (it may have already been removed)");
         }

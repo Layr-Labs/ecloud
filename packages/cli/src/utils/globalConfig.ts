@@ -454,6 +454,17 @@ export function replaceAllIdentities(identities: StoredIdentity[]): void {
 }
 
 /**
+ * Remove a single identity by address
+ */
+export function removeIdentity(address: string): void {
+  const config = loadGlobalConfig();
+  config.identities = (config.identities || []).filter(
+    (id) => id.address.toLowerCase() !== address.toLowerCase(),
+  );
+  saveGlobalConfig(config);
+}
+
+/**
  * Clear the active identity for an environment (logout)
  */
 export function clearActiveIdentity(environment: string): void {
