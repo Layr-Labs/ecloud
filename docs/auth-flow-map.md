@@ -18,6 +18,26 @@ Two independent storage systems:
 - **Active identity** — the identity used for commands in a given environment. One per environment.
 - **Roles** (PAUSER, DEVELOPER) — permissions on a specific app, not identity types. Checked at the app level, not the identity level.
 
+## Identity Limits
+
+| Identity type | How many per signing key | Why |
+|---|---|---|
+| **EOA** | 1 | The signing key's own address. Created automatically on `auth generate` or `auth login`. |
+| **Safe** | Unlimited | Each `auth identity new → Safe` deploys a new Safe contract. Different Safes can have different owners, thresholds, and purposes. |
+| **Timelock(EOA)** | 1 | Address is deterministic via CREATE2 (`CANONICAL_SALT`). Re-running discovers the existing one instead of deploying. |
+| **Timelock(Safe)** | 1 per Safe | Each Safe can have its own Timelock. Different Safes can have different delay periods. |
+
+Example:
+```
+Identities:
+  ● EOA 0xABC...                                    ← your signing key
+  ○ Safe 0x111...  (2/3 — you + partner A + B)      ← multi-sig for production
+  ○ Safe 0x222...  (1/1 — just you)                  ← single-owner for testing
+  ○ Timelock 0x333... (24h delay, wraps EOA)         ← only one per EOA
+  ○ Timelock 0x444... (24h delay, wraps Safe 0x111)  ← one per Safe
+  ○ Timelock 0x555... (7d delay, wraps Safe 0x222)   ← different delay
+```
+
 ## State Transitions
 
 Every auth command and exactly what it changes:
