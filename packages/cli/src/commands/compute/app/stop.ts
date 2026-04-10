@@ -1,4 +1,4 @@
-import { Command, Args } from "@oclif/core";
+import { Command, Args, Flags } from "@oclif/core";
 import { createComputeClient } from "../../../client";
 import { commonFlags, applyTxOverrides } from "../../../flags";
 import {
@@ -25,6 +25,10 @@ export default class AppLifecycleStop extends Command {
 
   static flags = {
     ...commonFlags,
+    force: Flags.boolean({
+      description: "Skip all confirmation prompts",
+      default: false,
+    }),
   };
 
   async run() {
@@ -77,7 +81,7 @@ export default class AppLifecycleStop extends Command {
       }
 
       // On mainnet, prompt for confirmation with cost
-      if (isMainnet(environmentConfig)) {
+      if (isMainnet(environmentConfig) && !flags.force) {
         const confirmed = await confirm(
           `This will cost up to ${finalTx.maxCostEth} ETH. Continue?`,
         );

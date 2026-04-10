@@ -4,7 +4,7 @@
  * Store an existing private key in OS keyring
  */
 
-import { Command } from "@oclif/core";
+import { Command, Flags } from "@oclif/core";
 import { confirm, select } from "@inquirer/prompts";
 import {
   storePrivateKey,
@@ -22,81 +22,112 @@ import { withTelemetry } from "../../telemetry";
 export default class AuthLogin extends Command {
   static description = "Store your private key in OS keyring";
 
-  static examples = ["<%= config.bin %> <%= command.id %>"];
+  static examples = [
+    "<%= config.bin %> auth login",
+    "<%= config.bin %> auth login --private-key 0x...",
+    "<%= config.bin %> auth login --private-key 0x... --force",
+  ];
+
+  static flags = {
+    "private-key": Flags.string({
+      description: "Private key to store (skips interactive prompt)",
+      env: "ECLOUD_PRIVATE_KEY",
+    }),
+    force: Flags.boolean({
+      description: "Skip all confirmation prompts",
+      default: false,
+    }),
+  };
 
   async run(): Promise<void> {
     return withTelemetry(this, async () => {
+      const { flags } = await this.parse(AuthLogin);
+      const isNonInteractive = !!flags["private-key"];
+
       // Check if key already exists
       const exists = await keyExists();
 
       if (exists) {
-        displayWarning([
-          "WARNING: A private key for ecloud already exists!",
-          "Replacing it will cause PERMANENT DATA LOSS if not backed up.",
-          "The previous key will be lost forever.",
-        ]);
+        if (isNonInteractive) {
+          if (!flags.force) {
+            this.error(
+              "A private key already exists. Use --force to replace it.",
+            );
+          }
+        } else {
+          displayWarning([
+            "WARNING: A private key for ecloud already exists!",
+            "Replacing it will cause PERMANENT DATA LOSS if not backed up.",
+            "The previous key will be lost forever.",
+          ]);
 
-        const confirmReplace = await confirm({
-          message: "Replace existing key?",
-          default: false,
-        });
+          const confirmReplace = await confirm({
+            message: "Replace existing key?",
+            default: false,
+          });
 
-        if (!confirmReplace) {
-          this.log("\nLogin cancelled.");
-          return;
+          if (!confirmReplace) {
+            this.log("\nLogin cancelled.");
+            return;
+          }
         }
       }
 
-      // Check for legacy keys from eigenx-cli
-      const legacyKeys = await getLegacyKeys();
       let privateKey: string | null = null;
       let selectedKey: LegacyKey | null = null;
 
-      if (legacyKeys.length > 0) {
-        this.log("\nFound legacy keys from eigenx-cli:");
-        this.log("");
+      if (isNonInteractive) {
+        // Use flag value directly
+        privateKey = flags["private-key"]!;
+      } else {
+        // Check for legacy keys from eigenx-cli
+        const legacyKeys = await getLegacyKeys();
 
-        // Display legacy keys
-        for (const key of legacyKeys) {
-          this.log(`  Address: ${key.address}`);
-          this.log(`  Environment: ${key.environment}`);
-          this.log(`  Source: ${key.source}`);
+        if (legacyKeys.length > 0) {
+          this.log("\nFound legacy keys from eigenx-cli:");
           this.log("");
-        }
 
-        const importLegacy = await confirm({
-          message: "Would you like to import one of these legacy keys?",
-          default: false,
-        });
-
-        if (importLegacy) {
-          // Create choices for selection
-          const choices = legacyKeys.map((key) => ({
-            name: `${key.address} (${key.environment} - ${key.source})`,
-            value: key,
-          }));
-
-          selectedKey = await select<LegacyKey>({
-            message: "Select a key to import:",
-            choices,
-          });
-
-          // Retrieve the actual private key
-          privateKey = await getLegacyPrivateKey(selectedKey.environment, selectedKey.source);
-
-          if (!privateKey) {
-            this.error(`Failed to retrieve legacy key for ${selectedKey.environment}`);
+          // Display legacy keys
+          for (const key of legacyKeys) {
+            this.log(`  Address: ${key.address}`);
+            this.log(`  Environment: ${key.environment}`);
+            this.log(`  Source: ${key.source}`);
+            this.log("");
           }
 
-          this.log(`\nImporting key from ${selectedKey.source}:${selectedKey.environment}`);
+          const importLegacy = await confirm({
+            message: "Would you like to import one of these legacy keys?",
+            default: false,
+          });
+
+          if (importLegacy) {
+            // Create choices for selection
+            const choices = legacyKeys.map((key) => ({
+              name: `${key.address} (${key.environment} - ${key.source})`,
+              value: key,
+            }));
+
+            selectedKey = await select<LegacyKey>({
+              message: "Select a key to import:",
+              choices,
+            });
+
+            // Retrieve the actual private key
+            privateKey = await getLegacyPrivateKey(selectedKey.environment, selectedKey.source);
+
+            if (!privateKey) {
+              this.error(`Failed to retrieve legacy key for ${selectedKey.environment}`);
+            }
+
+            this.log(`\nImporting key from ${selectedKey.source}:${selectedKey.environment}`);
+          }
         }
-      }
 
-      // If no legacy key was selected, prompt for private key input
-      if (!privateKey) {
-        privateKey = await getHiddenInput("Enter your private key:");
-
-        privateKey = privateKey.trim();
+        // If no legacy key was selected, prompt for private key input
+        if (!privateKey) {
+          privateKey = await getHiddenInput("Enter your private key:");
+          privateKey = privateKey.trim();
+        }
       }
 
       if (!validatePrivateKey(privateKey)) {
@@ -108,14 +139,16 @@ export default class AuthLogin extends Command {
 
       this.log(`\nAddress: ${address}`);
 
-      const confirmStore = await confirm({
-        message: "Store this key in OS keyring?",
-        default: true,
-      });
+      if (!isNonInteractive) {
+        const confirmStore = await confirm({
+          message: "Store this key in OS keyring?",
+          default: true,
+        });
 
-      if (!confirmStore) {
-        this.log("\nLogin cancelled.");
-        return;
+        if (!confirmStore) {
+          this.log("\nLogin cancelled.");
+          return;
+        }
       }
 
       // Store in keyring
@@ -129,12 +162,13 @@ export default class AuthLogin extends Command {
         // Ask if user wants to delete the legacy key (only if save was successful)
         if (selectedKey) {
           this.log("");
-          const confirmDelete = await confirm({
+
+          const shouldDelete = flags.force || await confirm({
             message: `Delete the legacy key from ${selectedKey.source}:${selectedKey.environment}?`,
             default: false,
           });
 
-          if (confirmDelete) {
+          if (shouldDelete) {
             const deleted = await deleteLegacyPrivateKey(
               selectedKey.environment,
               selectedKey.source,

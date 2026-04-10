@@ -142,6 +142,10 @@ export default class AppDeploy extends Command {
       required: false,
       env: "ECLOUD_BUILD_CADDYFILE",
     }),
+    force: Flags.boolean({
+      description: "Skip all confirmation prompts",
+      default: false,
+    }),
   };
 
   async run() {
@@ -450,7 +454,7 @@ export default class AppDeploy extends Command {
       }
       this.log(`\nEstimated transaction cost: ${chalk.cyan(finalTx.maxCostEth)} ETH`);
 
-      if (isMainnet(environmentConfig)) {
+      if (isMainnet(environmentConfig) && !flags.force) {
         const confirmed = await confirm(`Continue with deployment?`);
         if (!confirmed) {
           this.log(`\n${chalk.gray(`Deployment cancelled`)}`);
