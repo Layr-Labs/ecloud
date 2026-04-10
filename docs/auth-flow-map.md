@@ -25,7 +25,9 @@ Two independent storage systems:
 | **EOA** | 1 | The signing key's own address. Created automatically on `auth generate` or `auth login`. |
 | **Safe** | Unlimited | Each `auth identity new → Safe` deploys a new Safe contract. Different Safes can have different owners, thresholds, and purposes. |
 | **Timelock(EOA)** | 1 | Address is deterministic via CREATE2 (`CANONICAL_SALT`). Re-running discovers the existing one instead of deploying. |
-| **Timelock(Safe)** | 1 per Safe | Each Safe can have its own Timelock. Different Safes can have different delay periods. |
+| **Timelock(Safe)** | 1 per Safe | Address is deterministic via CREATE2 (Safe address + `CANONICAL_SALT`). Re-running discovers the existing one. Each Safe can have its own Timelock with its own delay period. |
+
+All Timelock addresses are deterministic — computed by `SafeTimelockFactory.calculateTimelockAddress(proposer, salt)` using CREATE2. The CLI checks for existing Timelocks before deploying, for both EOA and Safe proposers.
 
 Example:
 ```
