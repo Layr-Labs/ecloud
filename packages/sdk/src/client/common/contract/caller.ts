@@ -2237,10 +2237,10 @@ export async function executeTimelockGrantTeamAdmin(
   return executeTimelockOp({ ...base, timelockAddress, calldata }, logger);
 }
 
-export async function discoverTimelockForEOA(
+export async function discoverTimelock(
   publicClient: PublicClient,
   environmentConfig: EnvironmentConfig,
-  eoaAddress: Address,
+  proposerAddress: Address,
 ): Promise<DiscoveredTimelock | null> {
   const factoryAddress = await getSafeTimelockFactoryAddress(publicClient, environmentConfig);
 
@@ -2248,7 +2248,7 @@ export async function discoverTimelockForEOA(
     address: factoryAddress,
     abi: SafeTimelockFactoryABI,
     functionName: "calculateTimelockAddress",
-    args: [eoaAddress, CANONICAL_SALT],
+    args: [proposerAddress, CANONICAL_SALT],
   }) as Address;
 
   const exists = await publicClient.readContract({
@@ -2269,3 +2269,6 @@ export async function discoverTimelockForEOA(
 
   return { address: timelockAddress, minDelay };
 }
+
+/** @deprecated Use discoverTimelock instead */
+export const discoverTimelockForEOA = discoverTimelock;

@@ -17,7 +17,7 @@ import {
   getLegacyPrivateKey,
   deleteLegacyPrivateKey,
   getEnvironmentConfig,
-  discoverTimelockForEOA,
+  discoverTimelock,
   type LegacyKey,
 } from "@layr-labs/ecloud-sdk";
 import { getHiddenInput, displayWarning } from "../../utils/security";
@@ -146,7 +146,7 @@ export default class AuthLogin extends Command {
         try {
           const publicClient = createPublicClientOnly({ environment, rpcUrl: flags["rpc-url"] });
           const environmentConfig = getEnvironmentConfig(environment);
-          const found = await discoverTimelockForEOA(publicClient, environmentConfig, address as Address);
+          const found = await discoverTimelock(publicClient, environmentConfig, address as Address);
 
           if (found) {
             const delayHours = Number(found.minDelay) / 3600;

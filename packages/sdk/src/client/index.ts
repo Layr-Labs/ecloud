@@ -126,6 +126,7 @@ export {
   getSafeTimelockFactoryAddress,
   deploySafe,
   deployTimelock,
+  discoverTimelock,
   discoverTimelockForEOA,
   CANONICAL_SALT,
   type DeploySafeOptions,
