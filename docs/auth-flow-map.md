@@ -406,10 +406,10 @@ ecloud
 │   │   ├── start             — KEY: write (identity determines flow)
 │   │   ├── stop              — KEY: write (PAUSER can stop directly)
 │   │   ├── terminate         — KEY: write (identity determines flow)
-│   │   ├── info              — KEY: read (address only)
-│   │   ├── list              — KEY: read (address only)
-│   │   ├── releases          — KEY: read (address only)
-│   │   ├── logs              — KEY: read (address only)
+│   │   ├── info              — no key (takes app ID as argument)
+│   │   ├── list              — no key (queries all identity addresses from config)
+│   │   ├── releases          — no key (takes app ID as argument)
+│   │   ├── logs              — no key (takes app ID as argument)
 │   │   ├── profile set       — KEY: write (DEVELOPER can set profile)
 │   │   ├── configure tls     — KEY: write
 │   │   ├── upgrade
@@ -464,7 +464,27 @@ ecloud
 
 **Key types:**
 - **KEY: write** — private key signs on-chain transactions. Active identity determines the flow (direct / Safe propose / Timelock schedule).
-- **KEY: read** — private key used only to derive address for filtering. Could be replaced by active identity address in the future.
-- **no key** — works without credentials.
+- **KEY: read** — private key used only to derive address for filtering.
+- **no key** — works without credentials. Read commands use identity addresses from config.
+
+### `compute app list` — grouped by identity
+
+`list` queries apps across all identities in config, grouped by owner:
+
+```
+ecloud compute app list
+
+EOA 0xABC...DEF  ← active
+  myapp         running   docker.io/myapp:v2
+  worker        running   docker.io/worker:v1
+
+Safe 0x111...456
+  production    running   docker.io/prod:v3
+
+Timelock 0x333...789 (24h delay, wraps Safe 0x111)
+  staging       stopped   docker.io/staging:v1
+```
+
+No private key required — uses identity addresses from config. Falls back to signing key address if no identities are configured.
 
 See `docs/identity-command-matrix.md` for the full command × identity permission matrix.

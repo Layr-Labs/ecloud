@@ -5,9 +5,10 @@ import {
   getAppLatestReleaseBlockNumbers,
   getBlockTimestamps,
   UserApiClient,
+  getPrivateKeyWithSource,
+  getAddressFromPrivateKey,
 } from "@layr-labs/ecloud-sdk";
-import { commonFlags, validateCommonFlags } from "../../../flags";
-import { privateKeyToAccount } from "viem/accounts";
+import { commonFlags } from "../../../flags";
 import { Address, Hex } from "viem";
 import { getAppName } from "../../../utils/appNames";
 import {
@@ -17,9 +18,10 @@ import {
 } from "../../../utils/prompts";
 import { getAppInfosChunked } from "../../../utils/appResolver";
 import { formatAppDisplay, printAppDisplay } from "../../../utils/format";
-import { createViemClients } from "../../../utils/viemClients";
+import { createPublicClientOnly, createViemClients } from "../../../utils/viemClients";
 import { getDashboardUrl } from "../../../utils/dashboard";
 import { getClientId } from "../../../utils/version";
+import { getIdentities, getActiveIdentityAddress, formatIdentity } from "../../../utils/globalConfig";
 import chalk from "chalk";
 import { withTelemetry } from "../../../telemetry";
 
@@ -33,199 +35,186 @@ export default class AppList extends Command {
       char: "a",
       default: false,
     }),
-    "address-count": Flags.integer({
-      description: "Number of addresses to fetch",
-      default: 1,
-    }),
   };
 
   async run() {
     return withTelemetry(this, async () => {
       const { flags } = await this.parse(AppList);
 
-      // Validate flags and prompt for missing values
-      const validatedFlags = await validateCommonFlags(flags);
-
-      // Get validated values from flags
-      const environment = validatedFlags.environment;
+      const environment = flags.environment as string;
       const environmentConfig = getEnvironmentConfig(environment);
-      const rpcUrl = validatedFlags["rpc-url"] || environmentConfig.defaultRPCURL;
-      const privateKey = validatedFlags["private-key"]!;
+      const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
 
-      // Get developer address from private key
-      const account = privateKeyToAccount(privateKey as Hex);
-      const developerAddr = account.address;
+      // Collect addresses to query — from identities if available, else from signing key
+      const identities = getIdentities();
+      let addressesToQuery: { address: Address; label: string }[] = [];
 
-      // Create viem clients and UserAPI client
-      const { publicClient, walletClient } = createViemClients({
-        privateKey,
-        rpcUrl,
-        environment,
-      });
-
-      if (flags.verbose) {
-        this.log(`Fetching apps for developer: ${developerAddr}`);
-      }
-
-      // List apps from contract
-      const result = await getAllAppsByDeveloper(publicClient, environmentConfig, developerAddr);
-
-      if (result.apps.length === 0) {
-        this.log(`\nNo apps found for developer ${developerAddr}`);
-        return;
-      }
-
-      // Filter out terminated apps unless --all flag is used
-      const filteredApps: Address[] = [];
-      const filteredConfigs: { status: number }[] = [];
-
-      for (let i = 0; i < result.apps.length; i++) {
-        const config = result.appConfigs[i];
-        if (!flags.all && config.status === ContractAppStatusTerminated) {
-          continue;
+      if (identities.length > 0) {
+        for (const id of identities) {
+          addressesToQuery.push({
+            address: id.address as Address,
+            label: formatIdentity(id),
+          });
         }
-        filteredApps.push(result.apps[i]);
-        filteredConfigs.push(config);
-      }
-
-      if (filteredApps.length === 0) {
-        if (flags.all) {
-          this.log(`\nNo apps found for developer ${developerAddr}`);
-        } else {
-          this.log(
-            `\nNo active apps found for developer ${developerAddr} (use --all to show terminated apps)`,
-          );
+      } else {
+        // Fallback: derive address from signing key
+        const keyResult = await getPrivateKeyWithSource({ privateKey: flags["private-key"] });
+        if (!keyResult) {
+          this.error("No signing key found. Run 'ecloud auth generate' or 'ecloud auth login' first.");
         }
-        return;
+        const address = getAddressFromPrivateKey(keyResult.key);
+        addressesToQuery.push({
+          address: address as Address,
+          label: `${address.slice(0, 6)}...${address.slice(-4)}  (EOA)`,
+        });
       }
 
-      // Create UserAPI client
-      const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, {
-        clientId: getClientId(),
-      });
+      // Create clients — use publicClient only for reads, walletClient only if we have a key
+      const keyResult = await getPrivateKeyWithSource({ privateKey: flags["private-key"] });
+      let publicClient: any;
+      let walletClient: any;
 
-      // Fetch all data in parallel
-      const [appInfos, releaseBlockNumbers] = await Promise.all([
-        getAppInfosChunked(userApiClient, filteredApps, 1).catch((err) => {
-          if (flags.verbose) {
-            this.warn(`Could not fetch app info from UserAPI: ${err}`);
+      if (keyResult) {
+        const clients = createViemClients({
+          privateKey: keyResult.key,
+          rpcUrl,
+          environment,
+        });
+        publicClient = clients.publicClient;
+        walletClient = clients.walletClient;
+      } else {
+        publicClient = createPublicClientOnly({ environment, rpcUrl });
+      }
+
+      const activeAddress = getActiveIdentityAddress(environment);
+      let totalApps = 0;
+
+      console.log();
+
+      for (const { address, label } of addressesToQuery) {
+        const result = await getAllAppsByDeveloper(publicClient, environmentConfig, address);
+
+        // Filter out terminated unless --all
+        const filteredApps: Address[] = [];
+        const filteredConfigs: { status: number }[] = [];
+
+        for (let i = 0; i < result.apps.length; i++) {
+          const config = result.appConfigs[i];
+          if (!flags.all && config.status === ContractAppStatusTerminated) {
+            continue;
           }
-          return [];
-        }),
-        getAppLatestReleaseBlockNumbers(publicClient, environmentConfig, filteredApps).catch(
-          (err) => {
-            if (flags.verbose) {
-              this.warn(`Could not fetch release block numbers: ${err}`);
-            }
-            return new Map<Address, number>();
-          },
-        ) as Promise<Map<Address, number>>,
-      ]);
-
-      // Get unique block numbers and fetch their timestamps
-      const blockNumbers = Array.from(releaseBlockNumbers.values()).filter((n) => n > 0);
-      const blockTimestamps =
-        blockNumbers.length > 0
-          ? await getBlockTimestamps(publicClient, blockNumbers).catch((err) => {
-              if (flags.verbose) {
-                this.warn(`Could not fetch block timestamps: ${err}`);
-              }
-              return new Map<number, number>();
-            })
-          : new Map<number, number>();
-
-      // Build app items with all data for sorting
-      interface AppDisplayItem {
-        appAddr: Address;
-        apiInfo: (typeof appInfos)[0] | undefined;
-        appName: string;
-        status: string;
-        releaseTimestamp: number | undefined;
-      }
-
-      const appItems: AppDisplayItem[] = [];
-      for (let i = 0; i < filteredApps.length; i++) {
-        const appAddr = filteredApps[i];
-        const config = filteredConfigs[i];
-
-        const apiInfo = appInfos.find(
-          (info) => info.address && String(info.address).toLowerCase() === appAddr.toLowerCase(),
-        );
-
-        const profileName = apiInfo?.profile?.name;
-        const localName = getAppName(environment, appAddr);
-        const appName = profileName || localName;
-
-        const status = apiInfo?.status || getContractStatusString(config.status);
-
-        const releaseBlockNumber = releaseBlockNumbers.get(appAddr);
-        const releaseTimestamp = releaseBlockNumber
-          ? blockTimestamps.get(releaseBlockNumber)
-          : undefined;
-
-        appItems.push({ appAddr, apiInfo, appName, status, releaseTimestamp });
-      }
-
-      // Sort apps: Running first, then by status priority, then by release time (newest first)
-      appItems.sort((a, b) => {
-        const aPriority = getStatusSortPriority(a.status);
-        const bPriority = getStatusSortPriority(b.status);
-
-        if (aPriority !== bPriority) {
-          return aPriority - bPriority;
+          filteredApps.push(result.apps[i]);
+          filteredConfigs.push(config);
         }
 
-        // Within same status, sort by release time (newest first)
-        const aTime = a.releaseTimestamp || 0;
-        const bTime = b.releaseTimestamp || 0;
-        return bTime - aTime;
-      });
+        if (filteredApps.length === 0) continue;
 
-      // Print header
-      console.log();
-      this.log(chalk.bold(`Apps for ${developerAddr} (${environment}):`));
-      console.log();
+        totalApps += filteredApps.length;
 
-      // Print each app
-      for (let i = 0; i < appItems.length; i++) {
-        const { apiInfo, appName, status, releaseTimestamp } = appItems[i];
+        // Print identity header
+        const isActive = address.toLowerCase() === activeAddress?.toLowerCase();
+        const activeMarker = isActive ? chalk.green(" ← active") : "";
+        this.log(chalk.bold(`${label}${activeMarker}`));
+        console.log();
 
-        // Skip if no API info (shouldn't happen, but be safe)
-        if (!apiInfo) {
-          continue;
+        // Create UserAPI client if we have a wallet
+        let userApiClient: UserApiClient | null = null;
+        if (walletClient) {
+          userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, {
+            clientId: getClientId(),
+          });
         }
 
-        // Format app display using shared utility
-        const display = formatAppDisplay({
-          appInfo: apiInfo,
-          appName,
-          status,
-          releaseTimestamp,
-        });
+        // Fetch app info and release data
+        const [appInfos, releaseBlockNumbers] = await Promise.all([
+          userApiClient
+            ? getAppInfosChunked(userApiClient, filteredApps, 1).catch(() => [])
+            : Promise.resolve([]),
+          getAppLatestReleaseBlockNumbers(publicClient, environmentConfig, filteredApps).catch(
+            () => new Map<Address, number>(),
+          ) as Promise<Map<Address, number>>,
+        ]);
 
-        // Print app name header
-        this.log(`  ${display.name}`);
+        const blockNumbers = Array.from(releaseBlockNumbers.values()).filter((n) => n > 0);
+        const blockTimestamps =
+          blockNumbers.length > 0
+            ? await getBlockTimestamps(publicClient, blockNumbers).catch(
+                () => new Map<number, number>(),
+              )
+            : new Map<number, number>();
 
-        // Print app details using shared utility
-        printAppDisplay(display, this.log.bind(this), "    ", {
-          singleAddress: true,
-          showProfile: false,
-        });
+        // Build and sort app items
+        interface AppDisplayItem {
+          appAddr: Address;
+          apiInfo: (typeof appInfos)[0] | undefined;
+          appName: string;
+          status: string;
+          releaseTimestamp: number | undefined;
+        }
 
-        // Show dashboard link
-        const dashboardUrl = getDashboardUrl(environment, appItems[i].appAddr);
-        this.log(`    Dashboard:      ${chalk.blue.underline(dashboardUrl)}`);
+        const appItems: AppDisplayItem[] = [];
+        for (let i = 0; i < filteredApps.length; i++) {
+          const appAddr = filteredApps[i];
+          const config = filteredConfigs[i];
 
-        // Add separator between apps
-        if (i < appItems.length - 1) {
-          this.log(
-            chalk.gray("  ────────────────────────────────────────────────────────────────────"),
+          const apiInfo = appInfos.find(
+            (info) => info.address && String(info.address).toLowerCase() === appAddr.toLowerCase(),
           );
+
+          const profileName = apiInfo?.profile?.name;
+          const localName = getAppName(environment, appAddr);
+          const appName = profileName || localName;
+          const status = apiInfo?.status || getContractStatusString(config.status);
+
+          const releaseBlockNumber = releaseBlockNumbers.get(appAddr);
+          const releaseTimestamp = releaseBlockNumber
+            ? blockTimestamps.get(releaseBlockNumber)
+            : undefined;
+
+          appItems.push({ appAddr, apiInfo, appName, status, releaseTimestamp });
         }
+
+        appItems.sort((a, b) => {
+          const aPriority = getStatusSortPriority(a.status);
+          const bPriority = getStatusSortPriority(b.status);
+          if (aPriority !== bPriority) return aPriority - bPriority;
+          return (b.releaseTimestamp || 0) - (a.releaseTimestamp || 0);
+        });
+
+        // Print each app
+        for (let i = 0; i < appItems.length; i++) {
+          const { apiInfo, appName, status, releaseTimestamp } = appItems[i];
+
+          if (!apiInfo) continue;
+
+          const display = formatAppDisplay({ appInfo: apiInfo, appName, status, releaseTimestamp });
+
+          this.log(`  ${display.name}`);
+          printAppDisplay(display, this.log.bind(this), "    ", {
+            singleAddress: true,
+            showProfile: false,
+          });
+
+          const dashboardUrl = getDashboardUrl(environment, appItems[i].appAddr);
+          this.log(`    Dashboard:      ${chalk.blue.underline(dashboardUrl)}`);
+
+          if (i < appItems.length - 1) {
+            this.log(chalk.gray("  ──────────────────────────────────────────────────────────────"));
+          }
+        }
+
+        console.log();
       }
 
-      console.log();
-      this.log(chalk.gray(`Total: ${appItems.length} app(s)`));
+      if (totalApps === 0) {
+        if (flags.all) {
+          this.log("No apps found.");
+        } else {
+          this.log("No active apps found (use --all to show terminated apps).");
+        }
+      } else {
+        this.log(chalk.gray(`Total: ${totalApps} app(s) across ${addressesToQuery.length} identity(ies)`));
+      }
     });
   }
 }
