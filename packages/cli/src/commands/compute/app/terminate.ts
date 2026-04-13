@@ -10,8 +10,10 @@ import {
 import { getOrPromptAppID, confirm } from "../../../utils/prompts";
 import { getPrivateKeyInteractive } from "../../../utils/prompts";
 import { createViemClients } from "../../../utils/viemClients";
+import { printIdentityContext, executeWithIdentity, printTransactionResult } from "../../../utils/identityTransaction";
 import chalk from "chalk";
 import { withTelemetry } from "../../../telemetry";
+import type { Address } from "viem";
 
 export default class AppLifecycleTerminate extends Command {
   static description = "Terminate app (terminate GCP instance) permanently";
@@ -37,17 +39,11 @@ export default class AppLifecycleTerminate extends Command {
       const { args, flags } = await this.parse(AppLifecycleTerminate);
       const compute = await createComputeClient(flags);
 
-      // Get environment config (flags already validated by createComputeClient)
       const environment = flags.environment;
       const environmentConfig = getEnvironmentConfig(environment);
-
-      // Get RPC URL (needed for contract queries and authentication)
       const rpcUrl = flags.rpcUrl || environmentConfig.defaultRPCURL;
-
-      // Get private key for gas estimation
       const privateKey = flags["private-key"] || (await getPrivateKeyInteractive(environment));
 
-      // Resolve app ID (prompt if not provided)
       const appId = await getOrPromptAppID({
         appID: args["app-id"],
         environment: flags["environment"]!,
@@ -56,14 +52,14 @@ export default class AppLifecycleTerminate extends Command {
         action: "terminate",
       });
 
-      // Create viem clients for gas estimation
-      const { publicClient, address } = createViemClients({
+      const { publicClient, walletClient, address } = createViemClients({
         privateKey,
         rpcUrl,
         environment,
       });
 
-      // Estimate gas cost
+      const identity = printIdentityContext(environment, address, this.log.bind(this));
+
       const callData = encodeTerminateAppData(appId);
       const estimate = await estimateTransactionGas({
         publicClient,
@@ -72,7 +68,6 @@ export default class AppLifecycleTerminate extends Command {
         data: callData,
       });
 
-      // Apply gas overrides if provided
       const finalTx = await applyTxOverrides(estimate, flags, { publicClient, address });
       if (flags["max-fee-per-gas"] || flags["max-priority-fee"]) {
         this.log(chalk.yellow(`Gas override active — max fee: ${flags["max-fee-per-gas"] || "estimated"} gwei, priority fee: ${flags["max-priority-fee"] || "estimated"} gwei`));
@@ -81,7 +76,6 @@ export default class AppLifecycleTerminate extends Command {
         this.log(chalk.yellow(`Nonce override active — nonce: ${finalTx.nonce}`));
       }
 
-      // Ask for confirmation unless forced
       if (!flags.force) {
         const costInfo = isMainnet(environmentConfig)
           ? ` (cost: up to ${finalTx.maxCostEth} ETH)`
@@ -93,14 +87,32 @@ export default class AppLifecycleTerminate extends Command {
         }
       }
 
-      const res = await compute.app.terminate(appId, {
-        gas: finalTx,
-      });
-
-      if (!res.tx) {
-        this.log(`\n${chalk.gray(`Termination failed`)}`);
+      if (identity.type === "eoa") {
+        const res = await compute.app.terminate(appId, { gas: finalTx });
+        if (!res.tx) {
+          this.log(`\n${chalk.gray(`Termination failed`)}`);
+        } else {
+          this.log(`\n✅ ${chalk.green(`App terminated successfully`)}`);
+        }
       } else {
-        this.log(`\n✅ ${chalk.green(`App terminated successfully`)}`);
+        const result = await executeWithIdentity({
+          environment,
+          eoaAddress: address,
+          walletClient,
+          publicClient,
+          environmentConfig,
+          to: environmentConfig.appControllerAddress as Address,
+          data: callData,
+          pendingMessage: `Terminating app ${appId}...`,
+          txDescription: "TerminateApp",
+          gas: finalTx,
+        });
+
+        this.log("");
+        printTransactionResult(result, this.log.bind(this));
+        if (result.type === "direct") {
+          this.log(`\n✅ ${chalk.green(`App terminated successfully`)}`);
+        }
       }
     });
   }

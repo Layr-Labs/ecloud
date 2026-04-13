@@ -134,6 +134,22 @@ export {
   type DiscoveredTimelock,
 } from "./common/contract/caller";
 
+// Safe Transaction Service
+export {
+  proposeSafeTransaction,
+  type ProposeSafeTransactionOptions,
+  type SafeProposalResult,
+} from "./common/contract/safe";
+
+// Identity-aware transaction routing
+export {
+  sendWithIdentity,
+  formatTransactionResult,
+  type StoredIdentity as SdkStoredIdentity,
+  type TransactionResult,
+  type IdentityRouterOptions,
+} from "./common/contract/identity-router";
+
 // Export batch gas estimation and delegation check
 export {
   estimateBatchGas,

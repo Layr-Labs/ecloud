@@ -10,8 +10,10 @@ import {
 import { getOrPromptAppID, confirm } from "../../../utils/prompts";
 import { getPrivateKeyInteractive } from "../../../utils/prompts";
 import { createViemClients } from "../../../utils/viemClients";
+import { printIdentityContext, executeWithIdentity, printTransactionResult } from "../../../utils/identityTransaction";
 import chalk from "chalk";
 import { withTelemetry } from "../../../telemetry";
+import type { Address } from "viem";
 
 export default class AppLifecycleStop extends Command {
   static description = "Stop running app (stop GCP instance)";
@@ -55,15 +57,20 @@ export default class AppLifecycleStop extends Command {
         action: "stop",
       });
 
-      // Create viem clients for gas estimation
-      const { publicClient, address } = createViemClients({
+      // Create viem clients
+      const { publicClient, walletClient, address } = createViemClients({
         privateKey,
         rpcUrl,
         environment,
       });
 
-      // Estimate gas cost
+      // Show which identity will be used
+      const identity = printIdentityContext(environment, address, this.log.bind(this));
+
+      // Encode the calldata
       const callData = encodeStopAppData(appId);
+
+      // Estimate gas cost
       const estimate = await estimateTransactionGas({
         publicClient,
         from: address,
@@ -91,14 +98,36 @@ export default class AppLifecycleStop extends Command {
         }
       }
 
-      const res = await compute.app.stop(appId, {
-        gas: finalTx,
-      });
-
-      if (!res.tx) {
-        this.log(`\n${chalk.gray(`Stop failed`)}`);
+      // Route based on active identity
+      if (identity.type === "eoa") {
+        // Direct transaction (existing behavior)
+        const res = await compute.app.stop(appId, { gas: finalTx });
+        if (!res.tx) {
+          this.log(`\n${chalk.gray(`Stop failed`)}`);
+        } else {
+          this.log(`\n✅ ${chalk.green(`App stopped successfully`)}`);
+        }
       } else {
-        this.log(`\n✅ ${chalk.green(`App stopped successfully`)}`);
+        // Identity-aware routing (Safe propose / Timelock schedule)
+        const result = await executeWithIdentity({
+          environment,
+          eoaAddress: address,
+          walletClient,
+          publicClient,
+          environmentConfig,
+          to: environmentConfig.appControllerAddress as Address,
+          data: callData,
+          pendingMessage: `Stopping app ${appId}...`,
+          txDescription: "StopApp",
+          gas: finalTx,
+        });
+
+        this.log("");
+        printTransactionResult(result, this.log.bind(this));
+
+        if (result.type === "direct") {
+          this.log(`\n✅ ${chalk.green(`App stopped successfully`)}`);
+        }
       }
     });
   }
