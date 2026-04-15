@@ -117,6 +117,8 @@ export {
   deployTimelock,
   discoverTimelock,
   discoverTimelockForEOA,
+  getTimelocksByDeployer,
+  getSafesByDeployer,
   CANONICAL_SALT,
   type DeploySafeOptions,
   type DeployTimelockOptions,

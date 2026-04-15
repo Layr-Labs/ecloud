@@ -17,7 +17,8 @@ import {
   getLegacyPrivateKey,
   deleteLegacyPrivateKey,
   getEnvironmentConfig,
-  discoverTimelock,
+  getTimelocksByDeployer,
+  getSafesByDeployer,
   type LegacyKey,
 } from "@layr-labs/ecloud-sdk";
 import { getHiddenInput, displayWarning } from "../../utils/security";
@@ -141,67 +142,54 @@ export default class AuthLogin extends Command {
         replaceAllIdentities([{ type: "eoa", address }]);
         setActiveIdentity(environment, address);
 
-        // Discover Timelock on-chain
+        // Discover all Safes and Timelocks deployed by this EOA via SafeTimelockFactory
         this.log(`\nScanning chain for associated identities...`);
         try {
           const publicClient = createPublicClientOnly({ environment, rpcUrl: flags["rpc-url"] });
           const environmentConfig = getEnvironmentConfig(environment);
-          const found = await discoverTimelock(publicClient, environmentConfig, address as Address);
 
-          if (found) {
-            const delayHours = Number(found.minDelay) / 3600;
-            const delayLabel = delayHours >= 24 ? `${delayHours / 24}d` : `${delayHours}h`;
-            this.log(`Found Timelock: ${found.address}  (${delayLabel} delay)`);
+          const [timelocks, safes] = await Promise.all([
+            getTimelocksByDeployer(publicClient, environmentConfig, address as Address),
+            getSafesByDeployer(publicClient, environmentConfig, address as Address),
+          ]);
 
+          if (safes.length === 0 && timelocks.length === 0) {
+            this.log(`No factory-deployed identities found for this EOA on ${environment}`);
+          }
+
+          for (const safe of safes) {
             const alreadyKnown = getIdentities().some(
-              (id) => id.address.toLowerCase() === found.address.toLowerCase(),
+              (id) => id.address.toLowerCase() === safe.toLowerCase(),
             );
-            if (!alreadyKnown) {
-              const addIt = await confirm({ message: "Add this Timelock to your identities?", default: true });
+            if (alreadyKnown) {
+              this.log(`Safe ${safe}  (already in identities)`);
+            } else {
+              this.log(`Found Safe: ${safe}`);
+              const addIt = await confirm({ message: `Add this Safe to your identities?`, default: true });
               if (addIt) {
-                addIdentity({ type: "timelock", address: found.address, delay: delayLabel, environment });
+                addIdentity({ type: "safe", address: safe, environment });
+                this.log(`✓ Safe added to identities`);
+              }
+            }
+          }
+
+          for (const timelock of timelocks) {
+            const alreadyKnown = getIdentities().some(
+              (id) => id.address.toLowerCase() === timelock.toLowerCase(),
+            );
+            if (alreadyKnown) {
+              this.log(`Timelock ${timelock}  (already in identities)`);
+            } else {
+              this.log(`Found Timelock: ${timelock}`);
+              const addIt = await confirm({ message: `Add this Timelock to your identities?`, default: true });
+              if (addIt) {
+                addIdentity({ type: "timelock", address: timelock, environment });
                 this.log(`✓ Timelock added to identities`);
               }
-            } else {
-              this.log(`✓ Timelock already in your identities`);
-            }
-          } else {
-            this.log(`No Timelock found for this EOA on ${environment}`);
-          }
-        } catch {
-          this.log(`(Timelock scan skipped — chain not reachable)`);
-        }
-
-        // Discover Safes
-        try {
-          const safeServiceUrl =
-            environment === "mainnet-alpha"
-              ? "https://safe-transaction-mainnet.safe.global"
-              : "https://safe-transaction-sepolia.safe.global";
-          const res = await fetch(`${safeServiceUrl}/api/v1/owners/${address}/safes/`);
-          if (res.ok) {
-            const data = await res.json() as { safes: string[] };
-            const safes = data.safes ?? [];
-            if (safes.length > 0) {
-              this.log(`\nFound ${safes.length} Safe(s) where this EOA is an owner:`);
-              for (const safe of safes) {
-                const alreadyKnown = getIdentities().some(
-                  (id) => id.address.toLowerCase() === safe.toLowerCase(),
-                );
-                if (alreadyKnown) {
-                  this.log(`  ${safe}  (already in identities)`);
-                } else {
-                  const addIt = await confirm({ message: `Add Safe ${safe} to your identities?`, default: true });
-                  if (addIt) {
-                    addIdentity({ type: "safe", address: safe, environment });
-                    this.log(`✓ Safe added to identities`);
-                  }
-                }
-              }
             }
           }
         } catch {
-          // Safe Transaction Service not reachable — skip
+          this.log(`(Identity scan skipped — chain not reachable)`);
         }
 
         // Clean up legacy key if imported

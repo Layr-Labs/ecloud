@@ -1843,3 +1843,39 @@ export async function discoverTimelock(
 
 /** @deprecated Use discoverTimelock instead */
 export const discoverTimelockForEOA = discoverTimelock;
+
+/**
+ * Returns all Timelocks deployed by the given deployer via SafeTimelockFactory.
+ * Use this for identity recovery — no salt assumptions required.
+ */
+export async function getTimelocksByDeployer(
+  publicClient: PublicClient,
+  environmentConfig: EnvironmentConfig,
+  deployer: Address,
+): Promise<Address[]> {
+  const factoryAddress = await getSafeTimelockFactoryAddress(publicClient, environmentConfig);
+  return (await publicClient.readContract({
+    address: factoryAddress,
+    abi: SafeTimelockFactoryABI,
+    functionName: "getTimelocksByDeployer",
+    args: [deployer],
+  })) as Address[];
+}
+
+/**
+ * Returns all Safes deployed by the given deployer via SafeTimelockFactory.
+ * Use this for identity recovery — no external API required.
+ */
+export async function getSafesByDeployer(
+  publicClient: PublicClient,
+  environmentConfig: EnvironmentConfig,
+  deployer: Address,
+): Promise<Address[]> {
+  const factoryAddress = await getSafeTimelockFactoryAddress(publicClient, environmentConfig);
+  return (await publicClient.readContract({
+    address: factoryAddress,
+    abi: SafeTimelockFactoryABI,
+    functionName: "getSafesByDeployer",
+    args: [deployer],
+  })) as Address[];
+}
