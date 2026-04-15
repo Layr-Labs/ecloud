@@ -4,6 +4,8 @@ import { withTelemetry } from "../../../telemetry";
 import { commonFlags, applyTxOverrides } from "../../../flags";
 import { createBuildClient, createComputeClient } from "../../../client";
 import { createViemClients } from "../../../utils/viemClients";
+import { printIdentityContext, executeWithIdentity, printTransactionResult } from "../../../utils/identityTransaction";
+import type { Address } from "viem";
 import {
   getDockerfileInteractive,
   getImageReferenceInteractive,
@@ -146,16 +148,13 @@ export default class AppUpgrade extends Command {
         action: "upgrade",
       });
 
-      // Check timelocked mode — timelocked apps cannot be directly upgraded
-      const timelocked = await compute.app.isTimelocked(appID);
-      if (timelocked) {
-        this.error(
-          `App ${appID} is timelocked (Timelock owner).\n` +
-          `Use the two-step timelocked flow instead:\n` +
-          `  ecloud compute app upgrade schedule --app=${appID} --after=<delay>\n` +
-          `  ecloud compute app upgrade execute  --app=${appID}`,
-        );
-      }
+      // Determine active identity for routing
+      const { publicClient, walletClient, address } = createViemClients({
+        privateKey,
+        rpcUrl,
+        environment,
+      });
+      const identity = printIdentityContext(environment, address, this.log.bind(this));
 
       type VerifiableMode = "none" | "git" | "prebuilt";
       let buildClient: Awaited<ReturnType<typeof createBuildClient>> | undefined;
@@ -314,11 +313,6 @@ export default class AppUpgrade extends Command {
       }
 
       // 5. Get current instance type (best-effort, used as default)
-      const { publicClient, walletClient, address } = createViemClients({
-        privateKey,
-        rpcUrl,
-        environment,
-      });
       let currentInstanceType = "";
       try {
         const userApiClient = new UserApiClient(
@@ -388,7 +382,7 @@ export default class AppUpgrade extends Command {
             resourceUsageMonitoring,
           });
 
-      // 10. Apply gas overrides if provided, show estimate, and prompt for confirmation on mainnet
+      // 10. Apply gas overrides if provided, show estimate, and prompt for confirmation
       const finalTx = await applyTxOverrides(gasEstimate, flags, { publicClient, address });
       if (flags["max-fee-per-gas"] || flags["max-priority-fee"]) {
         this.log(chalk.yellow(`\nGas override active — max fee: ${flags["max-fee-per-gas"] || "estimated"} gwei, priority fee: ${flags["max-priority-fee"] || "estimated"} gwei`));
@@ -398,7 +392,7 @@ export default class AppUpgrade extends Command {
       }
       this.log(`\nEstimated transaction cost: ${chalk.cyan(finalTx.maxCostEth)} ETH`);
 
-      if (isMainnet(environmentConfig) && !flags.force) {
+      if ((isMainnet(environmentConfig) || identity.type !== "eoa") && !flags.force) {
         const confirmed = await confirm(`Continue with upgrade?`);
         if (!confirmed) {
           this.log(`\n${chalk.gray(`Upgrade cancelled`)}`);
@@ -406,26 +400,50 @@ export default class AppUpgrade extends Command {
         }
       }
 
-      // 11. Execute the upgrade
-      const res = await compute.app.executeUpgrade(prepared, finalTx);
+      if (identity.type === "eoa") {
+        // 11a. EOA: execute the EIP-7702 batch directly
+        const res = await compute.app.executeUpgrade(prepared, finalTx);
 
-      // 12. Watch until upgrade completes
-      await compute.app.watchUpgrade(res.appId);
+        // 12. Watch until upgrade completes
+        await compute.app.watchUpgrade(res.appId);
 
-      try {
-        const cwd = process.env.INIT_CWD || process.cwd();
-        setLinkedAppForDirectory(environment, cwd, res.appId);
-      } catch (err: any) {
-        this.debug(`Failed to link directory to app: ${err.message}`);
+        try {
+          const cwd = process.env.INIT_CWD || process.cwd();
+          setLinkedAppForDirectory(environment, cwd, res.appId);
+        } catch (err: any) {
+          this.debug(`Failed to link directory to app: ${err.message}`);
+        }
+
+        this.log(
+          `\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${res.appId}, image: ${res.imageRef})`)}`)}`,
+        );
+
+        // Show dashboard link
+        const dashboardUrl = getDashboardUrl(environment, res.appId);
+        this.log(`\n${chalk.gray("View your app:")} ${chalk.blue.underline(dashboardUrl)}`);
+      } else {
+        // 11b. Safe/Timelock: route the upgradeApp calldata through identity router.
+        // The first execution in the batch is always the upgradeApp call.
+        const upgradeCallData = prepared.data.executions[0]!.callData;
+        const result = await executeWithIdentity({
+          environment,
+          eoaAddress: address,
+          walletClient,
+          publicClient,
+          environmentConfig,
+          to: environmentConfig.appControllerAddress as Address,
+          data: upgradeCallData,
+          pendingMessage: `Upgrading app ${appID}...`,
+          txDescription: "UpgradeApp",
+          gas: finalTx,
+        });
+
+        this.log("");
+        printTransactionResult(result, this.log.bind(this));
+        if (result.type === "direct") {
+          this.log(`\n✅ ${chalk.green(`App upgrade submitted (image: ${prepared.imageRef})`)}`);
+        }
       }
-
-      this.log(
-        `\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${res.appId}, image: ${res.imageRef})`)}`)}`,
-      );
-
-      // Show dashboard link
-      const dashboardUrl = getDashboardUrl(environment, res.appId);
-      this.log(`\n${chalk.gray("View your app:")} ${chalk.blue.underline(dashboardUrl)}`);
     });
   }
 }

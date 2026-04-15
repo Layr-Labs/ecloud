@@ -46,12 +46,7 @@ export {
   prepareUpgradeFromVerifiableBuild,
   executeUpgrade,
   watchUpgrade,
-  scheduleUpgrade,
-  executeGovernedUpgrade,
   type PrepareUpgradeResult,
-  type GovernedUpgradeResult,
-  type ScheduleUpgradeOptions,
-  type ExecuteGovernedUpgradeOptions,
 } from "./modules/compute/app/upgrade";
 
 // Export compute module for standalone use
@@ -62,6 +57,8 @@ export {
   encodeStartAppData,
   encodeStopAppData,
   encodeTerminateAppData,
+  encodeTransferOwnershipData,
+  encodeGrantTeamRoleData,
 } from "./modules/compute";
 export {
   createBillingModule,
@@ -104,11 +101,7 @@ export {
   getAppsByBillingAccount,
   calculateAppID,
   getAppTimelocked,
-  getPendingAppUpgrade,
   transferAppOwnership,
-  scheduleAppUpgrade,
-  executeGovernedUpgrade as executeGovernedUpgradeOnChain,
-  cancelAppUpgrade,
   grantTeamRole,
   revokeTeamRole,
   getTeamRoleMembers,
@@ -116,11 +109,7 @@ export {
   TeamRole,
   type GasEstimate,
   type EstimateGasOptions,
-  type PendingUpgrade,
   type TransferOwnershipOptions,
-  type ScheduleUpgradeOptions as ScheduleUpgradeCallerOptions,
-  type ExecuteGovernedUpgradeOptions as ExecuteGovernedUpgradeCallerOptions,
-  type CancelUpgradeOptions,
   type GrantTeamRoleOptions,
   type RevokeTeamRoleOptions,
   getSafeTimelockFactoryAddress,

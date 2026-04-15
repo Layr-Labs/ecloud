@@ -1,10 +1,18 @@
 import { Command, Args, Flags } from "@oclif/core";
-import { getEnvironmentConfig, isMainnet } from "@layr-labs/ecloud-sdk";
+import {
+  getEnvironmentConfig,
+  isMainnet,
+  estimateTransactionGas,
+  encodeTransferOwnershipData,
+} from "@layr-labs/ecloud-sdk";
 import { withTelemetry } from "../../../../telemetry";
-import { commonFlags } from "../../../../flags";
+import { commonFlags, applyTxOverrides } from "../../../../flags";
 import { createComputeClient } from "../../../../client";
-import { getOrPromptAppID, confirm } from "../../../../utils/prompts";
+import { getOrPromptAppID, getPrivateKeyInteractive, confirm } from "../../../../utils/prompts";
+import { createViemClients } from "../../../../utils/viemClients";
+import { printIdentityContext, executeWithIdentity, printTransactionResult } from "../../../../utils/identityTransaction";
 import { isAddress } from "viem";
+import type { Address } from "viem";
 import chalk from "chalk";
 
 export default class AppOwnershipTransfer extends Command {
@@ -24,6 +32,10 @@ export default class AppOwnershipTransfer extends Command {
       description: "New owner address (Safe or Timelock address enables governance mode)",
       env: "ECLOUD_NEW_OWNER",
     }),
+    force: Flags.boolean({
+      description: "Skip all confirmation prompts",
+      default: false,
+    }),
   };
 
   async run() {
@@ -34,7 +46,7 @@ export default class AppOwnershipTransfer extends Command {
       const environment = flags.environment;
       const environmentConfig = getEnvironmentConfig(environment);
       const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
-      const privateKey = flags["private-key"]!;
+      const privateKey = flags["private-key"] || (await getPrivateKeyInteractive(environment));
 
       const appId = await getOrPromptAppID({
         appID: args["app-id"],
@@ -49,16 +61,34 @@ export default class AppOwnershipTransfer extends Command {
         this.error(`Invalid address: ${newOwner}`);
       }
 
-      // Check current timelocked state
-      const timelocked = await compute.app.isTimelocked(appId);
+      const { publicClient, walletClient, address } = createViemClients({
+        privateKey,
+        rpcUrl,
+        environment,
+      });
+
+      const identity = printIdentityContext(environment, address, this.log.bind(this));
 
       this.log(`\nApp:       ${chalk.bold(appId)}`);
       this.log(`New owner: ${chalk.bold(newOwner)}`);
-      if (!timelocked) {
-        this.log(chalk.yellow("\nNote: if the new owner is a Timelock deployed by SafeTimelockFactory, timelocked mode will be enabled automatically."));
+
+      const callData = encodeTransferOwnershipData(appId, newOwner as Address);
+      const estimate = await estimateTransactionGas({
+        publicClient,
+        from: address,
+        to: environmentConfig.appControllerAddress,
+        data: callData,
+      });
+
+      const finalTx = await applyTxOverrides(estimate, flags, { publicClient, address });
+      if (flags["max-fee-per-gas"] || flags["max-priority-fee"]) {
+        this.log(chalk.yellow(`\nGas override active — max fee: ${flags["max-fee-per-gas"] || "estimated"} gwei, priority fee: ${flags["max-priority-fee"] || "estimated"} gwei`));
+      }
+      if (finalTx.nonce != null) {
+        this.log(chalk.yellow(`Nonce override active — nonce: ${finalTx.nonce}`));
       }
 
-      if (isMainnet(environmentConfig)) {
+      if ((isMainnet(environmentConfig) || identity.type !== "eoa") && !flags.force) {
         const confirmed = await confirm("Continue with ownership transfer?");
         if (!confirmed) {
           this.log(`\n${chalk.gray("Transfer cancelled")}`);
@@ -66,16 +96,34 @@ export default class AppOwnershipTransfer extends Command {
         }
       }
 
-      const res = await compute.app.transferOwnership(appId, newOwner);
+      if (identity.type === "eoa") {
+        const res = await compute.app.transferOwnership(appId, newOwner, { gas: finalTx });
+        this.log(`\n✅ ${chalk.green(`Ownership transferred successfully (tx: ${res.tx})`)}`);
 
-      this.log(`\n✅ ${chalk.green(`Ownership transferred successfully (tx: ${res.tx})`)}`);
+        // Check whether timelocked mode was enabled as a result
+        const nowTimelocked = await compute.app.isTimelocked(appId);
+        if (nowTimelocked) {
+          this.log(chalk.cyan("\nTimelocked mode enabled. Sensitive ops (upgrade, terminate, grant ADMIN) now go through Timelock.schedule → execute uniformly."));
+        }
+      } else {
+        const result = await executeWithIdentity({
+          environment,
+          eoaAddress: address,
+          walletClient,
+          publicClient,
+          environmentConfig,
+          to: environmentConfig.appControllerAddress as Address,
+          data: callData,
+          pendingMessage: `Transferring ownership of app ${appId} to ${newOwner}...`,
+          txDescription: "TransferOwnership",
+          gas: finalTx,
+        });
 
-      // Check whether timelocked mode was enabled as a result
-      const nowTimelocked = await compute.app.isTimelocked(appId);
-      if (nowTimelocked) {
-        this.log(chalk.cyan("\nTimelocked mode enabled. Upgrades now require:"));
-        this.log(chalk.cyan("  ecloud compute app upgrade schedule --app=<id> --after=<duration>"));
-        this.log(chalk.cyan("  ecloud compute app upgrade execute  --app=<id>"));
+        this.log("");
+        printTransactionResult(result, this.log.bind(this));
+        if (result.type === "direct") {
+          this.log(`\n✅ ${chalk.green(`Ownership transferred successfully`)}`);
+        }
       }
     });
   }

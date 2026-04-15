@@ -129,19 +129,6 @@
   },
   {
     "type": "function",
-    "name": "cancelUpgrade",
-    "inputs": [
-      {
-        "name": "app",
-        "type": "address",
-        "internalType": "contract IApp"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
     "name": "computeAVSRegistrar",
     "inputs": [],
     "outputs": [
@@ -303,71 +290,6 @@
   },
   {
     "type": "function",
-    "name": "createAppWithIsolatedBilling",
-    "inputs": [
-      {
-        "name": "salt",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "release",
-        "type": "tuple",
-        "internalType": "structIAppController.Release",
-        "components": [
-          {
-            "name": "rmsRelease",
-            "type": "tuple",
-            "internalType": "structIReleaseManagerTypes.Release",
-            "components": [
-              {
-                "name": "artifacts",
-                "type": "tuple[]",
-                "internalType": "structIReleaseManagerTypes.Artifact[]",
-                "components": [
-                  {
-                    "name": "digest",
-                    "type": "bytes32",
-                    "internalType": "bytes32"
-                  },
-                  {
-                    "name": "registry",
-                    "type": "string",
-                    "internalType": "string"
-                  }
-                ]
-              },
-              {
-                "name": "upgradeByTime",
-                "type": "uint32",
-                "internalType": "uint32"
-              }
-            ]
-          },
-          {
-            "name": "publicEnv",
-            "type": "bytes",
-            "internalType": "bytes"
-          },
-          {
-            "name": "encryptedEnv",
-            "type": "bytes",
-            "internalType": "bytes"
-          }
-        ]
-      }
-    ],
-    "outputs": [
-      {
-        "name": "app",
-        "type": "address",
-        "internalType": "contractIApp"
-      }
-    ],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
     "name": "domainSeparator",
     "inputs": [],
     "outputs": [
@@ -378,71 +300,6 @@
       }
     ],
     "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "executeUpgrade",
-    "inputs": [
-      {
-        "name": "app",
-        "type": "address",
-        "internalType": "contract IApp"
-      },
-      {
-        "name": "release",
-        "type": "tuple",
-        "internalType": "struct IAppController.Release",
-        "components": [
-          {
-            "name": "rmsRelease",
-            "type": "tuple",
-            "internalType": "struct IReleaseManagerTypes.Release",
-            "components": [
-              {
-                "name": "artifacts",
-                "type": "tuple[]",
-                "internalType": "struct IReleaseManagerTypes.Artifact[]",
-                "components": [
-                  {
-                    "name": "digest",
-                    "type": "bytes32",
-                    "internalType": "bytes32"
-                  },
-                  {
-                    "name": "registry",
-                    "type": "string",
-                    "internalType": "string"
-                  }
-                ]
-              },
-              {
-                "name": "upgradeByTime",
-                "type": "uint32",
-                "internalType": "uint32"
-              }
-            ]
-          },
-          {
-            "name": "publicEnv",
-            "type": "bytes",
-            "internalType": "bytes"
-          },
-          {
-            "name": "encryptedEnv",
-            "type": "bytes",
-            "internalType": "bytes"
-          }
-        ]
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -459,44 +316,6 @@
         "name": "",
         "type": "uint32",
         "internalType": "uint32"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "getBillingType",
-    "inputs": [
-      {
-        "name": "app",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint8",
-        "internalType": "uint8"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "getAppCreator",
-    "inputs": [
-      {
-        "name": "app",
-        "type": "address",
-        "internalType": "contractIApp"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
       }
     ],
     "stateMutability": "view"
@@ -646,62 +465,6 @@
             "name": "timelocked",
             "type": "bool",
             "internalType": "bool"
-          }
-        ]
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "getAppsByBillingAccount",
-    "inputs": [
-      {
-        "name": "account",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "offset",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "limit",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "apps",
-        "type": "address[]",
-        "internalType": "contractIApp[]"
-      },
-      {
-        "name": "appConfigsMem",
-        "type": "tuple[]",
-        "internalType": "structIAppController.AppConfig[]",
-        "components": [
-          {
-            "name": "creator",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "operatorSetId",
-            "type": "uint32",
-            "internalType": "uint32"
-          },
-          {
-            "name": "latestReleaseBlockNumber",
-            "type": "uint32",
-            "internalType": "uint32"
-          },
-          {
-            "name": "status",
-            "type": "uint8",
-            "internalType": "enumIAppController.AppStatus"
           }
         ]
       }
@@ -891,37 +654,6 @@
         "name": "",
         "type": "uint32",
         "internalType": "uint32"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "getPendingUpgrade",
-    "inputs": [
-      {
-        "name": "app",
-        "type": "address",
-        "internalType": "contract IApp"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "tuple",
-        "internalType": "struct IAppController.PendingUpgrade",
-        "components": [
-          {
-            "name": "releaseHash",
-            "type": "bytes32",
-            "internalType": "bytes32"
-          },
-          {
-            "name": "readyAt",
-            "type": "uint256",
-            "internalType": "uint256"
-          }
-        ]
       }
     ],
     "stateMutability": "view"
@@ -1329,70 +1061,6 @@
   },
   {
     "type": "function",
-    "name": "scheduleUpgrade",
-    "inputs": [
-      {
-        "name": "app",
-        "type": "address",
-        "internalType": "contract IApp"
-      },
-      {
-        "name": "release",
-        "type": "tuple",
-        "internalType": "struct IAppController.Release",
-        "components": [
-          {
-            "name": "rmsRelease",
-            "type": "tuple",
-            "internalType": "struct IReleaseManagerTypes.Release",
-            "components": [
-              {
-                "name": "artifacts",
-                "type": "tuple[]",
-                "internalType": "struct IReleaseManagerTypes.Artifact[]",
-                "components": [
-                  {
-                    "name": "digest",
-                    "type": "bytes32",
-                    "internalType": "bytes32"
-                  },
-                  {
-                    "name": "registry",
-                    "type": "string",
-                    "internalType": "string"
-                  }
-                ]
-              },
-              {
-                "name": "upgradeByTime",
-                "type": "uint32",
-                "internalType": "uint32"
-              }
-            ]
-          },
-          {
-            "name": "publicEnv",
-            "type": "bytes",
-            "internalType": "bytes"
-          },
-          {
-            "name": "encryptedEnv",
-            "type": "bytes",
-            "internalType": "bytes"
-          }
-        ]
-      },
-      {
-        "name": "delay",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
     "name": "setMaxActiveAppsPerUser",
     "inputs": [
       {
@@ -1761,85 +1429,6 @@
   },
   {
     "type": "event",
-    "name": "AppUpgradeCancelled",
-    "inputs": [
-      {
-        "name": "app",
-        "type": "address",
-        "indexed": true,
-        "internalType": "contract IApp"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "AppUpgradeScheduled",
-    "inputs": [
-      {
-        "name": "app",
-        "type": "address",
-        "indexed": true,
-        "internalType": "contract IApp"
-      },
-      {
-        "name": "readyAt",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "release",
-        "type": "tuple",
-        "indexed": false,
-        "internalType": "struct IAppController.Release",
-        "components": [
-          {
-            "name": "rmsRelease",
-            "type": "tuple",
-            "internalType": "struct IReleaseManagerTypes.Release",
-            "components": [
-              {
-                "name": "artifacts",
-                "type": "tuple[]",
-                "internalType": "struct IReleaseManagerTypes.Artifact[]",
-                "components": [
-                  {
-                    "name": "digest",
-                    "type": "bytes32",
-                    "internalType": "bytes32"
-                  },
-                  {
-                    "name": "registry",
-                    "type": "string",
-                    "internalType": "string"
-                  }
-                ]
-              },
-              {
-                "name": "upgradeByTime",
-                "type": "uint32",
-                "internalType": "uint32"
-              }
-            ]
-          },
-          {
-            "name": "publicEnv",
-            "type": "bytes",
-            "internalType": "bytes"
-          },
-          {
-            "name": "encryptedEnv",
-            "type": "bytes",
-            "internalType": "bytes"
-          }
-        ]
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
     "name": "AppUpgraded",
     "inputs": [
       {
@@ -2086,21 +1675,6 @@
   },
   {
     "type": "error",
-    "name": "NoScheduledUpgrade",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "NotTimelocked",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "ReleaseMismatch",
-    "inputs": []
-  },
-  {
-    "type": "error",
     "name": "SignatureExpired",
     "inputs": []
   },
@@ -2114,15 +1688,5 @@
         "internalType": "string"
       }
     ]
-  },
-  {
-    "type": "error",
-    "name": "TimelockRequired",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "UpgradeNotReady",
-    "inputs": []
   }
 ]

@@ -203,8 +203,7 @@ export function formatTransactionResult(result: TransactionResult): string[] {
         `  Tx: ${result.txHash}`,
         `  Delay: ${result.delayLabel}`,
         ``,
-        `  After the delay elapses, run:`,
-        `  ecloud compute app upgrade execute <app-id>`,
+        `  After the delay elapses, execute the queued operation on the Timelock.`,
       ];
 
     case "safe-proposal-for-timelock":
@@ -216,8 +215,7 @@ export function formatTransactionResult(result: TransactionResult): string[] {
         `  Step 1: Approve the schedule at:`,
         `  ${result.proposal.safeUrl}`,
         ``,
-        `  Step 2: After Safe approval + ${result.delayLabel} delay, run:`,
-        `  ecloud compute app upgrade execute <app-id>`,
+        `  Step 2: After Safe approval + ${result.delayLabel} delay, execute the queued operation on the Timelock.`,
       ];
   }
 }

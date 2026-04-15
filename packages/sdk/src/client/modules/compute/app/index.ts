@@ -35,29 +35,14 @@ import {
   getBillingType,
   getAppsByBillingAccount,
   getAppTimelocked,
-  getPendingAppUpgrade,
   transferAppOwnership,
-  scheduleAppUpgrade,
-  executeGovernedUpgrade,
-  cancelAppUpgrade,
   grantTeamRole as grantTeamRoleCaller,
   revokeTeamRole as revokeTeamRoleCaller,
   getTeamRoleMembers as getTeamRoleMembersCaller,
   getAppOwner,
-  getTimelockOpTimestamp,
-  getTimelockTerminateTimestamp,
-  getTimelockTransferOwnershipTimestamp,
-  getTimelockGrantAdminTimestamp,
-  scheduleTimelockTransferOwnership,
-  executeTimelockTransferOwnership,
-  scheduleTimelockTerminateApp,
-  executeTimelockTerminateApp,
-  scheduleTimelockGrantTeamAdmin,
-  executeTimelockGrantTeamAdmin,
   TeamRole,
   type GasEstimate,
   type AppConfig,
-  type PendingUpgrade,
 } from "../../../common/contract/caller";
 import { withSDKTelemetry } from "../../../common/telemetry/wrapper";
 import { UserApiClient } from "../../../common/utils/userapi";
@@ -85,6 +70,8 @@ const CONTROLLER_ABI = parseAbi([
   "function startApp(address appId)",
   "function stopApp(address appId)",
   "function terminateApp(address appId)",
+  "function transferOwnership(address appId, address newOwner)",
+  "function grantTeamRole(address team, uint8 role, address account)",
 ]);
 
 /**
@@ -117,6 +104,28 @@ export function encodeTerminateAppData(appId: AppId): Hex {
     abi: CONTROLLER_ABI,
     functionName: "terminateApp",
     args: [appId],
+  });
+}
+
+/**
+ * Encode transferOwnership call data for gas estimation / identity routing
+ */
+export function encodeTransferOwnershipData(appId: AppId, newOwner: Address): Hex {
+  return encodeFunctionData({
+    abi: CONTROLLER_ABI,
+    functionName: "transferOwnership",
+    args: [appId, newOwner],
+  });
+}
+
+/**
+ * Encode grantTeamRole call data for gas estimation / identity routing
+ */
+export function encodeGrantTeamRoleData(team: Address, role: TeamRole, account: Address): Hex {
+  return encodeFunctionData({
+    abi: CONTROLLER_ABI,
+    functionName: "grantTeamRole",
+    args: [team, role, account],
   });
 }
 
@@ -192,40 +201,12 @@ export interface AppModule {
 
   // Governance
   isTimelocked: (appId: AppId) => Promise<boolean>;
-  getPendingUpgrade: (appId: AppId) => Promise<PendingUpgrade>;
   transferOwnership: (appId: AppId, newOwner: Address, opts?: { gas?: GasEstimate }) => Promise<{ tx: Hex }>;
-  scheduleUpgrade: (
-    appId: AppId,
-    release: import("../../../common/types").Release,
-    delaySeconds: bigint,
-    opts?: { gas?: GasEstimate },
-  ) => Promise<{ tx: Hex }>;
-  executeGovernedUpgrade: (
-    appId: AppId,
-    release: import("../../../common/types").Release,
-    opts?: { gas?: GasEstimate },
-  ) => Promise<{ tx: Hex }>;
-
-  // Cancel scheduled upgrade
-  cancelUpgrade: (appId: AppId, opts?: { gas?: GasEstimate }) => Promise<{ tx: Hex }>;
 
   // Team role management
   grantTeamRole: (appId: AppId, role: TeamRole, account: Address, opts?: { gas?: GasEstimate }) => Promise<{ tx: Hex }>;
   revokeTeamRole: (appId: AppId, role: TeamRole, account: Address, opts?: { gas?: GasEstimate }) => Promise<{ tx: Hex }>;
   getTeamRoleMembers: (appId: AppId, role: TeamRole) => Promise<Address[]>;
-
-  // Timelocked operations — routed through TimelockController.schedule/execute
-  // Use these when the app owner is a Timelock (isTimelocked() === true).
-  getTimelockOpReadyAt: (timelockAddress: Address, appControllerAddress: Address, calldata: Hex) => Promise<bigint>;
-  getTimelockTerminateReadyAt: (appId: AppId, timelockAddress: Address) => Promise<bigint>;
-  getTimelockTransferOwnershipReadyAt: (appId: AppId, timelockAddress: Address, newOwner: Address) => Promise<bigint>;
-  getTimelockGrantAdminReadyAt: (appId: AppId, timelockAddress: Address, account: Address) => Promise<bigint>;
-  scheduleTimelockTransferOwnership: (appId: AppId, timelockAddress: Address, newOwner: Address, delaySeconds: bigint, opts?: { gas?: GasEstimate }) => Promise<{ tx: Hex }>;
-  executeTimelockTransferOwnership: (appId: AppId, timelockAddress: Address, newOwner: Address, opts?: { gas?: GasEstimate }) => Promise<{ tx: Hex }>;
-  scheduleTimelockTerminate: (appId: AppId, timelockAddress: Address, delaySeconds: bigint, opts?: { gas?: GasEstimate }) => Promise<{ tx: Hex }>;
-  executeTimelockTerminate: (appId: AppId, timelockAddress: Address, opts?: { gas?: GasEstimate }) => Promise<{ tx: Hex }>;
-  scheduleTimelockGrantAdmin: (appId: AppId, timelockAddress: Address, account: Address, delaySeconds: bigint, opts?: { gas?: GasEstimate }) => Promise<{ tx: Hex }>;
-  executeTimelockGrantAdmin: (appId: AppId, timelockAddress: Address, account: Address, opts?: { gas?: GasEstimate }) => Promise<{ tx: Hex }>;
 }
 
 export interface AppModuleConfig {
@@ -632,10 +613,6 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
       return getAppTimelocked(publicClient, environment, appId as Address);
     },
 
-    async getPendingUpgrade(appId) {
-      return getPendingAppUpgrade(publicClient, environment, appId as Address);
-    },
-
     async transferOwnership(appId, newOwner, opts) {
       return withSDKTelemetry(
         {
@@ -651,78 +628,6 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
               environmentConfig: environment,
               appID: appId as Address,
               newOwner: newOwner as Address,
-              gas: opts?.gas,
-            },
-            logger,
-          );
-          return { tx };
-        },
-      );
-    },
-
-    async scheduleUpgrade(appId, release, delaySeconds, opts) {
-      return withSDKTelemetry(
-        {
-          functionName: "scheduleUpgrade",
-          skipTelemetry,
-          properties: { environment: ctx.environment },
-        },
-        async () => {
-          const tx = await scheduleAppUpgrade(
-            {
-              walletClient,
-              publicClient,
-              environmentConfig: environment,
-              appID: appId as Address,
-              release,
-              delaySeconds,
-              gas: opts?.gas,
-            },
-            logger,
-          );
-          return { tx };
-        },
-      );
-    },
-
-    async executeGovernedUpgrade(appId, release, opts) {
-      return withSDKTelemetry(
-        {
-          functionName: "executeGovernedUpgrade",
-          skipTelemetry,
-          properties: { environment: ctx.environment },
-        },
-        async () => {
-          const tx = await executeGovernedUpgrade(
-            {
-              walletClient,
-              publicClient,
-              environmentConfig: environment,
-              appID: appId as Address,
-              release,
-              gas: opts?.gas,
-            },
-            logger,
-          );
-          return { tx };
-        },
-      );
-    },
-
-    async cancelUpgrade(appId, opts) {
-      return withSDKTelemetry(
-        {
-          functionName: "cancelUpgrade",
-          skipTelemetry,
-          properties: { environment: ctx.environment },
-        },
-        async () => {
-          const tx = await cancelAppUpgrade(
-            {
-              walletClient,
-              publicClient,
-              environmentConfig: environment,
-              appID: appId as Address,
               gas: opts?.gas,
             },
             logger,
@@ -787,103 +692,6 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
     async getTeamRoleMembers(appId, role) {
       const team = await getAppOwner(publicClient, environment, appId as Address);
       return getTeamRoleMembersCaller(publicClient, environment, team, role);
-    },
-
-    async getTimelockOpReadyAt(timelockAddress, appControllerAddress, calldata) {
-      return getTimelockOpTimestamp(publicClient, timelockAddress, appControllerAddress, calldata);
-    },
-
-    async getTimelockTerminateReadyAt(appId, timelockAddress) {
-      return getTimelockTerminateTimestamp(publicClient, timelockAddress, environment.appControllerAddress as Address, appId as Address);
-    },
-
-    async getTimelockTransferOwnershipReadyAt(appId, timelockAddress, newOwner) {
-      return getTimelockTransferOwnershipTimestamp(publicClient, timelockAddress, environment.appControllerAddress as Address, appId as Address, newOwner);
-    },
-
-    async getTimelockGrantAdminReadyAt(appId, timelockAddress, account) {
-      const team = await getAppOwner(publicClient, environment, appId as Address);
-      return getTimelockGrantAdminTimestamp(publicClient, timelockAddress, environment.appControllerAddress as Address, team, account as Address);
-    },
-
-    async scheduleTimelockTransferOwnership(appId, timelockAddress, newOwner, delaySeconds, opts) {
-      return withSDKTelemetry(
-        { functionName: "scheduleTimelockTransferOwnership", skipTelemetry, properties: { environment: ctx.environment } },
-        async () => {
-          const tx = await scheduleTimelockTransferOwnership(
-            { walletClient, publicClient, environmentConfig: environment, timelockAddress, appID: appId as Address, newOwner, delaySeconds, gas: opts?.gas },
-            logger,
-          );
-          return { tx };
-        },
-      );
-    },
-
-    async executeTimelockTransferOwnership(appId, timelockAddress, newOwner, opts) {
-      return withSDKTelemetry(
-        { functionName: "executeTimelockTransferOwnership", skipTelemetry, properties: { environment: ctx.environment } },
-        async () => {
-          const tx = await executeTimelockTransferOwnership(
-            { walletClient, publicClient, environmentConfig: environment, timelockAddress, appID: appId as Address, newOwner, gas: opts?.gas },
-            logger,
-          );
-          return { tx };
-        },
-      );
-    },
-
-    async scheduleTimelockTerminate(appId, timelockAddress, delaySeconds, opts) {
-      return withSDKTelemetry(
-        { functionName: "scheduleTimelockTerminate", skipTelemetry, properties: { environment: ctx.environment } },
-        async () => {
-          const tx = await scheduleTimelockTerminateApp(
-            { walletClient, publicClient, environmentConfig: environment, timelockAddress, appID: appId as Address, delaySeconds, gas: opts?.gas },
-            logger,
-          );
-          return { tx };
-        },
-      );
-    },
-
-    async executeTimelockTerminate(appId, timelockAddress, opts) {
-      return withSDKTelemetry(
-        { functionName: "executeTimelockTerminate", skipTelemetry, properties: { environment: ctx.environment } },
-        async () => {
-          const tx = await executeTimelockTerminateApp(
-            { walletClient, publicClient, environmentConfig: environment, timelockAddress, appID: appId as Address, gas: opts?.gas },
-            logger,
-          );
-          return { tx };
-        },
-      );
-    },
-
-    async scheduleTimelockGrantAdmin(appId, timelockAddress, account, delaySeconds, opts) {
-      return withSDKTelemetry(
-        { functionName: "scheduleTimelockGrantAdmin", skipTelemetry, properties: { environment: ctx.environment } },
-        async () => {
-          const team = await getAppOwner(publicClient, environment, appId as Address);
-          const tx = await scheduleTimelockGrantTeamAdmin(
-            { walletClient, publicClient, environmentConfig: environment, timelockAddress, team, account: account as Address, delaySeconds, gas: opts?.gas },
-            logger,
-          );
-          return { tx };
-        },
-      );
-    },
-
-    async executeTimelockGrantAdmin(appId, timelockAddress, account, opts) {
-      return withSDKTelemetry(
-        { functionName: "executeTimelockGrantAdmin", skipTelemetry, properties: { environment: ctx.environment } },
-        async () => {
-          const team = await getAppOwner(publicClient, environment, appId as Address);
-          const tx = await executeTimelockGrantTeamAdmin(
-            { walletClient, publicClient, environmentConfig: environment, timelockAddress, team, account: account as Address, gas: opts?.gas },
-            logger,
-          );
-          return { tx };
-        },
-      );
     },
   };
 }

@@ -19,7 +19,7 @@
  */
 
 import { executeBatch, checkERC7702Delegation } from "./eip7702";
-import { Address, Hex, encodeFunctionData, decodeErrorResult, bytesToHex, hexToBytes } from "viem";
+import { Address, Hex, encodeFunctionData, decodeErrorResult, bytesToHex } from "viem";
 import type { WalletClient, PublicClient } from "viem";
 
 import {
@@ -740,14 +740,6 @@ export async function prepareUpgradeBatch(
     needsPermissionChange,
   } = options;
 
-  // 0. Check timelocked — timelocked apps cannot use direct upgradeApp()
-  const timelocked = await getAppTimelocked(publicClient, environmentConfig, appID);
-  if (timelocked) {
-    throw new Error(
-      "this app is timelocked — use 'ecloud compute app upgrade schedule' and 'ecloud compute app upgrade execute' instead of a direct upgrade",
-    );
-  }
-
   // 1. Pack upgrade app call
   // Convert Release Uint8Array values to hex strings for viem
   const releaseForViem = {
@@ -1012,18 +1004,6 @@ function formatAppControllerError(decoded: {
       return new Error("invalid release metadata URI provided");
     case "InvalidShortString":
       return new Error("invalid short string format");
-    case "TimelockRequired":
-      return new Error(
-        "this app is timelocked — use 'ecloud compute app upgrade schedule' and 'ecloud compute app upgrade execute' instead of a direct upgrade",
-      );
-    case "NotTimelocked":
-      return new Error("this operation requires a timelocked app — transfer ownership to a Timelock first");
-    case "UpgradeNotReady":
-      return new Error("the scheduled upgrade delay has not elapsed yet");
-    case "NoScheduledUpgrade":
-      return new Error("no upgrade is scheduled for this app");
-    case "ReleaseMismatch":
-      return new Error("the provided release does not match the scheduled upgrade");
     default:
       return new Error(`contract error: ${errorName}`);
   }
@@ -1255,7 +1235,7 @@ export async function getBlockTimestamps(
 }
 
 /**
- * Get whether an app is timelocked (requires scheduleUpgrade + executeUpgrade)
+ * Get whether an app is timelocked (owner is a Timelock — sensitive ops go through Timelock.schedule → execute)
  */
 export async function getAppTimelocked(
   publicClient: PublicClient,
@@ -1270,83 +1250,6 @@ export async function getAppTimelocked(
   });
 
   return timelocked as boolean;
-}
-
-/**
- * Get the pending upgrade for a governed app
- */
-export interface PendingUpgrade {
-  releaseHash: Hex;
-  readyAt: bigint;
-}
-
-export async function getPendingAppUpgrade(
-  publicClient: PublicClient,
-  environmentConfig: EnvironmentConfig,
-  appID: Address,
-): Promise<PendingUpgrade> {
-  const result = (await publicClient.readContract({
-    address: environmentConfig.appControllerAddress as Address,
-    abi: AppControllerABI,
-    functionName: "getPendingUpgrade",
-    args: [appID],
-  })) as { releaseHash: Hex; readyAt: bigint };
-
-  return { releaseHash: result.releaseHash, readyAt: result.readyAt };
-}
-
-/**
- * Fetch the scheduled Release struct from chain logs.
- *
- * The contract only stores keccak256(abi.encode(release)) on-chain, but the full
- * Release is emitted in the AppUpgradeScheduled event. We find the event whose
- * readyAt matches the pending upgrade and decode the Release from it — no rebuild needed.
- */
-export async function getScheduledRelease(
-  publicClient: PublicClient,
-  environmentConfig: EnvironmentConfig,
-  appID: Address,
-): Promise<Release> {
-  const pending = await getPendingAppUpgrade(publicClient, environmentConfig, appID);
-  if (pending.readyAt === 0n) {
-    throw new Error("no upgrade is scheduled for this app");
-  }
-
-  const eventAbi = (AppControllerABI as any[]).find(
-    (e) => e.type === "event" && e.name === "AppUpgradeScheduled",
-  );
-
-  const logs = await publicClient.getLogs({
-    address: environmentConfig.appControllerAddress as Address,
-    event: eventAbi,
-    args: { app: appID },
-    fromBlock: "earliest",
-  });
-
-  // scheduleUpgrade overwrites any previous pending upgrade, so match on readyAt
-  const match = [...logs].reverse().find((log) => {
-    const { readyAt } = log.args as any;
-    return BigInt(readyAt) === pending.readyAt;
-  });
-
-  if (!match) {
-    throw new Error(
-      "AppUpgradeScheduled event not found for this app — the node may not have full history",
-    );
-  }
-
-  const { release } = match.args as any;
-  return {
-    rmsRelease: {
-      artifacts: release.rmsRelease.artifacts.map((a: any) => ({
-        digest: hexToBytes(a.digest),
-        registry: a.registry,
-      })),
-      upgradeByTime: Number(release.rmsRelease.upgradeByTime),
-    },
-    publicEnv: hexToBytes(release.publicEnv),
-    encryptedEnv: hexToBytes(release.encryptedEnv),
-  };
 }
 
 /**
@@ -1386,156 +1289,6 @@ export async function transferAppOwnership(
       data,
       pendingMessage: `Transferring ownership of app ${appID} to ${newOwner}...`,
       txDescription: "TransferOwnership",
-      gas,
-    },
-    logger,
-  );
-}
-
-/**
- * Options for scheduling a governed upgrade
- */
-export interface ScheduleUpgradeOptions {
-  walletClient: WalletClient;
-  publicClient: PublicClient;
-  environmentConfig: EnvironmentConfig;
-  appID: Address;
-  release: Release;
-  /** Delay in seconds before the upgrade can be executed */
-  delaySeconds: bigint;
-  gas?: GasEstimate;
-}
-
-/**
- * Schedule an upgrade for a governed app (Safe/Timelock owner).
- * Emits AppUpgradeScheduled; controller takes no action until executeGovernedUpgrade is called.
- */
-export async function scheduleAppUpgrade(
-  options: ScheduleUpgradeOptions,
-  logger: Logger = noopLogger,
-): Promise<Hex> {
-  const { walletClient, publicClient, environmentConfig, appID, release, delaySeconds, gas } = options;
-
-  const releaseForViem = {
-    rmsRelease: {
-      artifacts: release.rmsRelease.artifacts.map((artifact) => ({
-        digest: `0x${bytesToHex(artifact.digest).slice(2).padStart(64, "0")}` as Hex,
-        registry: artifact.registry,
-      })),
-      upgradeByTime: release.rmsRelease.upgradeByTime,
-    },
-    publicEnv: bytesToHex(release.publicEnv) as Hex,
-    encryptedEnv: bytesToHex(release.encryptedEnv) as Hex,
-  };
-
-  const data = encodeFunctionData({
-    abi: AppControllerABI,
-    functionName: "scheduleUpgrade",
-    args: [appID, releaseForViem, delaySeconds],
-  });
-
-  return sendAndWaitForTransaction(
-    {
-      walletClient,
-      publicClient,
-      environmentConfig,
-      to: environmentConfig.appControllerAddress as Address,
-      data,
-      pendingMessage: `Scheduling upgrade for app ${appID} (delay: ${delaySeconds}s)...`,
-      txDescription: "ScheduleUpgrade",
-      gas,
-    },
-    logger,
-  );
-}
-
-/**
- * Options for executing a scheduled governed upgrade
- */
-export interface ExecuteGovernedUpgradeOptions {
-  walletClient: WalletClient;
-  publicClient: PublicClient;
-  environmentConfig: EnvironmentConfig;
-  appID: Address;
-  release: Release;
-  gas?: GasEstimate;
-}
-
-/**
- * Execute a previously scheduled upgrade for a governed app.
- * The release must match the hash committed in scheduleUpgrade.
- */
-export async function executeGovernedUpgrade(
-  options: ExecuteGovernedUpgradeOptions,
-  logger: Logger = noopLogger,
-): Promise<Hex> {
-  const { walletClient, publicClient, environmentConfig, appID, release, gas } = options;
-
-  const releaseForViem = {
-    rmsRelease: {
-      artifacts: release.rmsRelease.artifacts.map((artifact) => ({
-        digest: `0x${bytesToHex(artifact.digest).slice(2).padStart(64, "0")}` as Hex,
-        registry: artifact.registry,
-      })),
-      upgradeByTime: release.rmsRelease.upgradeByTime,
-    },
-    publicEnv: bytesToHex(release.publicEnv) as Hex,
-    encryptedEnv: bytesToHex(release.encryptedEnv) as Hex,
-  };
-
-  const data = encodeFunctionData({
-    abi: AppControllerABI,
-    functionName: "executeUpgrade",
-    args: [appID, releaseForViem],
-  });
-
-  return sendAndWaitForTransaction(
-    {
-      walletClient,
-      publicClient,
-      environmentConfig,
-      to: environmentConfig.appControllerAddress as Address,
-      data,
-      pendingMessage: `Executing scheduled upgrade for app ${appID}...`,
-      txDescription: "ExecuteUpgrade",
-      gas,
-    },
-    logger,
-  );
-}
-
-/**
- * Cancel a pending scheduled upgrade for a timelocked app.
- */
-export interface CancelUpgradeOptions {
-  walletClient: WalletClient;
-  publicClient: PublicClient;
-  environmentConfig: EnvironmentConfig;
-  appID: Address;
-  gas?: GasEstimate;
-}
-
-export async function cancelAppUpgrade(
-  options: CancelUpgradeOptions,
-  logger: Logger = noopLogger,
-): Promise<Hex> {
-  const { walletClient, publicClient, environmentConfig, appID, gas } = options;
-
-  const data = encodeFunctionData({
-    abi: AppControllerABI,
-    functionName: "cancelUpgrade",
-    args: [appID],
-  });
-
-  return sendAndWaitForTransaction(
-    {
-      walletClient,
-      publicClient,
-      environmentConfig,
-      to: environmentConfig.appControllerAddress as Address,
-      data,
-      pendingMessage: `Cancelling scheduled upgrade for app ${appID}...`,
-      txDescription: "CancelUpgrade",
       gas,
     },
     logger,
@@ -1926,13 +1679,13 @@ export interface DiscoveredTimelock {
  */
 // ─── Timelocked operations via TimelockController ────────────────────────────
 //
-// transferOwnership, terminateApp, and grantTeamRole(ADMIN) are restricted to
-// msg.sender == owner when an app is timelocked. The Timelock IS the owner, so
-// these operations must be enqueued through TimelockController.schedule() and
-// then sent via TimelockController.execute() after the delay elapses.
+// All sensitive ops (upgradeApp, transferOwnership, terminateApp, grantTeamRole)
+// go through TimelockController.schedule() → execute() uniformly when the app
+// owner is a Timelock. The generic scheduleTimelockOp / executeTimelockOp
+// helpers below handle any AppController calldata.
 //
 // We use predecessor=0 and salt=0 so the operation hash is deterministic from
-// (target, calldata) alone — consistent with how upgrades are queued.
+// (target, calldata) alone.
 
 const ZERO_BYTES32 = "0x0000000000000000000000000000000000000000000000000000000000000000" as Hex;
 
@@ -2053,188 +1806,6 @@ export async function getTimelockOpTimestamp(
     functionName: "getTimestamp",
     args: [id],
   })) as bigint;
-}
-
-/**
- * Return the scheduled timestamp for a terminateApp operation queued through a Timelock.
- */
-export async function getTimelockTerminateTimestamp(
-  publicClient: PublicClient,
-  timelockAddress: Address,
-  appControllerAddress: Address,
-  appID: Address,
-): Promise<bigint> {
-  const calldata = encodeFunctionData({ abi: AppControllerABI, functionName: "terminateApp", args: [appID] });
-  return getTimelockOpTimestamp(publicClient, timelockAddress, appControllerAddress, calldata);
-}
-
-/**
- * Return the scheduled timestamp for a transferOwnership operation queued through a Timelock.
- */
-export async function getTimelockTransferOwnershipTimestamp(
-  publicClient: PublicClient,
-  timelockAddress: Address,
-  appControllerAddress: Address,
-  appID: Address,
-  newOwner: Address,
-): Promise<bigint> {
-  const calldata = encodeFunctionData({ abi: AppControllerABI, functionName: "transferOwnership", args: [appID, newOwner] });
-  return getTimelockOpTimestamp(publicClient, timelockAddress, appControllerAddress, calldata);
-}
-
-/**
- * Return the scheduled timestamp for a grantTeamRole(ADMIN) operation queued through a Timelock.
- */
-export async function getTimelockGrantAdminTimestamp(
-  publicClient: PublicClient,
-  timelockAddress: Address,
-  appControllerAddress: Address,
-  team: Address,
-  account: Address,
-): Promise<bigint> {
-  const calldata = encodeFunctionData({ abi: AppControllerABI, functionName: "grantTeamRole", args: [team, TeamRole.ADMIN, account] });
-  return getTimelockOpTimestamp(publicClient, timelockAddress, appControllerAddress, calldata);
-}
-
-// ─── Per-operation helpers ────────────────────────────────────────────────────
-
-export interface ScheduleTimelockTransferOwnershipOptions {
-  walletClient: WalletClient;
-  publicClient: PublicClient;
-  environmentConfig: EnvironmentConfig;
-  timelockAddress: Address;
-  appID: Address;
-  newOwner: Address;
-  delaySeconds: bigint;
-  gas?: GasEstimate;
-}
-
-export async function scheduleTimelockTransferOwnership(
-  options: ScheduleTimelockTransferOwnershipOptions,
-  logger: Logger = noopLogger,
-): Promise<Hex> {
-  const { appID, newOwner, delaySeconds, timelockAddress, ...base } = options;
-  const calldata = encodeFunctionData({
-    abi: AppControllerABI,
-    functionName: "transferOwnership",
-    args: [appID, newOwner],
-  });
-  return scheduleTimelockOp({ ...base, timelockAddress, calldata, delaySeconds }, logger);
-}
-
-export interface ExecuteTimelockTransferOwnershipOptions {
-  walletClient: WalletClient;
-  publicClient: PublicClient;
-  environmentConfig: EnvironmentConfig;
-  timelockAddress: Address;
-  appID: Address;
-  newOwner: Address;
-  gas?: GasEstimate;
-}
-
-export async function executeTimelockTransferOwnership(
-  options: ExecuteTimelockTransferOwnershipOptions,
-  logger: Logger = noopLogger,
-): Promise<Hex> {
-  const { appID, newOwner, timelockAddress, ...base } = options;
-  const calldata = encodeFunctionData({
-    abi: AppControllerABI,
-    functionName: "transferOwnership",
-    args: [appID, newOwner],
-  });
-  return executeTimelockOp({ ...base, timelockAddress, calldata }, logger);
-}
-
-export interface ScheduleTimelockTerminateAppOptions {
-  walletClient: WalletClient;
-  publicClient: PublicClient;
-  environmentConfig: EnvironmentConfig;
-  timelockAddress: Address;
-  appID: Address;
-  delaySeconds: bigint;
-  gas?: GasEstimate;
-}
-
-export async function scheduleTimelockTerminateApp(
-  options: ScheduleTimelockTerminateAppOptions,
-  logger: Logger = noopLogger,
-): Promise<Hex> {
-  const { appID, delaySeconds, timelockAddress, ...base } = options;
-  const calldata = encodeFunctionData({
-    abi: AppControllerABI,
-    functionName: "terminateApp",
-    args: [appID],
-  });
-  return scheduleTimelockOp({ ...base, timelockAddress, calldata, delaySeconds }, logger);
-}
-
-export interface ExecuteTimelockTerminateAppOptions {
-  walletClient: WalletClient;
-  publicClient: PublicClient;
-  environmentConfig: EnvironmentConfig;
-  timelockAddress: Address;
-  appID: Address;
-  gas?: GasEstimate;
-}
-
-export async function executeTimelockTerminateApp(
-  options: ExecuteTimelockTerminateAppOptions,
-  logger: Logger = noopLogger,
-): Promise<Hex> {
-  const { appID, timelockAddress, ...base } = options;
-  const calldata = encodeFunctionData({
-    abi: AppControllerABI,
-    functionName: "terminateApp",
-    args: [appID],
-  });
-  return executeTimelockOp({ ...base, timelockAddress, calldata }, logger);
-}
-
-export interface ScheduleTimelockGrantTeamAdminOptions {
-  walletClient: WalletClient;
-  publicClient: PublicClient;
-  environmentConfig: EnvironmentConfig;
-  timelockAddress: Address;
-  team: Address;
-  account: Address;
-  delaySeconds: bigint;
-  gas?: GasEstimate;
-}
-
-export async function scheduleTimelockGrantTeamAdmin(
-  options: ScheduleTimelockGrantTeamAdminOptions,
-  logger: Logger = noopLogger,
-): Promise<Hex> {
-  const { team, account, delaySeconds, timelockAddress, ...base } = options;
-  const calldata = encodeFunctionData({
-    abi: AppControllerABI,
-    functionName: "grantTeamRole",
-    args: [team, TeamRole.ADMIN, account],
-  });
-  return scheduleTimelockOp({ ...base, timelockAddress, calldata, delaySeconds }, logger);
-}
-
-export interface ExecuteTimelockGrantTeamAdminOptions {
-  walletClient: WalletClient;
-  publicClient: PublicClient;
-  environmentConfig: EnvironmentConfig;
-  timelockAddress: Address;
-  team: Address;
-  account: Address;
-  gas?: GasEstimate;
-}
-
-export async function executeTimelockGrantTeamAdmin(
-  options: ExecuteTimelockGrantTeamAdminOptions,
-  logger: Logger = noopLogger,
-): Promise<Hex> {
-  const { team, account, timelockAddress, ...base } = options;
-  const calldata = encodeFunctionData({
-    abi: AppControllerABI,
-    functionName: "grantTeamRole",
-    args: [team, TeamRole.ADMIN, account],
-  });
-  return executeTimelockOp({ ...base, timelockAddress, calldata }, logger);
 }
 
 export async function discoverTimelock(
