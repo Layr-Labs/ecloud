@@ -142,18 +142,29 @@ export default class AuthLogin extends Command {
         replaceAllIdentities([{ type: "eoa", address }]);
         setActiveIdentity(environment, address);
 
-        // Discover all Safes and Timelocks deployed by this EOA via SafeTimelockFactory
+        // Discover all Safes and Timelocks deployed by this EOA via SafeTimelockFactory.
+        // Discovery order:
+        //   1. Safes deployed by EOA
+        //   2. Timelocks deployed by EOA directly (EOA → Timelock)
+        //   3. Timelocks deployed by each Safe (Safe → Timelock)
         this.log(`\nScanning chain for associated identities...`);
         try {
           const publicClient = createPublicClientOnly({ environment, rpcUrl: flags["rpc-url"] });
           const environmentConfig = getEnvironmentConfig(environment);
 
-          const [timelocks, safes] = await Promise.all([
-            getTimelocksByDeployer(publicClient, environmentConfig, address as Address),
+          // Step 1 + 2: fetch Safes and direct Timelocks in parallel
+          const [safes, directTimelocks] = await Promise.all([
             getSafesByDeployer(publicClient, environmentConfig, address as Address),
+            getTimelocksByDeployer(publicClient, environmentConfig, address as Address),
           ]);
 
-          if (safes.length === 0 && timelocks.length === 0) {
+          // Step 3: for each Safe, fetch Timelocks it deployed
+          const safeTimelockArrays = await Promise.all(
+            safes.map((safe) => getTimelocksByDeployer(publicClient, environmentConfig, safe as Address)),
+          );
+          const safeTimelocks = safeTimelockArrays.flat();
+
+          if (safes.length === 0 && directTimelocks.length === 0) {
             this.log(`No factory-deployed identities found for this EOA on ${environment}`);
           }
 
@@ -173,7 +184,8 @@ export default class AuthLogin extends Command {
             }
           }
 
-          for (const timelock of timelocks) {
+          // Timelocks: direct (EOA → Timelock) first, then Safe-deployed (Safe → Timelock)
+          for (const timelock of directTimelocks) {
             const alreadyKnown = getIdentities().some(
               (id) => id.address.toLowerCase() === timelock.toLowerCase(),
             );
@@ -184,6 +196,25 @@ export default class AuthLogin extends Command {
               const addIt = await confirm({ message: `Add this Timelock to your identities?`, default: true });
               if (addIt) {
                 addIdentity({ type: "timelock", address: timelock, environment });
+                this.log(`✓ Timelock added to identities`);
+              }
+            }
+          }
+
+          for (const timelock of safeTimelocks) {
+            const safe = safes.find((s) =>
+              safeTimelockArrays[safes.indexOf(s)]?.some((t) => t.toLowerCase() === timelock.toLowerCase()),
+            );
+            const alreadyKnown = getIdentities().some(
+              (id) => id.address.toLowerCase() === timelock.toLowerCase(),
+            );
+            if (alreadyKnown) {
+              this.log(`Timelock ${timelock}  (already in identities)`);
+            } else {
+              this.log(`Found Timelock: ${timelock}${safe ? ` (deployed by Safe ${safe})` : ""}`);
+              const addIt = await confirm({ message: `Add this Timelock to your identities?`, default: true });
+              if (addIt) {
+                addIdentity({ type: "timelock", address: timelock, safeAddress: safe, environment });
                 this.log(`✓ Timelock added to identities`);
               }
             }
