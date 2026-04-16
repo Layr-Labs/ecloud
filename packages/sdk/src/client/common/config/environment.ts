@@ -39,7 +39,7 @@ const ENVIRONMENTS: Record<string, Omit<EnvironmentConfig, "chainID">> = {
   "sepolia-dev": {
     name: "sepolia",
     build: "dev",
-    appControllerAddress: "0x84639cE873580a5c19DCCb78f92EFAdCC01019e0",
+    appControllerAddress: "0xf4D36493CE5FFBC5518DC8c0a89C4eBBD2aee009",
     permissionControllerAddress: ChainAddresses[SEPOLIA_CHAIN_ID].PermissionController,
     erc7702DelegatorAddress: CommonAddresses.ERC7702Delegator,
     kmsServerURL: "http://10.128.0.57:8080",
