@@ -211,20 +211,39 @@ export default class AuthIdentityNew extends Command {
       const knownTimelocks = existingTimelocks.filter((a) => storedAddresses.has(a.toLowerCase()));
 
       if (newTimelocks.length === 0) {
-        // All already in config — just offer to switch active
+        // All already in config — offer to switch active or deploy a new one
         this.log(`\nAll Timelocks for this ${proposerLabel} are already in your identities:`);
-        for (const addr of knownTimelocks) this.log(`  ${addr}`);
-        const activate = await confirm({ message: "Set one as active identity?", default: true });
-        if (activate) {
+        const identityMap = new Map(getIdentities().map((id) => [id.address.toLowerCase(), id]));
+        for (const addr of knownTimelocks) {
+          const delay = identityMap.get(addr.toLowerCase())?.delay;
+          this.log(`  ${addr}${delay ? `  (delay: ${delay})` : ""}`);
+        }
+        const action = await select({
+          message: "What would you like to do?",
+          choices: [
+            { name: "Set one as active identity", value: "activate" },
+            { name: "Deploy a new Timelock with a different delay", value: "deploy" },
+            { name: "Nothing", value: "nothing" },
+          ],
+        });
+        if (action === "activate") {
           const chosen = existingTimelocks.length === 1
             ? existingTimelocks[0]
             : (await select({
                 message: "Which Timelock?",
-                choices: existingTimelocks.map((a) => ({ name: a, value: a })),
+                choices: existingTimelocks.map((a) => {
+                  const delay = identityMap.get(a.toLowerCase())?.delay;
+                  return { name: delay ? `${a}  (delay: ${delay})` : a, value: a };
+                }),
               }));
           setActiveIdentity(flags.environment, chosen);
           this.log(`✓ Active identity set to Timelock ${chosen}`);
+          return;
+        } else if (action === "nothing") {
+          return;
         }
+        // action === "deploy": fall through to deploy flow below
+        useRandomSalt = true;
       } else {
         this.log(`\nFound ${newTimelocks.length} Timelock${newTimelocks.length > 1 ? "s" : ""} deployed by this ${proposerLabel}:`);
         for (const addr of newTimelocks) this.log(`  ${addr}`);
@@ -243,11 +262,10 @@ export default class AuthIdentityNew extends Command {
           setActiveIdentity(flags.environment, chosen as Address);
           this.log(`✓ Timelock${newTimelocks.length > 1 ? "s" : ""} added and active set to ${chosen}`);
         }
+        const deployAnother = await confirm({ message: "Deploy an additional Timelock with a different delay?", default: false });
+        if (!deployAnother) return;
+        useRandomSalt = true;
       }
-
-      const deployAnother = await confirm({ message: "Deploy an additional Timelock with a different delay?", default: false });
-      if (!deployAnother) return;
-      useRandomSalt = true;
     }
 
     const delayStr = await input({
