@@ -153,7 +153,7 @@ export function getBuildType(): "dev" | "prod" {
   // Fall back to runtime environment variable
   const runtimeType = process.env.BUILD_TYPE?.toLowerCase();
 
-  const buildType = buildTimeType || runtimeType;
+  const buildType = runtimeType || buildTimeType;
 
   if (buildType === "dev") {
     return "dev";
