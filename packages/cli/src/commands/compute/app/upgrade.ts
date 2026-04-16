@@ -420,10 +420,26 @@ export default class AppUpgrade extends Command {
         `\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${res.appId}, image: ${res.imageRef})`)}`)}`,
       );
 
-      // Update profile name if --name was provided
+      // Update profile name if --name was provided (merge with existing profile to avoid wiping fields)
       if (flags.name) {
         try {
-          await compute.app.setProfile(res.appId, { name: flags.name });
+          const { publicClient, walletClient } = createViemClients({
+            privateKey,
+            rpcUrl,
+            environment,
+          });
+          const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, {
+            clientId: getClientId(),
+          });
+          const infos = await userApiClient.getInfos([res.appId], 1);
+          const existing = infos[0]?.profile;
+
+          await compute.app.setProfile(res.appId, {
+            name: flags.name,
+            website: existing?.website,
+            description: existing?.description,
+            xURL: existing?.xURL,
+          });
           invalidateProfileCache(environment);
           this.log(`✓ Profile name updated to "${flags.name}"`);
         } catch (err: any) {
