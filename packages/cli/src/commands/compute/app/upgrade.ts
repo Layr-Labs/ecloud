@@ -65,7 +65,8 @@ export default class AppUpgrade extends Command {
     }),
     env: Flags.string({
       required: false,
-      description: "Inline environment variable in KEY=VALUE format (can be specified multiple times)",
+      description:
+        "Inline environment variable in KEY=VALUE format (can be specified multiple times)",
       multiple: true,
     }),
     "log-visibility": Flags.string({
@@ -310,12 +311,9 @@ export default class AppUpgrade extends Command {
       });
       let currentInstanceType = "";
       try {
-        const userApiClient = new UserApiClient(
-          environmentConfig,
-          walletClient,
-          publicClient,
-          { clientId: getClientId() },
-        );
+        const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, {
+          clientId: getClientId(),
+        });
         const infos = await userApiClient.getInfos([appID], 1);
         if (infos.length > 0) {
           currentInstanceType = infos[0].machineType || "";
@@ -359,28 +357,33 @@ export default class AppUpgrade extends Command {
       // the normal prepareUpgrade path so that layerRemoteImageIfNeeded can
       // add the ecloud runtime layer (startup script, KMS client, Caddy) if
       // the image doesn't already have it.
-      const { prepared, gasEstimate } = verifiableMode === "git"
-        ? await compute.app.prepareUpgradeFromVerifiableBuild(appID, {
-            imageRef,
-            imageDigest: verifiableImageDigest!,
-            envFile: envFilePath,
-            instanceType,
-            logVisibility,
-            resourceUsageMonitoring,
-          })
-        : await compute.app.prepareUpgrade(appID, {
-            dockerfile: dockerfilePath,
-            imageRef,
-            envFile: envFilePath,
-            instanceType,
-            logVisibility,
-            resourceUsageMonitoring,
-          });
+      const { prepared, gasEstimate } =
+        verifiableMode === "git"
+          ? await compute.app.prepareUpgradeFromVerifiableBuild(appID, {
+              imageRef,
+              imageDigest: verifiableImageDigest!,
+              envFile: envFilePath,
+              instanceType,
+              logVisibility,
+              resourceUsageMonitoring,
+            })
+          : await compute.app.prepareUpgrade(appID, {
+              dockerfile: dockerfilePath,
+              imageRef,
+              envFile: envFilePath,
+              instanceType,
+              logVisibility,
+              resourceUsageMonitoring,
+            });
 
       // 10. Apply gas overrides if provided, show estimate, and prompt for confirmation on mainnet
       const finalTx = await applyTxOverrides(gasEstimate, flags, { publicClient, address });
       if (flags["max-fee-per-gas"] || flags["max-priority-fee"]) {
-        this.log(chalk.yellow(`\nGas override active — max fee: ${flags["max-fee-per-gas"] || "estimated"} gwei, priority fee: ${flags["max-priority-fee"] || "estimated"} gwei`));
+        this.log(
+          chalk.yellow(
+            `\nGas override active — max fee: ${flags["max-fee-per-gas"] || "estimated"} gwei, priority fee: ${flags["max-priority-fee"] || "estimated"} gwei`,
+          ),
+        );
       }
       if (finalTx.nonce != null) {
         this.log(chalk.yellow(`Nonce override active — nonce: ${finalTx.nonce}`));
@@ -415,6 +418,13 @@ export default class AppUpgrade extends Command {
       // Show dashboard link
       const dashboardUrl = getDashboardUrl(environment, res.appId);
       this.log(`\n${chalk.gray("View your app:")} ${chalk.blue.underline(dashboardUrl)}`);
+
+      // Health verification hint — "Running" means container started, not serving traffic
+      this.log(
+        chalk.gray(
+          `\nNote: "Running" means the container started. Verify your app is serving traffic before considering the upgrade complete.`,
+        ),
+      );
     });
   }
 }
@@ -434,7 +444,9 @@ async function fetchAvailableInstanceTypes(
       rpcUrl,
       environment,
     });
-    const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, { clientId: getClientId() });
+    const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, {
+      clientId: getClientId(),
+    });
 
     const skuList = await userApiClient.getSKUs();
     if (skuList.skus.length === 0) {
