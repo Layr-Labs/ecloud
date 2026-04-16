@@ -196,6 +196,7 @@ export default class AuthIdentityNew extends Command {
 
     // Find all Timelocks deployed by this proposer via the factory registry
     const existingTimelocks = await getTimelocksByDeployer(publicClient, environmentConfig, proposer);
+    let useRandomSalt = false;
     if (existingTimelocks.length > 0) {
       const proposerLabel = proposerKind === "eoa" ? "EOA" : "Safe";
       const storedAddresses = new Set(getIdentities().map((id) => id.address.toLowerCase()));
@@ -241,6 +242,7 @@ export default class AuthIdentityNew extends Command {
 
       const deployAnother = await confirm({ message: "Deploy an additional Timelock with a different delay?", default: false });
       if (!deployAnother) return;
+      useRandomSalt = true;
     }
 
     const delayStr = await input({
@@ -259,6 +261,7 @@ export default class AuthIdentityNew extends Command {
         minDelay,
         proposers: [proposer],
         executors: [proposer],
+        salt: useRandomSalt ? (`0x${Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("hex")}` as `0x${string}`) : undefined,
       } as DeployTimelockOptions,
       logger,
     );

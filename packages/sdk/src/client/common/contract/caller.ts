@@ -1621,6 +1621,8 @@ export interface DeployTimelockOptions {
   minDelay: bigint;
   proposers: Address[];
   executors: Address[];
+  /** Salt for CREATE2 deployment. Defaults to CANONICAL_SALT (bytes32(0)). */
+  salt?: Hex;
 }
 
 /**
@@ -1631,7 +1633,7 @@ export async function deployTimelock(
   logger: Logger = noopLogger,
 ): Promise<{ tx: Hex; timelock: Address }> {
   const { walletClient, publicClient, environmentConfig, minDelay, proposers, executors } = options;
-  const salt = CANONICAL_SALT;
+  const salt = options.salt ?? CANONICAL_SALT;
 
   const factoryAddress = await getSafeTimelockFactoryAddress(publicClient, environmentConfig);
   const account = walletClient.account!;
