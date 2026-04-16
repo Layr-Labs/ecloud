@@ -46,7 +46,7 @@ export default class AuthWhoami extends Command {
       if (identities.length === 0) {
         this.log("Identities: none");
         this.log("");
-        this.log("Run 'ecloud auth new' to create an identity.");
+        this.log("Run 'ecloud auth gen' to generate a new key, or 'ecloud auth login' to import an existing one.");
         return;
       }
 
@@ -67,7 +67,7 @@ export default class AuthWhoami extends Command {
       if (!activeAddress) {
         this.log("No active identity. Run 'ecloud auth login' to select one.");
       } else {
-        this.log("Run 'ecloud auth login' to switch active identity.");
+        this.log("Run 'ecloud auth identity select' to switch active identity.");
       }
     });
   }
