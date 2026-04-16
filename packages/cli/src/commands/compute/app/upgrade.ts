@@ -22,7 +22,7 @@ import {
   promptVerifiablePrebuiltImageRef,
 } from "../../../utils/prompts";
 import { getClientId } from "../../../utils/version";
-import { setLinkedAppForDirectory } from "../../../utils/globalConfig";
+import { setLinkedAppForDirectory, invalidateProfileCache } from "../../../utils/globalConfig";
 import chalk from "chalk";
 import { formatVerifiableBuildSummary } from "../../../utils/build";
 import { assertCommitSha40, runVerifiableBuildAndVerify } from "../../../utils/verifiableBuild";
@@ -47,6 +47,11 @@ export default class AppUpgrade extends Command {
 
   static flags = {
     ...commonFlags,
+    name: Flags.string({
+      required: false,
+      description: "Update the app's profile name after upgrade",
+      env: "ECLOUD_NAME",
+    }),
     dockerfile: Flags.string({
       required: false,
       description: "Path to Dockerfile",
@@ -414,6 +419,17 @@ export default class AppUpgrade extends Command {
       this.log(
         `\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${res.appId}, image: ${res.imageRef})`)}`)}`,
       );
+
+      // Update profile name if --name was provided
+      if (flags.name) {
+        try {
+          await compute.app.setProfile(res.appId, { name: flags.name });
+          invalidateProfileCache(environment);
+          this.log(`✓ Profile name updated to "${flags.name}"`);
+        } catch (err: any) {
+          this.warn(`Upgrade succeeded but failed to update profile name: ${err.message}`);
+        }
+      }
 
       // Show dashboard link
       const dashboardUrl = getDashboardUrl(environment, res.appId);
