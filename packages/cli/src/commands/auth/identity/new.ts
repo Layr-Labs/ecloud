@@ -27,10 +27,10 @@ import type { Address } from "viem";
 
 /** Parse human delay strings like "24h", "7d", "30m" into seconds */
 function parseDelay(s: string): bigint {
-  const match = s.trim().match(/^(\d+)(s|m|h|d)?$/i);
-  if (!match) throw new Error(`Invalid delay format: "${s}". Use e.g. "24h", "7d", "3600s".`);
+  const match = s.trim().match(/^(\d+)(s|m|h|d)$/i);
+  if (!match) throw new Error(`Invalid delay format: "${s}". Use e.g. "24h", "7d", "3600s" (unit required).`);
   const n = parseInt(match[1], 10);
-  const unit = (match[2] || "s").toLowerCase();
+  const unit = match[2].toLowerCase();
   const multipliers: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 };
   return BigInt(n * multipliers[unit]);
 }
@@ -122,7 +122,11 @@ export default class AuthIdentityNew extends Command {
     const addTimelock = await confirm({ message: "Add timelock delay?", default: false });
     let delayStr = "";
     if (addTimelock) {
-      delayStr = await input({ message: 'Minimum delay (e.g., "24h", "7d"):', default: "24h" });
+      delayStr = await input({
+        message: 'Minimum delay (e.g., "24h", "7d"):',
+        default: "24h",
+        validate: (v) => /^\d+(s|m|h|d)$/i.test(v.trim()) ? true : 'Invalid format. Use a number followed by a unit: s, m, h, or d (e.g., "24h", "7d").',
+      });
     }
     const logger = makeLogger(this.log.bind(this), this.warn.bind(this), flags.verbose);
 
@@ -249,6 +253,7 @@ export default class AuthIdentityNew extends Command {
     const delayStr = await input({
       message: 'Minimum delay (e.g., "24h", "7d"):',
       default: "24h",
+      validate: (v) => /^\d+(s|m|h|d)$/i.test(v.trim()) ? true : 'Invalid format. Use a number followed by a unit: s, m, h, or d (e.g., "24h", "7d").',
     });
     const minDelay = parseDelay(delayStr);
     const logger = makeLogger(this.log.bind(this), this.warn.bind(this), flags.verbose);
