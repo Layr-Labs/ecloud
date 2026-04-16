@@ -32,6 +32,10 @@ export interface StoredIdentity {
   delay?: string;
   /** For Timelock(Safe): the underlying Safe address */
   safeAddress?: string;
+  /** For Safe: signing threshold, e.g. 2 */
+  threshold?: number;
+  /** For Safe: owner addresses */
+  owners?: string[];
 }
 
 export interface GlobalConfig {
@@ -481,7 +485,16 @@ export function clearActiveIdentity(environment: string): void {
 export function formatIdentity(id: StoredIdentity): string {
   const short = id.address.slice(0, 6) + "..." + id.address.slice(-4);
   if (id.type === "eoa") return `${short}  (EOA)`;
-  if (id.type === "safe") return `${short}  (Safe${id.environment ? ` · ${id.environment}` : ""})`;
+  if (id.type === "safe") {
+    let safeInfo = "Safe";
+    if (id.threshold != null && id.owners != null) {
+      const ownerSummary = id.owners.length <= 3
+        ? id.owners.map((o) => `${o.slice(0, 6)}…${o.slice(-4)}`).join(", ")
+        : `${id.owners.slice(0, 2).map((o) => `${o.slice(0, 6)}…${o.slice(-4)}`).join(", ")} +${id.owners.length - 2} more`;
+      safeInfo = `Safe ${id.threshold}/${id.owners.length} · ${ownerSummary}`;
+    }
+    return `${short}  (${safeInfo}${id.environment ? ` · ${id.environment}` : ""})`;
+  }
   if (id.type === "timelock") {
     const via = id.safeAddress
       ? `via Safe ${id.safeAddress.slice(0, 6)}...${id.safeAddress.slice(-4)}`

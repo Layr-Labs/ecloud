@@ -24,6 +24,7 @@ import {
 import { getHiddenInput, displayWarning } from "../../utils/security";
 import { withTelemetry } from "../../telemetry";
 import { commonFlags } from "../../flags";
+import { fetchSafeInfo, fetchTimelockDelay } from "../../utils/contractAbis";
 import {
   getIdentities,
   addIdentity,
@@ -178,7 +179,8 @@ export default class AuthLogin extends Command {
               this.log(`Found Safe: ${safe}`);
               const addIt = await confirm({ message: `Add this Safe to your identities?`, default: true });
               if (addIt) {
-                addIdentity({ type: "safe", address: safe, environment });
+                const { threshold, owners } = await fetchSafeInfo(publicClient, safe as Address);
+                addIdentity({ type: "safe", address: safe, environment, threshold, owners });
                 this.log(`✓ Safe added to identities`);
               }
             }
@@ -195,8 +197,9 @@ export default class AuthLogin extends Command {
               this.log(`Found Timelock: ${timelock}`);
               const addIt = await confirm({ message: `Add this Timelock to your identities?`, default: true });
               if (addIt) {
-                addIdentity({ type: "timelock", address: timelock, environment });
-                this.log(`✓ Timelock added to identities`);
+                const delay = await fetchTimelockDelay(publicClient, timelock as Address);
+                addIdentity({ type: "timelock", address: timelock, delay, environment });
+                this.log(`✓ Timelock added to identities (delay: ${delay})`);
               }
             }
           }
@@ -214,8 +217,9 @@ export default class AuthLogin extends Command {
               this.log(`Found Timelock: ${timelock}${safe ? ` (deployed by Safe ${safe})` : ""}`);
               const addIt = await confirm({ message: `Add this Timelock to your identities?`, default: true });
               if (addIt) {
-                addIdentity({ type: "timelock", address: timelock, safeAddress: safe, environment });
-                this.log(`✓ Timelock added to identities`);
+                const delay = await fetchTimelockDelay(publicClient, timelock as Address);
+                addIdentity({ type: "timelock", address: timelock, delay, safeAddress: safe, environment });
+                this.log(`✓ Timelock added to identities (delay: ${delay})`);
               }
             }
           }

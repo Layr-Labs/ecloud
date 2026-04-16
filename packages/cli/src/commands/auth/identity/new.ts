@@ -15,6 +15,7 @@ import {
   deploySafe,
   deployTimelock,
   getTimelocksByDeployer,
+  getSafesByDeployer,
   type DeploySafeOptions,
   type DeployTimelockOptions,
 } from "@layr-labs/ecloud-sdk";
@@ -22,6 +23,7 @@ import { withTelemetry } from "../../../telemetry";
 import { commonFlags, validateCommonFlags } from "../../../flags";
 import { createViemClients } from "../../../utils/viemClients";
 import { addIdentity, setActiveIdentity, getIdentities } from "../../../utils/globalConfig";
+import { SAFE_ABI, TIMELOCK_ABI } from "../../../utils/contractAbis";
 import { keccak256, encodePacked } from "viem";
 import type { Address } from "viem";
 
@@ -163,7 +165,7 @@ export default class AuthIdentityNew extends Command {
       this.log(`  Tx: ${tlTx}`);
       this.log(`\n✓ Active identity set to: Timelock(Safe) ${timelock}`);
     } else {
-      addIdentity({ type: "safe", address: safe, environment: flags.environment });
+      addIdentity({ type: "safe", address: safe, environment: flags.environment, threshold, owners: owners.map(String) });
       setActiveIdentity(flags.environment, safe);
       this.log(`\n✓ Active identity set to: Safe ${safe}`);
     }
@@ -184,24 +186,45 @@ export default class AuthIdentityNew extends Command {
       this.error(`Account ${signerAddress} has no ETH. Fund it before deploying.`);
     }
 
-    const proposerKind = await select({
-      message: "Is the proposer/executor an EOA or a Safe?",
-      choices: [
-        { name: "EOA  (signing key)", value: "eoa" },
-        { name: "Gnosis Safe  (multi-sig)", value: "safe" },
-      ],
-    });
+    // Build proposer choices: EOA + any Safes deployed by this EOA
+    const knownSafes = await getSafesByDeployer(publicClient, environmentConfig, signerAddress);
 
-    const proposer: Address = proposerKind === "eoa"
-      ? signerAddress
-      : await input({
-          message: "Safe address:",
-          validate: (v) => (v.trim().startsWith("0x") ? true : "Must be a 0x address"),
-        }) as Address;
+    const safeInfos = await Promise.all(
+      knownSafes.map(async (safe) => {
+        try {
+          const [threshold, owners] = await Promise.all([
+            publicClient.readContract({ address: safe, abi: SAFE_ABI, functionName: "getThreshold" }) as Promise<bigint>,
+            publicClient.readContract({ address: safe, abi: SAFE_ABI, functionName: "getOwners" }) as Promise<Address[]>,
+          ]);
+          const ownerSummary = owners.length <= 3
+            ? owners.map((o) => `${o.slice(0, 6)}…${o.slice(-4)}`).join(", ")
+            : `${owners.slice(0, 2).map((o) => `${o.slice(0, 6)}…${o.slice(-4)}`).join(", ")} +${owners.length - 2} more`;
+          return { safe, label: `Safe  ${safe}  (${threshold}/${owners.length}: ${ownerSummary})` };
+        } catch {
+          return { safe, label: `Safe  ${safe}` };
+        }
+      }),
+    );
 
-    // Find all Timelocks deployed by this proposer via the factory registry
-    const existingTimelocks = await getTimelocksByDeployer(publicClient, environmentConfig, proposer);
-    let useRandomSalt = false;
+    const proposerChoices: { name: string; value: string }[] = [
+      { name: `EOA  ${signerAddress}`, value: `eoa:${signerAddress}` },
+      ...safeInfos.map(({ safe, label }) => ({ name: label, value: `safe:${safe}` })),
+    ];
+
+    const proposerChoice = await select({ message: "Select proposer/executor:", choices: proposerChoices });
+    const proposerKind = proposerChoice.startsWith("safe:") ? "safe" : "eoa";
+    const proposer = proposerChoice.split(":")[1] as Address;
+
+    // Timelocks are indexed by msg.sender (always the signing EOA), not by proposer/executor.
+    // Filter to those where the selected proposer actually holds PROPOSER_ROLE.
+    const allDeployedTimelocks = await getTimelocksByDeployer(publicClient, environmentConfig, signerAddress);
+    const PROPOSER_ROLE = "0xb09aa5aeb3702cfd50b6b62bc4532604938f21248a27a1d5ca736082b6819cc1" as const;
+    const proposerFlags = await Promise.all(
+      allDeployedTimelocks.map((tl) =>
+        publicClient.readContract({ address: tl, abi: TIMELOCK_ABI, functionName: "hasRole", args: [PROPOSER_ROLE, proposer] }) as Promise<boolean>,
+      ),
+    );
+    const existingTimelocks = allDeployedTimelocks.filter((_, i) => proposerFlags[i]);
     if (existingTimelocks.length > 0) {
       const proposerLabel = proposerKind === "eoa" ? "EOA" : "Safe";
       const storedAddresses = new Set(getIdentities().map((id) => id.address.toLowerCase()));
@@ -243,7 +266,6 @@ export default class AuthIdentityNew extends Command {
           return;
         }
         // action === "deploy": fall through to deploy flow below
-        useRandomSalt = true;
       } else {
         this.log(`\nFound ${newTimelocks.length} Timelock${newTimelocks.length > 1 ? "s" : ""} deployed by this ${proposerLabel}:`);
         for (const addr of newTimelocks) this.log(`  ${addr}`);
@@ -264,7 +286,6 @@ export default class AuthIdentityNew extends Command {
         }
         const deployAnother = await confirm({ message: "Deploy an additional Timelock with a different delay?", default: false });
         if (!deployAnother) return;
-        useRandomSalt = true;
       }
     }
 
@@ -285,7 +306,7 @@ export default class AuthIdentityNew extends Command {
         minDelay,
         proposers: [proposer],
         executors: [proposer],
-        salt: useRandomSalt ? keccak256(encodePacked(["uint256"], [minDelay])) : undefined,
+        salt: keccak256(encodePacked(["address", "uint256"], [proposer, minDelay])),
       } as DeployTimelockOptions,
       logger,
     );
