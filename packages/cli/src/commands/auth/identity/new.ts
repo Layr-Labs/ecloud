@@ -22,6 +22,7 @@ import { withTelemetry } from "../../../telemetry";
 import { commonFlags, validateCommonFlags } from "../../../flags";
 import { createViemClients } from "../../../utils/viemClients";
 import { addIdentity, setActiveIdentity, getIdentities } from "../../../utils/globalConfig";
+import { keccak256, encodePacked } from "viem";
 import type { Address } from "viem";
 
 /** Parse human delay strings like "24h", "7d", "30m" into seconds */
@@ -261,7 +262,7 @@ export default class AuthIdentityNew extends Command {
         minDelay,
         proposers: [proposer],
         executors: [proposer],
-        salt: useRandomSalt ? (`0x${Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("hex")}` as `0x${string}`) : undefined,
+        salt: useRandomSalt ? keccak256(encodePacked(["uint256"], [minDelay])) : undefined,
       } as DeployTimelockOptions,
       logger,
     );
