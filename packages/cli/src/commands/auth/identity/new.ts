@@ -238,7 +238,9 @@ export default class AuthIdentityNew extends Command {
           this.log(`✓ Timelock${newTimelocks.length > 1 ? "s" : ""} added and active set to ${chosen}`);
         }
       }
-      return;
+
+      const deployAnother = await confirm({ message: "Deploy an additional Timelock with a different delay?", default: false });
+      if (!deployAnother) return;
     }
 
     const delayStr = await input({
