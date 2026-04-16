@@ -22,7 +22,7 @@ import {
   promptVerifiablePrebuiltImageRef,
 } from "../../../utils/prompts";
 import { getClientId } from "../../../utils/version";
-import { setLinkedAppForDirectory } from "../../../utils/globalConfig";
+import { setLinkedAppForDirectory, invalidateProfileCache } from "../../../utils/globalConfig";
 import chalk from "chalk";
 import { formatVerifiableBuildSummary } from "../../../utils/build";
 import { assertCommitSha40, runVerifiableBuildAndVerify } from "../../../utils/verifiableBuild";
@@ -47,6 +47,11 @@ export default class AppUpgrade extends Command {
 
   static flags = {
     ...commonFlags,
+    name: Flags.string({
+      required: false,
+      description: "Update the app's profile name after upgrade",
+      env: "ECLOUD_NAME",
+    }),
     dockerfile: Flags.string({
       required: false,
       description: "Path to Dockerfile",
@@ -65,7 +70,8 @@ export default class AppUpgrade extends Command {
     }),
     env: Flags.string({
       required: false,
-      description: "Inline environment variable in KEY=VALUE format (can be specified multiple times)",
+      description:
+        "Inline environment variable in KEY=VALUE format (can be specified multiple times)",
       multiple: true,
     }),
     "log-visibility": Flags.string({
@@ -310,12 +316,9 @@ export default class AppUpgrade extends Command {
       });
       let currentInstanceType = "";
       try {
-        const userApiClient = new UserApiClient(
-          environmentConfig,
-          walletClient,
-          publicClient,
-          { clientId: getClientId() },
-        );
+        const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, {
+          clientId: getClientId(),
+        });
         const infos = await userApiClient.getInfos([appID], 1);
         if (infos.length > 0) {
           currentInstanceType = infos[0].machineType || "";
@@ -359,28 +362,33 @@ export default class AppUpgrade extends Command {
       // the normal prepareUpgrade path so that layerRemoteImageIfNeeded can
       // add the ecloud runtime layer (startup script, KMS client, Caddy) if
       // the image doesn't already have it.
-      const { prepared, gasEstimate } = verifiableMode === "git"
-        ? await compute.app.prepareUpgradeFromVerifiableBuild(appID, {
-            imageRef,
-            imageDigest: verifiableImageDigest!,
-            envFile: envFilePath,
-            instanceType,
-            logVisibility,
-            resourceUsageMonitoring,
-          })
-        : await compute.app.prepareUpgrade(appID, {
-            dockerfile: dockerfilePath,
-            imageRef,
-            envFile: envFilePath,
-            instanceType,
-            logVisibility,
-            resourceUsageMonitoring,
-          });
+      const { prepared, gasEstimate } =
+        verifiableMode === "git"
+          ? await compute.app.prepareUpgradeFromVerifiableBuild(appID, {
+              imageRef,
+              imageDigest: verifiableImageDigest!,
+              envFile: envFilePath,
+              instanceType,
+              logVisibility,
+              resourceUsageMonitoring,
+            })
+          : await compute.app.prepareUpgrade(appID, {
+              dockerfile: dockerfilePath,
+              imageRef,
+              envFile: envFilePath,
+              instanceType,
+              logVisibility,
+              resourceUsageMonitoring,
+            });
 
       // 10. Apply gas overrides if provided, show estimate, and prompt for confirmation on mainnet
       const finalTx = await applyTxOverrides(gasEstimate, flags, { publicClient, address });
       if (flags["max-fee-per-gas"] || flags["max-priority-fee"]) {
-        this.log(chalk.yellow(`\nGas override active — max fee: ${flags["max-fee-per-gas"] || "estimated"} gwei, priority fee: ${flags["max-priority-fee"] || "estimated"} gwei`));
+        this.log(
+          chalk.yellow(
+            `\nGas override active — max fee: ${flags["max-fee-per-gas"] || "estimated"} gwei, priority fee: ${flags["max-priority-fee"] || "estimated"} gwei`,
+          ),
+        );
       }
       if (finalTx.nonce != null) {
         this.log(chalk.yellow(`Nonce override active — nonce: ${finalTx.nonce}`));
@@ -412,9 +420,43 @@ export default class AppUpgrade extends Command {
         `\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${res.appId}, image: ${res.imageRef})`)}`)}`,
       );
 
+      // Update profile name if --name was provided (merge with existing profile to avoid wiping fields)
+      if (flags.name) {
+        try {
+          const { publicClient, walletClient } = createViemClients({
+            privateKey,
+            rpcUrl,
+            environment,
+          });
+          const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, {
+            clientId: getClientId(),
+          });
+          const infos = await userApiClient.getInfos([res.appId], 1);
+          const existing = infos[0]?.profile;
+
+          await compute.app.setProfile(res.appId, {
+            name: flags.name,
+            website: existing?.website,
+            description: existing?.description,
+            xURL: existing?.xURL,
+          });
+          invalidateProfileCache(environment);
+          this.log(`✓ Profile name updated to "${flags.name}"`);
+        } catch (err: any) {
+          this.warn(`Upgrade succeeded but failed to update profile name: ${err.message}`);
+        }
+      }
+
       // Show dashboard link
       const dashboardUrl = getDashboardUrl(environment, res.appId);
       this.log(`\n${chalk.gray("View your app:")} ${chalk.blue.underline(dashboardUrl)}`);
+
+      // Health verification hint — "Running" means container started, not serving traffic
+      this.log(
+        chalk.gray(
+          `\nNote: "Running" means the container started. Verify your app is serving traffic before considering the upgrade complete.`,
+        ),
+      );
     });
   }
 }
@@ -434,7 +476,9 @@ async function fetchAvailableInstanceTypes(
       rpcUrl,
       environment,
     });
-    const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, { clientId: getClientId() });
+    const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, {
+      clientId: getClientId(),
+    });
 
     const skuList = await userApiClient.getSKUs();
     if (skuList.skus.length === 0) {
