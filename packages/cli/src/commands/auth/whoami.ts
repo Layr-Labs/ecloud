@@ -67,7 +67,8 @@ export default class AuthWhoami extends Command {
       if (!activeAddress) {
         this.log("No active identity. Run 'ecloud auth login' to select one.");
       } else {
-        this.log("Run 'ecloud auth identity select' to switch active identity.");
+        this.log("Run 'ecloud auth identity new' to create a Safe or Timelock identity.");
+      this.log("Run 'ecloud auth identity select' to switch active identity.");
       }
     });
   }
