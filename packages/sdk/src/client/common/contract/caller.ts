@@ -19,7 +19,7 @@
  */
 
 import { executeBatch, checkERC7702Delegation } from "./eip7702";
-import { Address, Hex, encodeFunctionData, decodeErrorResult, bytesToHex } from "viem";
+import { Address, Hex, encodeFunctionData, decodeErrorResult, bytesToHex, decodeFunctionData } from "viem";
 import type { WalletClient, PublicClient } from "viem";
 
 import {
@@ -1841,4 +1841,51 @@ export async function getSafesByDeployer(
     functionName: "getSafesByDeployer",
     args: [deployer],
   })) as Address[];
+}
+
+export interface PendingTimelockOp {
+  id: Hex;
+  calldata: Hex;
+  description: string;
+  executableAt: bigint;
+  ready: boolean;
+}
+
+function describeCalldata(calldata: Hex): string {
+  try {
+    const decoded = decodeFunctionData({ abi: AppControllerABI, data: calldata });
+    return decoded.functionName;
+  } catch {
+    return "unknown";
+  }
+}
+
+export async function getPendingTimelockOps(
+  publicClient: PublicClient,
+  timelockAddress: Address,
+): Promise<PendingTimelockOp[]> {
+  // Uses getPendingOperations() from TimelockControllerImpl — single view call, no log scanning.
+  let ops: { id: Hex; target: Address; data: Hex; executableAt: bigint }[];
+  try {
+    ops = (await publicClient.readContract({
+      address: timelockAddress,
+      abi: TimelockControllerABI,
+      functionName: "getPendingOperations",
+      args: [],
+    })) as { id: Hex; target: Address; data: Hex; executableAt: bigint }[];
+  } catch {
+    // Timelock deployed before upgrade — getPendingOperations not available
+    return [];
+  }
+
+  if (ops.length === 0) return [];
+
+  const now = BigInt(Math.floor(Date.now() / 1000));
+  return ops.map((op) => ({
+    id: op.id,
+    calldata: op.data,
+    description: op.data && op.data !== "0x" ? describeCalldata(op.data) : "batch op",
+    executableAt: op.executableAt,
+    ready: now >= op.executableAt,
+  }));
 }

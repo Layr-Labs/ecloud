@@ -120,10 +120,12 @@ export {
   discoverTimelockForEOA,
   getTimelocksByDeployer,
   getSafesByDeployer,
+  getPendingTimelockOps,
   CANONICAL_SALT,
   type DeploySafeOptions,
   type DeployTimelockOptions,
   type DiscoveredTimelock,
+  type PendingTimelockOp,
 } from "./common/contract/caller";
 
 // Safe Transaction Service
