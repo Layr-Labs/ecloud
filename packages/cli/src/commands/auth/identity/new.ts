@@ -16,6 +16,8 @@ import {
   deployTimelock,
   getTimelocksByDeployer,
   getSafesByDeployer,
+  getSafeTimelockFactoryAddress,
+  CANONICAL_SALT,
   type DeploySafeOptions,
   type DeployTimelockOptions,
 } from "@layr-labs/ecloud-sdk";
@@ -139,12 +141,16 @@ export default class AuthIdentityNew extends Command {
       this.log(`Deploying Safe (${thresholdRaw} of ${owners.length}) via factory...`);
     }
 
-    const { tx: safeTx, safe } = await deploySafe(
+    const { tx: safeTx, safe, alreadyExisted } = await deploySafe(
       { walletClient, publicClient, environmentConfig, owners, threshold } as DeploySafeOptions,
       logger,
     );
-    this.log(`\n✓ Safe deployed:     ${safe} (${thresholdRaw}/${owners.length})`);
-    this.log(`  Tx: ${safeTx}`);
+    if (alreadyExisted) {
+      this.log(`\n✓ Safe already exists at ${safe} (${thresholdRaw}/${owners.length}) — reusing`);
+    } else {
+      this.log(`\n✓ Safe deployed:     ${safe} (${thresholdRaw}/${owners.length})`);
+      this.log(`  Tx: ${safeTx}`);
+    }
 
     if (addTimelock) {
       const minDelay = parseDelay(delayStr);
@@ -186,8 +192,21 @@ export default class AuthIdentityNew extends Command {
       this.error(`Account ${signerAddress} has no ETH. Fund it before deploying.`);
     }
 
-    // Build proposer choices: EOA + any Safes deployed by this EOA
-    const knownSafes = await getSafesByDeployer(publicClient, environmentConfig, signerAddress);
+    // Build proposer choices: EOA + any Safes deployed by this EOA.
+    // Also check the predicted canonical Safe address — it may exist on-chain but be
+    // registered with an older factory (not visible via getSafesByDeployer on the new one).
+    const factoryAddress = await getSafeTimelockFactoryAddress(publicClient, environmentConfig);
+    const knownSafesFromFactory = await getSafesByDeployer(publicClient, environmentConfig, signerAddress);
+    const predictedSafe = await publicClient.readContract({
+      address: factoryAddress,
+      abi: [{ name: "calculateSafeAddress", type: "function", inputs: [{ type: "address" }, { type: "tuple", components: [{ name: "owners", type: "address[]" }, { name: "threshold", type: "uint256" }] }, { type: "bytes32" }], outputs: [{ type: "address" }], stateMutability: "view" }],
+      functionName: "calculateSafeAddress",
+      args: [signerAddress, { owners: [signerAddress], threshold: BigInt(1) }, CANONICAL_SALT],
+    }) as Address;
+    const predictedCode = await publicClient.getCode({ address: predictedSafe });
+    const knownSafes = knownSafesFromFactory.includes(predictedSafe) || !(predictedCode && predictedCode !== "0x")
+      ? knownSafesFromFactory
+      : [...knownSafesFromFactory, predictedSafe];
 
     const safeInfos = await Promise.all(
       knownSafes.map(async (safe) => {

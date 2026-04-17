@@ -1538,13 +1538,29 @@ export interface DeploySafeOptions {
 export async function deploySafe(
   options: DeploySafeOptions,
   logger: Logger = noopLogger,
-): Promise<{ tx: Hex; safe: Address }> {
+): Promise<{ tx: Hex | null; safe: Address; alreadyExisted?: boolean }> {
   const { walletClient, publicClient, environmentConfig, owners, threshold } = options;
   const salt = CANONICAL_SALT;
 
   const factoryAddress = await getSafeTimelockFactoryAddress(publicClient, environmentConfig);
   const account = walletClient.account!;
   const chain = getChainFromID(environmentConfig.chainID);
+
+  // Predict the Safe address first. If bytecode already exists there, the Safe was
+  // deployed previously (same deployer + same salt = same Create2 address). Skip
+  // the deploy and return the existing address without sending a transaction.
+  const predictedSafe = await publicClient.readContract({
+    address: factoryAddress,
+    abi: SafeTimelockFactoryABI,
+    functionName: "calculateSafeAddress",
+    args: [account.address, { owners, threshold: BigInt(threshold) }, salt],
+  }) as Address;
+
+  const existingCode = await publicClient.getCode({ address: predictedSafe });
+  if (existingCode && existingCode !== "0x") {
+    logger.info(`Safe already exists at ${predictedSafe}, skipping deploy`);
+    return { tx: null, safe: predictedSafe, alreadyExisted: true };
+  }
 
   const data = encodeFunctionData({
     abi: SafeTimelockFactoryABI,

@@ -22,7 +22,7 @@ import {
   addIdentity,
 } from "../../utils/globalConfig";
 import { createPublicClientOnly } from "../../utils/viemClients";
-import { fetchSafeInfo, fetchTimelockDelay } from "../../utils/contractAbis";
+import { fetchSafeInfo, fetchTimelockDelay, isTimelockProposer } from "../../utils/contractAbis";
 import type { Address } from "viem";
 
 export default class AuthSync extends Command {
@@ -77,22 +77,32 @@ export default class AuthSync extends Command {
         this.log(`✓ Safe:     ${safe}`);
       }
 
-      for (const timelock of directTimelocks) {
+      // Combine all timelocks and resolve their actual proposer by checking hasRole
+      const allTimelocks = [
+        ...directTimelocks,
+        ...safeTimelocks.filter((t) => !directTimelocks.some((d) => d.toLowerCase() === t.toLowerCase())),
+      ];
+
+      for (const timelock of allTimelocks) {
         const delay = await fetchTimelockDelay(publicClient, timelock as Address);
-        addIdentity({ type: "timelock", address: timelock, delay, environment });
-        this.log(`✓ Timelock: ${timelock}  (via EOA, delay: ${delay})`);
+        // Check if any known Safe is a proposer on this Timelock
+        const safeProposer = safes.length > 0
+          ? await (async () => {
+              for (const safe of safes) {
+                if (await isTimelockProposer(publicClient, timelock as Address, safe as Address)) return safe;
+              }
+              return undefined;
+            })()
+          : undefined;
+        addIdentity({ type: "timelock", address: timelock, delay, safeAddress: safeProposer, environment });
+        if (safeProposer) {
+          this.log(`✓ Timelock: ${timelock}  (via Safe ${safeProposer}, delay: ${delay})`);
+        } else {
+          this.log(`✓ Timelock: ${timelock}  (via EOA, delay: ${delay})`);
+        }
       }
 
-      for (const timelock of safeTimelocks) {
-        const safe = safes.find((s) =>
-          safeTimelockArrays[safes.indexOf(s)]?.some((t) => t.toLowerCase() === timelock.toLowerCase()),
-        );
-        const delay = await fetchTimelockDelay(publicClient, timelock as Address);
-        addIdentity({ type: "timelock", address: timelock, delay, safeAddress: safe, environment });
-        this.log(`✓ Timelock: ${timelock}${safe ? `  (via Safe ${safe})` : ""}  (delay: ${delay})`);
-      }
-
-      const total = safes.length + directTimelocks.length + safeTimelocks.length;
+      const total = safes.length + allTimelocks.length;
       if (total === 0) {
         this.log(`No factory-deployed identities found on ${environment}.`);
       } else {

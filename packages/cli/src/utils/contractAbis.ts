@@ -15,6 +15,24 @@ export const TIMELOCK_ABI = [
   { name: "hasRole", type: "function", inputs: [{ type: "bytes32" }, { type: "address" }], outputs: [{ type: "bool" }], stateMutability: "view" },
 ] as const;
 
+// keccak256("PROPOSER_ROLE")
+const PROPOSER_ROLE = "0xb09aa5aeb3702cfd50b6b62bc4532604938f21248a27a1d5ca736082b6819cc1" as const;
+
+/** Check if a candidate address has PROPOSER_ROLE on a TimelockController. */
+export async function isTimelockProposer(
+  publicClient: PublicClient,
+  timelock: Address,
+  candidate: Address,
+): Promise<boolean> {
+  try {
+    return await publicClient.readContract({
+      address: timelock, abi: TIMELOCK_ABI, functionName: "hasRole", args: [PROPOSER_ROLE, candidate],
+    }) as boolean;
+  } catch {
+    return false;
+  }
+}
+
 /** Fetch threshold and owners for a Gnosis Safe. Returns undefined fields on failure. */
 export async function fetchSafeInfo(
   publicClient: PublicClient,
