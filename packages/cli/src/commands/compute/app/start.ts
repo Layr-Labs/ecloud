@@ -41,7 +41,7 @@ export default class AppLifecycleStart extends Command {
       const environment = flags.environment;
       const environmentConfig = getEnvironmentConfig(environment);
       const rpcUrl = flags.rpcUrl || environmentConfig.defaultRPCURL;
-      const privateKey = flags["private-key"] || (await getPrivateKeyInteractive(environment));
+      const privateKey = await getPrivateKeyInteractive(flags["private-key"]);
 
       const appId = await getOrPromptAppID({
         appID: args["app-id"],
@@ -60,23 +60,28 @@ export default class AppLifecycleStart extends Command {
       const identity = printIdentityContext(environment, address, this.log.bind(this));
 
       const callData = encodeStartAppData(appId);
-      const estimate = await estimateTransactionGas({
-        publicClient,
-        from: address,
-        to: environmentConfig.appControllerAddress,
-        data: callData,
-      });
+      const estimate = identity.type === "eoa"
+        ? await estimateTransactionGas({
+            publicClient,
+            from: address,
+            to: environmentConfig.appControllerAddress,
+            data: callData,
+          })
+        : undefined;
 
-      const finalTx = await applyTxOverrides(estimate, flags, { publicClient, address });
-      if (flags["max-fee-per-gas"] || flags["max-priority-fee"]) {
-        this.log(chalk.yellow(`Gas override active — max fee: ${flags["max-fee-per-gas"] || "estimated"} gwei, priority fee: ${flags["max-priority-fee"] || "estimated"} gwei`));
-      }
-      if (finalTx.nonce != null) {
-        this.log(chalk.yellow(`Nonce override active — nonce: ${finalTx.nonce}`));
+      const finalTx = estimate ? await applyTxOverrides(estimate, flags, { publicClient, address }) : undefined;
+      if (finalTx) {
+        if (flags["max-fee-per-gas"] || flags["max-priority-fee"]) {
+          this.log(chalk.yellow(`Gas override active — max fee: ${flags["max-fee-per-gas"] || "estimated"} gwei, priority fee: ${flags["max-priority-fee"] || "estimated"} gwei`));
+        }
+        if (finalTx.nonce != null) {
+          this.log(chalk.yellow(`Nonce override active — nonce: ${finalTx.nonce}`));
+        }
       }
 
       if (isMainnet(environmentConfig) && !flags.force) {
-        const confirmed = await confirm(`This will cost up to ${finalTx.maxCostEth} ETH. Continue?`);
+        const costInfo = finalTx ? ` (cost: up to ${finalTx.maxCostEth} ETH)` : "";
+        const confirmed = await confirm(`This will start app ${appId}${costInfo}. Continue?`);
         if (!confirmed) {
           this.log(`\n${chalk.gray(`Start cancelled`)}`);
           return;

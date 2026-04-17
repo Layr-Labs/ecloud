@@ -72,6 +72,7 @@ const CONTROLLER_ABI = parseAbi([
   "function terminateApp(address appId)",
   "function transferOwnership(address appId, address newOwner)",
   "function grantTeamRole(address team, uint8 role, address account)",
+  "function revokeTeamRole(address team, uint8 role, address account)",
 ]);
 
 /**
@@ -125,6 +126,17 @@ export function encodeGrantTeamRoleData(team: Address, role: TeamRole, account: 
   return encodeFunctionData({
     abi: CONTROLLER_ABI,
     functionName: "grantTeamRole",
+    args: [team, role, account],
+  });
+}
+
+/**
+ * Encode revokeTeamRole call data for identity routing
+ */
+export function encodeRevokeTeamRoleData(team: Address, role: TeamRole, account: Address): Hex {
+  return encodeFunctionData({
+    abi: CONTROLLER_ABI,
+    functionName: "revokeTeamRole",
     args: [team, role, account],
   });
 }

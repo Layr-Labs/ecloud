@@ -1,10 +1,19 @@
 import { Command, Args, Flags } from "@oclif/core";
-import { getEnvironmentConfig, isMainnet, TeamRole } from "@layr-labs/ecloud-sdk";
+import {
+  getEnvironmentConfig,
+  isMainnet,
+  TeamRole,
+  encodeRevokeTeamRoleData,
+  getAppOwner,
+} from "@layr-labs/ecloud-sdk";
 import { withTelemetry } from "../../../telemetry";
 import { commonFlags } from "../../../flags";
 import { createComputeClient } from "../../../client";
-import { getOrPromptAppID, confirm } from "../../../utils/prompts";
+import { getOrPromptAppID, getPrivateKeyInteractive, confirm } from "../../../utils/prompts";
+import { createViemClients } from "../../../utils/viemClients";
+import { printIdentityContext, executeWithIdentity, printTransactionResult } from "../../../utils/identityTransaction";
 import { isAddress } from "viem";
+import type { Address } from "viem";
 import chalk from "chalk";
 
 const ROLE_CHOICES = ["PAUSER", "DEVELOPER"] as const;
@@ -33,17 +42,20 @@ export default class TeamRevoke extends Command {
       options: ROLE_CHOICES as unknown as string[],
       env: "ECLOUD_TEAM_ROLE",
     }),
+    force: Flags.boolean({
+      description: "Skip all confirmation prompts",
+      default: false,
+    }),
   };
 
   async run() {
     return withTelemetry(this, async () => {
       const { args, flags } = await this.parse(TeamRevoke);
-      const compute = await createComputeClient(flags);
 
       const environment = flags.environment;
       const environmentConfig = getEnvironmentConfig(environment);
       const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
-      const privateKey = flags["private-key"]!;
+      const privateKey = await getPrivateKeyInteractive(flags["private-key"]);
 
       const account = args.address;
       if (!isAddress(account)) {
@@ -63,16 +75,50 @@ export default class TeamRevoke extends Command {
       this.log(`\nApp:     ${chalk.bold(appID)}`);
       this.log(`Revoke:  ${chalk.bold(flags.role)} from ${chalk.bold(account)}`);
 
-      if (isMainnet(environmentConfig)) {
-        const confirmed = await confirm("Revoke this role?");
+      const { publicClient, walletClient, address } = createViemClients({
+        privateKey,
+        rpcUrl,
+        environment,
+      });
+
+      const identity = printIdentityContext(environment, address, this.log.bind(this));
+
+      if ((isMainnet(environmentConfig) || identity.type !== "eoa") && !flags.force) {
+        const confirmed = await confirm(`Revoke ${flags.role} role?`);
         if (!confirmed) {
           this.log(`\n${chalk.gray("Cancelled")}`);
           return;
         }
       }
 
-      const res = await compute.app.revokeTeamRole(appID, role, account);
-      this.log(`\n✅ ${chalk.green(`${flags.role} role revoked from ${account} (tx: ${res.tx})`)}`);
+      if (identity.type === "eoa") {
+        const compute = await createComputeClient(flags);
+        const res = await compute.app.revokeTeamRole(appID, role, account);
+        this.log(`\n✅ ${chalk.green(`${flags.role} role revoked from ${account} (tx: ${res.tx})`)}`);
+      } else {
+        const team = await getAppOwner(publicClient, environmentConfig, appID as Address);
+        const callData = encodeRevokeTeamRoleData(team, role, account as Address);
+        const finalTx = undefined; // skip gas estimation — msg.sender will be Safe/Timelock, not EOA
+
+        const result = await executeWithIdentity({
+          environment,
+          eoaAddress: address,
+          walletClient,
+          publicClient,
+          environmentConfig,
+          to: environmentConfig.appControllerAddress as Address,
+          data: callData,
+          pendingMessage: `Revoking ${flags.role} role from ${account}...`,
+          txDescription: "RevokeTeamRole",
+          gas: finalTx,
+        });
+
+        this.log("");
+        printTransactionResult(result, this.log.bind(this));
+        if (result.type === "direct") {
+          this.log(`\n✅ ${chalk.green(`${flags.role} role revoked from ${account}`)}`);
+        }
+      }
     });
   }
 }

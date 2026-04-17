@@ -238,7 +238,6 @@ export async function prepareDeployBatch(
 
   // Verify the app ID calculation matches what createApp will deploy
   logger.debug(`App ID calculated: ${appId}`);
-  logger.debug(`This address will be used for acceptAdmin call`);
 
   // 2. Pack create app call
   const saltHexString = bytesToHex(salt).slice(2);
@@ -265,15 +264,7 @@ export async function prepareDeployBatch(
     args: [saltHex, releaseForViem],
   });
 
-  // 3. Pack accept admin call
-  const acceptAdminData = encodeFunctionData({
-    abi: PermissionControllerABI,
-    functionName: "acceptAdmin",
-    args: [appId],
-  });
-
-  // 4. Assemble executions
-  // CRITICAL: Order matters! createApp must complete first
+  // 3. Assemble executions
   const executions: Array<{
     target: Address;
     value: bigint;
@@ -284,14 +275,9 @@ export async function prepareDeployBatch(
       value: 0n,
       callData: createData,
     },
-    {
-      target: environmentConfig.permissionControllerAddress as Address,
-      value: 0n,
-      callData: acceptAdminData,
-    },
   ];
 
-  // 5. Add public logs permission if requested
+  // 4. Add public logs permission if requested
   if (publicLogs) {
     const anyoneCanViewLogsData = encodeFunctionData({
       abi: PermissionControllerABI,
@@ -409,12 +395,11 @@ export interface ExecuteDeploySequentialOptions {
  * Execute deployment as sequential transactions (non-EIP-7702 fallback)
  *
  * Use this for browser wallets (JSON-RPC accounts) that don't support signAuthorization.
- * This requires 2-3 wallet signatures instead of 1, but works with all wallet types.
+ * This requires 1-2 wallet signatures instead of 1, but works with all wallet types.
  *
  * Steps:
  * 1. createApp - Creates the app on-chain
- * 2. acceptAdmin - Accepts admin role for the app
- * 3. setAppointee (optional) - Sets public logs permission
+ * 2. setAppointee (optional) - Sets public logs permission
  */
 export async function executeDeploySequential(
   options: ExecuteDeploySequentialOptions,
@@ -434,7 +419,8 @@ export async function executeDeploySequential(
   };
 
   // Step 1: Create App
-  logger.info("Step 1/3: Creating app...");
+  const totalSteps = publicLogs ? "2" : "1";
+  logger.info(`Step 1/${totalSteps}: Creating app...`);
   onProgress?.("createApp");
 
   const createAppExecution = data.executions[0];
@@ -456,37 +442,12 @@ export async function executeDeploySequential(
   txHashes.createApp = createAppHash;
   logger.info(`createApp confirmed in block ${createAppReceipt.blockNumber}`);
 
-  // Step 2: Accept Admin
-  logger.info("Step 2/3: Accepting admin role...");
-  onProgress?.("acceptAdmin", createAppHash);
+  // Step 2: Set Public Logs (if requested and present in executions)
+  if (publicLogs && data.executions.length > 1) {
+    logger.info(`Step 2/${totalSteps}: Setting public logs permission...`);
+    onProgress?.("setPublicLogs", createAppHash);
 
-  const acceptAdminExecution = data.executions[1];
-  const acceptAdminHash = await walletClient.sendTransaction({
-    account,
-    to: acceptAdminExecution.target,
-    data: acceptAdminExecution.callData,
-    value: acceptAdminExecution.value,
-    chain,
-  });
-
-  logger.info(`acceptAdmin transaction sent: ${acceptAdminHash}`);
-  const acceptAdminReceipt = await publicClient.waitForTransactionReceipt({
-    hash: acceptAdminHash,
-  });
-
-  if (acceptAdminReceipt.status === "reverted") {
-    throw new Error(`acceptAdmin transaction reverted: ${acceptAdminHash}`);
-  }
-
-  txHashes.acceptAdmin = acceptAdminHash;
-  logger.info(`acceptAdmin confirmed in block ${acceptAdminReceipt.blockNumber}`);
-
-  // Step 3: Set Public Logs (if requested and present in executions)
-  if (publicLogs && data.executions.length > 2) {
-    logger.info("Step 3/3: Setting public logs permission...");
-    onProgress?.("setPublicLogs", acceptAdminHash);
-
-    const setAppointeeExecution = data.executions[2];
+    const setAppointeeExecution = data.executions[1];
     const setAppointeeHash = await walletClient.sendTransaction({
       account,
       to: setAppointeeExecution.target,
@@ -508,7 +469,7 @@ export async function executeDeploySequential(
     logger.info(`setAppointee confirmed in block ${setAppointeeReceipt.blockNumber}`);
   }
 
-  onProgress?.("complete", txHashes.setPublicLogs || txHashes.acceptAdmin);
+  onProgress?.("complete", txHashes.setPublicLogs || txHashes.createApp);
 
   logger.info(`Deployment complete! App ID: ${data.appId}`);
 
@@ -609,7 +570,7 @@ export async function executeDeployBatched(
 
   // If public logs is false but executions include the permission call, filter it out
   // (This shouldn't happen if prepareDeployBatch was called correctly, but be safe)
-  const filteredCalls = publicLogs ? calls : calls.slice(0, 2);
+  const filteredCalls = publicLogs ? calls : calls.slice(0, 1);
 
   logger.info(`Deploying with EIP-5792 sendCalls (${filteredCalls.length} calls)...`);
   onProgress?.("createApp");

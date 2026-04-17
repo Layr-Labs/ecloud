@@ -21,12 +21,14 @@ export default class AuthWhoami extends Command {
 
   static flags = {
     environment: commonFlags.environment,
+    verbose: commonFlags.verbose,
   };
 
   async run(): Promise<void> {
     return withTelemetry(this, async () => {
       const { flags } = await this.parse(AuthWhoami);
       const environment = flags.environment as string;
+      const verbose = flags.verbose ?? false;
 
       // Signing key status
       const result = await getPrivateKeyWithSource({ privateKey: undefined });
@@ -55,7 +57,7 @@ export default class AuthWhoami extends Command {
         const isActive = id.address.toLowerCase() === activeAddress?.toLowerCase();
         const marker = isActive ? "●" : "○";
         const active = isActive ? "  ← active" : "";
-        this.log(`  ${marker} ${formatIdentity(id)}${active}`);
+        this.log(`  ${marker} ${formatIdentity(id, verbose)}${active}`);
       }
 
       // If active identity is the EOA signing key itself (no contract identity active)

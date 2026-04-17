@@ -442,7 +442,7 @@ export interface SequentialDeployResult {
   appId: AppId;
   txHashes: {
     createApp: Hex;
-    acceptAdmin: Hex;
+    acceptAdmin: Hex; // kept for backward compat; always "0x" after acceptAdmin removal
     setPublicLogs?: Hex;
   };
 }

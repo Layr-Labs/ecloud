@@ -42,7 +42,7 @@ export default class AppLifecycleTerminate extends Command {
       const environment = flags.environment;
       const environmentConfig = getEnvironmentConfig(environment);
       const rpcUrl = flags.rpcUrl || environmentConfig.defaultRPCURL;
-      const privateKey = flags["private-key"] || (await getPrivateKeyInteractive(environment));
+      const privateKey = await getPrivateKeyInteractive(flags["private-key"]);
 
       const appId = await getOrPromptAppID({
         appID: args["app-id"],
@@ -61,23 +61,27 @@ export default class AppLifecycleTerminate extends Command {
       const identity = printIdentityContext(environment, address, this.log.bind(this));
 
       const callData = encodeTerminateAppData(appId);
-      const estimate = await estimateTransactionGas({
-        publicClient,
-        from: address,
-        to: environmentConfig.appControllerAddress,
-        data: callData,
-      });
+      const estimate = identity.type === "eoa"
+        ? await estimateTransactionGas({
+            publicClient,
+            from: address,
+            to: environmentConfig.appControllerAddress,
+            data: callData,
+          })
+        : undefined;
 
-      const finalTx = await applyTxOverrides(estimate, flags, { publicClient, address });
-      if (flags["max-fee-per-gas"] || flags["max-priority-fee"]) {
-        this.log(chalk.yellow(`Gas override active — max fee: ${flags["max-fee-per-gas"] || "estimated"} gwei, priority fee: ${flags["max-priority-fee"] || "estimated"} gwei`));
-      }
-      if (finalTx.nonce != null) {
-        this.log(chalk.yellow(`Nonce override active — nonce: ${finalTx.nonce}`));
+      const finalTx = estimate ? await applyTxOverrides(estimate, flags, { publicClient, address }) : undefined;
+      if (finalTx) {
+        if (flags["max-fee-per-gas"] || flags["max-priority-fee"]) {
+          this.log(chalk.yellow(`Gas override active — max fee: ${flags["max-fee-per-gas"] || "estimated"} gwei, priority fee: ${flags["max-priority-fee"] || "estimated"} gwei`));
+        }
+        if (finalTx.nonce != null) {
+          this.log(chalk.yellow(`Nonce override active — nonce: ${finalTx.nonce}`));
+        }
       }
 
       if (!flags.force) {
-        const costInfo = isMainnet(environmentConfig)
+        const costInfo = finalTx && isMainnet(environmentConfig)
           ? ` (cost: up to ${finalTx.maxCostEth} ETH)`
           : "";
         const confirmed = await confirm(`⚠️  Permanently destroy app ${appId}${costInfo}?`);

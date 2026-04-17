@@ -59,6 +59,7 @@ export {
   encodeTerminateAppData,
   encodeTransferOwnershipData,
   encodeGrantTeamRoleData,
+  encodeRevokeTeamRoleData,
 } from "./modules/compute";
 export {
   createBillingModule,

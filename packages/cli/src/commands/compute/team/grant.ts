@@ -56,7 +56,7 @@ export default class TeamGrant extends Command {
       const environment = flags.environment;
       const environmentConfig = getEnvironmentConfig(environment);
       const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
-      const privateKey = flags["private-key"] || (await getPrivateKeyInteractive(environment));
+      const privateKey = await getPrivateKeyInteractive(flags["private-key"]);
 
       const account = args.address;
       if (!isAddress(account)) {
@@ -72,81 +72,60 @@ export default class TeamGrant extends Command {
       });
 
       const role = TeamRole[flags.role as RoleChoice];
-      const isAdminRole = flags.role === "ADMIN";
-
       this.log(`\nApp:     ${chalk.bold(appID)}`);
       this.log(`Grant:   ${chalk.bold(flags.role)} → ${chalk.bold(account)}`);
 
-      if (isAdminRole) {
-        // ADMIN is a sensitive op — route through identity
-        const { publicClient, walletClient, address } = createViemClients({
-          privateKey,
-          rpcUrl,
-          environment,
-        });
+      const { publicClient, walletClient, address } = createViemClients({
+        privateKey,
+        rpcUrl,
+        environment,
+      });
 
-        const identity = printIdentityContext(environment, address, this.log.bind(this));
+      const identity = printIdentityContext(environment, address, this.log.bind(this));
 
-        if (identity.type !== "eoa") {
-          this.log(chalk.yellow(`\nNote: ADMIN role grant will be routed through ${identity.type}.`));
+      if ((isMainnet(environmentConfig) || identity.type !== "eoa") && !flags.force) {
+        const confirmed = await confirm(`Grant ${flags.role} role?`);
+        if (!confirmed) {
+          this.log(`\n${chalk.gray("Cancelled")}`);
+          return;
         }
+      }
 
-        if ((isMainnet(environmentConfig) || identity.type !== "eoa") && !flags.force) {
-          const confirmed = await confirm("Grant this ADMIN role?");
-          if (!confirmed) {
-            this.log(`\n${chalk.gray("Cancelled")}`);
-            return;
-          }
-        }
-
-        if (identity.type === "eoa") {
-          const compute = await createComputeClient(flags);
-          const res = await compute.app.grantTeamRole(appID, role, account);
-          this.log(`\n✅ ${chalk.green(`${flags.role} role granted to ${account} (tx: ${res.tx})`)}`);
-        } else {
-          // Look up the team address (owner) for the app
-          const team = await getAppOwner(publicClient, environmentConfig, appID as Address);
-          const callData = encodeGrantTeamRoleData(team, role, account as Address);
-          const estimate = await estimateTransactionGas({
-            publicClient,
-            from: address,
-            to: environmentConfig.appControllerAddress,
-            data: callData,
-          });
-          const finalTx = await applyTxOverrides(estimate, flags, { publicClient, address });
-
-          const result = await executeWithIdentity({
-            environment,
-            eoaAddress: address,
-            walletClient,
-            publicClient,
-            environmentConfig,
-            to: environmentConfig.appControllerAddress as Address,
-            data: callData,
-            pendingMessage: `Granting ADMIN role to ${account}...`,
-            txDescription: "GrantTeamRole",
-            gas: finalTx,
-          });
-
-          this.log("");
-          printTransactionResult(result, this.log.bind(this));
-          if (result.type === "direct") {
-            this.log(`\n✅ ${chalk.green(`${flags.role} role granted to ${account}`)}`);
-          }
-        }
-      } else {
-        // PAUSER / DEVELOPER — direct grant (not a sensitive op)
-        if (isMainnet(environmentConfig) && !flags.force) {
-          const confirmed = await confirm("Grant this role?");
-          if (!confirmed) {
-            this.log(`\n${chalk.gray("Cancelled")}`);
-            return;
-          }
-        }
-
+      if (identity.type === "eoa") {
         const compute = await createComputeClient(flags);
         const res = await compute.app.grantTeamRole(appID, role, account);
         this.log(`\n✅ ${chalk.green(`${flags.role} role granted to ${account} (tx: ${res.tx})`)}`);
+      } else {
+        const team = await getAppOwner(publicClient, environmentConfig, appID as Address);
+        const callData = encodeGrantTeamRoleData(team, role, account as Address);
+        const estimate = identity.type === "eoa"
+          ? await estimateTransactionGas({
+              publicClient,
+              from: address,
+              to: environmentConfig.appControllerAddress,
+              data: callData,
+            })
+          : undefined;
+        const finalTx = estimate ? await applyTxOverrides(estimate, flags, { publicClient, address }) : undefined;
+
+        const result = await executeWithIdentity({
+          environment,
+          eoaAddress: address,
+          walletClient,
+          publicClient,
+          environmentConfig,
+          to: environmentConfig.appControllerAddress as Address,
+          data: callData,
+          pendingMessage: `Granting ${flags.role} role to ${account}...`,
+          txDescription: "GrantTeamRole",
+          gas: finalTx,
+        });
+
+        this.log("");
+        printTransactionResult(result, this.log.bind(this));
+        if (result.type === "direct") {
+          this.log(`\n✅ ${chalk.green(`${flags.role} role granted to ${account}`)}`);
+        }
       }
     });
   }

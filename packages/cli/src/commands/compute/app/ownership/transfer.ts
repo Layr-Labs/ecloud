@@ -46,7 +46,7 @@ export default class AppOwnershipTransfer extends Command {
       const environment = flags.environment;
       const environmentConfig = getEnvironmentConfig(environment);
       const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
-      const privateKey = flags["private-key"] || (await getPrivateKeyInteractive(environment));
+      const privateKey = await getPrivateKeyInteractive(flags["private-key"]);
 
       const appId = await getOrPromptAppID({
         appID: args["app-id"],
@@ -73,19 +73,23 @@ export default class AppOwnershipTransfer extends Command {
       this.log(`New owner: ${chalk.bold(newOwner)}`);
 
       const callData = encodeTransferOwnershipData(appId, newOwner as Address);
-      const estimate = await estimateTransactionGas({
-        publicClient,
-        from: address,
-        to: environmentConfig.appControllerAddress,
-        data: callData,
-      });
+      const estimate = identity.type === "eoa"
+        ? await estimateTransactionGas({
+            publicClient,
+            from: address,
+            to: environmentConfig.appControllerAddress,
+            data: callData,
+          })
+        : undefined;
 
-      const finalTx = await applyTxOverrides(estimate, flags, { publicClient, address });
-      if (flags["max-fee-per-gas"] || flags["max-priority-fee"]) {
-        this.log(chalk.yellow(`\nGas override active — max fee: ${flags["max-fee-per-gas"] || "estimated"} gwei, priority fee: ${flags["max-priority-fee"] || "estimated"} gwei`));
-      }
-      if (finalTx.nonce != null) {
-        this.log(chalk.yellow(`Nonce override active — nonce: ${finalTx.nonce}`));
+      const finalTx = estimate ? await applyTxOverrides(estimate, flags, { publicClient, address }) : undefined;
+      if (finalTx) {
+        if (flags["max-fee-per-gas"] || flags["max-priority-fee"]) {
+          this.log(chalk.yellow(`\nGas override active — max fee: ${flags["max-fee-per-gas"] || "estimated"} gwei, priority fee: ${flags["max-priority-fee"] || "estimated"} gwei`));
+        }
+        if (finalTx.nonce != null) {
+          this.log(chalk.yellow(`Nonce override active — nonce: ${finalTx.nonce}`));
+        }
       }
 
       if ((isMainnet(environmentConfig) || identity.type !== "eoa") && !flags.force) {
