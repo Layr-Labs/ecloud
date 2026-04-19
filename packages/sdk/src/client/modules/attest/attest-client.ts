@@ -21,7 +21,13 @@ export class AttestClient {
     this.config = config;
   }
 
-  async attest(): Promise<string> {
+  async attest(extraData?: Buffer): Promise<string> {
+    // Intel TDX REPORTDATA and AMD SEV-SNP ReportData fields are exactly 64 bytes
+    // at the hardware level. Callers must pre-hash large payloads (SHA-512 = 64 bytes).
+    if (extraData && extraData.length > 64) {
+      throw new Error(`extraData exceeds 64-byte hardware limit (${extraData.length} bytes); pre-hash with SHA-512 before passing`);
+    }
+
     const { publicKey, privateKey } = generateKeyPairSync('rsa', {
       modulusLength: 4096,
       publicKeyEncoding: { type: 'spki', format: 'pem' } as const,
@@ -35,8 +41,8 @@ export class AttestClient {
       .digest();
 
     const socketPath = this.config.socketPath ?? DEFAULT_SOCKET_PATH;
-    const attestationBytes = await this.getAttestation(socketPath, challengeHash);
-    const attestResponse = await this.postAttest(attestationBytes, publicKey);
+    const attestationBytes = await this.getAttestation(socketPath, challengeHash, extraData);
+    const attestResponse = await this.postAttest(attestationBytes, publicKey, extraData);
 
     this.verifySignature(JSON.stringify(attestResponse.data), attestResponse.signature);
 
@@ -79,9 +85,13 @@ export class AttestClient {
     }
   }
 
-  private getAttestation(socketPath: string, challenge: Buffer): Promise<Buffer> {
+  private getAttestation(socketPath: string, challenge: Buffer, extraData?: Buffer): Promise<Buffer> {
     return new Promise((resolve, reject) => {
-      const body = JSON.stringify({ challenge: challenge.toString('base64') });
+      const requestBody: Record<string, string> = { challenge: challenge.toString('base64') };
+      if (extraData && extraData.length > 0) {
+        requestBody.extra_data = extraData.toString('base64');
+      }
+      const body = JSON.stringify(requestBody);
 
       const req = http.request(
         {
@@ -115,14 +125,19 @@ export class AttestClient {
   private async postAttest(
     attestationBytes: Buffer,
     rsaPublicKey: string,
+    extraData?: Buffer,
   ): Promise<{ data: { encryptedToken: string }; signature: string }> {
     const url = `${this.config.kmsServerURL}/auth/attest`;
-    const body = JSON.stringify({
+    const requestBody: Record<string, unknown> = {
       version: 3,
       attestation: attestationBytes.toString('base64'),
       rsaKey: rsaPublicKey,
       audience: this.config.audience,
-    });
+    };
+    if (extraData && extraData.length > 0) {
+      requestBody.extra_data = extraData.toString('base64');
+    }
+    const body = JSON.stringify(requestBody);
 
     const response = await fetch(url, {
       method: 'POST',
