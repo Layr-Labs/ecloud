@@ -90,6 +90,50 @@ describe('JwtProvider', () => {
     expect(client.attest).toHaveBeenCalledTimes(2);
   });
 
+  it('skips cache and fetches fresh token when extraData is provided', async () => {
+    const token1 = makeJwt(futureExp);
+    const token2 = makeJwt(futureExp + 1);
+    let callCount = 0;
+    const client = mockAttestClient(async () => callCount++ === 0 ? token1 : token2);
+    const provider = new JwtProvider(client);
+
+    const first = await provider.getToken();
+    expect(first).toBe(token1);
+
+    const extraData = Buffer.from('some-action-hash');
+    const second = await provider.getToken(extraData);
+    expect(second).toBe(token2);
+    expect(client.attest).toHaveBeenCalledTimes(2);
+    expect(client.attest).toHaveBeenLastCalledWith(extraData);
+  });
+
+  it('deduplicates concurrent extraData requests with same key', async () => {
+    let resolveAttest: (token: string) => void;
+    const client = mockAttestClient(
+      () => new Promise<string>((resolve) => { resolveAttest = resolve; }),
+    );
+    const provider = new JwtProvider(client);
+    const extraData = Buffer.from('same-action');
+
+    const p1 = provider.getToken(extraData);
+    const p2 = provider.getToken(extraData);
+    const token = makeJwt(futureExp);
+    resolveAttest!(token);
+
+    const results = await Promise.all([p1, p2]);
+    expect(results).toEqual([token, token]);
+    expect(client.attest).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not deduplicate extraData requests with different keys', async () => {
+    const client = mockAttestClient(async () => makeJwt(futureExp));
+    const provider = new JwtProvider(client);
+
+    await provider.getToken(Buffer.from('action-a'));
+    await provider.getToken(Buffer.from('action-b'));
+    expect(client.attest).toHaveBeenCalledTimes(2);
+  });
+
   it('clears pending promise on error so concurrent waiters also fail', async () => {
     let rejectAttest: (err: Error) => void;
     const client = mockAttestClient(

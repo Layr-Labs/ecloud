@@ -89,7 +89,7 @@ export class AttestClient {
     return new Promise((resolve, reject) => {
       const requestBody: Record<string, string> = { challenge: challenge.toString('base64') };
       if (extraData && extraData.length > 0) {
-        requestBody.extra_data = extraData.toString('base64');
+        requestBody.extra_data = extraData.toString('hex');
       }
       const body = JSON.stringify(requestBody);
 
@@ -135,7 +135,7 @@ export class AttestClient {
       audience: this.config.audience,
     };
     if (extraData && extraData.length > 0) {
-      requestBody.extra_data = extraData.toString('base64');
+      requestBody.extra_data = extraData.toString('hex');
     }
     const body = JSON.stringify(requestBody);
 

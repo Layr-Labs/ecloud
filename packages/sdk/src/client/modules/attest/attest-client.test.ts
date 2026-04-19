@@ -35,7 +35,7 @@ describe('AttestClient extraData', () => {
 
     expect(capturedBodies.length).toBeGreaterThan(0);
     const teeBody = JSON.parse(capturedBodies[0]);
-    expect(teeBody.extra_data).toBe(extraData.toString('base64'));
+    expect(teeBody.extra_data).toBe(extraData.toString('hex'));
 
     vi.restoreAllMocks();
   });
@@ -74,7 +74,7 @@ describe('AttestClient extraData', () => {
 
     expect(kmsCapture.length).toBeGreaterThan(0);
     const kmsBody = JSON.parse(kmsCapture[0]);
-    expect(kmsBody.extra_data).toBe(extraData.toString('base64'));
+    expect(kmsBody.extra_data).toBe(extraData.toString('hex'));
 
     vi.restoreAllMocks();
   });

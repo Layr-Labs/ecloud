@@ -6,13 +6,28 @@ export class JwtProvider {
   private cachedToken?: string;
   private expiresAt?: number;
   private pending?: Promise<string>;
+  private pendingExtraData = new Map<string, Promise<string>>();
 
   constructor(attestClient: AttestClient, bufferSeconds: number = 30) {
     this.attestClient = attestClient;
     this.bufferSeconds = bufferSeconds;
   }
 
-  async getToken(): Promise<string> {
+  async getToken(extraData?: Buffer): Promise<string> {
+    // When extraData is provided, bypass long-lived cache but deduplicate
+    // concurrent requests for the same extraData to avoid thundering herd
+    // on TEE hardware calls.
+    if (extraData && extraData.length > 0) {
+      const key = extraData.toString('hex');
+      const existing = this.pendingExtraData.get(key);
+      if (existing) return existing;
+      const promise = this.attestClient.attest(extraData).finally(() => {
+        this.pendingExtraData.delete(key);
+      });
+      this.pendingExtraData.set(key, promise);
+      return promise;
+    }
+
     if (this.cachedToken && !this.isExpiringSoon()) {
       return this.cachedToken;
     }
