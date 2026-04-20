@@ -136,6 +136,7 @@ export default class AppLifecycleStop extends Command {
           pendingMessage: `Stopping app ${appId}...`,
           txDescription: "StopApp",
           gas: finalTx,
+          delayOverride: flags.delay,
         });
 
         this.log("");

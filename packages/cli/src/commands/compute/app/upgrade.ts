@@ -448,6 +448,7 @@ export default class AppUpgrade extends Command {
           pendingMessage: `Upgrading app ${appID}...`,
           txDescription: "UpgradeApp",
           gas: finalTx,
+          delayOverride: flags.delay,
         });
 
         this.log("");

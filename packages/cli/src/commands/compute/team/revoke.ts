@@ -26,7 +26,7 @@ export default class TeamRevoke extends Command {
   static args = {
     address: Args.string({
       description: "Address to revoke the role from",
-      required: true,
+      required: false,
     }),
   };
 
@@ -73,6 +73,9 @@ export default class TeamRevoke extends Command {
       }
 
       const account = args.address;
+      if (!account) {
+        this.error("ADDRESS argument is required when not using --execute or --cancel");
+      }
       if (!isAddress(account)) {
         this.error(`Invalid address: ${account}`);
       }
@@ -126,6 +129,7 @@ export default class TeamRevoke extends Command {
           pendingMessage: `Revoking ${flags.role} role from ${account}...`,
           txDescription: "RevokeTeamRole",
           gas: finalTx,
+          delayOverride: flags.delay,
         });
 
         this.log("");

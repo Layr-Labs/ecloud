@@ -1870,9 +1870,12 @@ export interface PendingTimelockOp {
 function describeCalldata(calldata: Hex): string {
   try {
     const decoded = decodeFunctionData({ abi: AppControllerABI, data: calldata });
-    const appArg = decoded.args?.[0];
-    if (appArg && typeof appArg === "string" && appArg.startsWith("0x")) {
-      return `${decoded.functionName}(${appArg})`;
+    const args = decoded.args;
+    if (!args || args.length === 0) return decoded.functionName;
+
+    const addressArgs = args.filter((a): a is string => typeof a === "string" && /^0x[0-9a-fA-F]{40}$/.test(a));
+    if (addressArgs.length > 0) {
+      return `${decoded.functionName}(${addressArgs.join(", ")})`;
     }
     return decoded.functionName;
   } catch {

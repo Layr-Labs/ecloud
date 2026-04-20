@@ -121,6 +121,7 @@ export default class AppLifecycleTerminate extends Command {
           pendingMessage: `Terminating app ${appId}...`,
           txDescription: "TerminateApp",
           gas: finalTx,
+          delayOverride: flags.delay,
         });
 
         this.log("");

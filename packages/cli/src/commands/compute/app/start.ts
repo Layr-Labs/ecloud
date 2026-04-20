@@ -118,6 +118,7 @@ export default class AppLifecycleStart extends Command {
           pendingMessage: `Starting app ${appId}...`,
           txDescription: "StartApp",
           gas: finalTx,
+          delayOverride: flags.delay,
         });
 
         this.log("");

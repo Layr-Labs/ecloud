@@ -48,6 +48,7 @@ export interface IdentityRouterOptions {
   pendingMessage?: string;
   txDescription?: string;
   gas?: GasEstimate;
+  delayOverride?: string;
 }
 
 /**
@@ -123,8 +124,9 @@ export async function sendWithIdentity(
 
     case "timelock": {
       const timelockAddress = identity.address as Address;
-      const delaySeconds = parseDelayToSeconds(identity.delay);
-      const delayLabel = identity.delay || "24h";
+      const effectiveDelay = options.delayOverride || identity.delay;
+      const delaySeconds = parseDelayToSeconds(effectiveDelay);
+      const delayLabel = effectiveDelay || "24h";
 
       // Encode the Timelock.schedule() call
       const scheduleData = encodeFunctionData({

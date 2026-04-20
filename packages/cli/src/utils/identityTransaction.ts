@@ -47,6 +47,7 @@ export async function executeWithIdentity(options: {
   pendingMessage?: string;
   txDescription?: string;
   gas?: any;
+  delayOverride?: string;
 }): Promise<TransactionResult> {
   const identity = getActiveIdentityOrEOA(options.environment, options.eoaAddress);
 
@@ -67,6 +68,7 @@ export async function executeWithIdentity(options: {
     pendingMessage: options.pendingMessage,
     txDescription: options.txDescription,
     gas: options.gas,
+    delayOverride: options.delayOverride,
   });
 }
 

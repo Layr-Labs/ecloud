@@ -136,6 +136,7 @@ export default class AppOwnershipTransfer extends Command {
           pendingMessage: `Transferring ownership of app ${appId} to ${newOwner}...`,
           txDescription: "TransferOwnership",
           gas: finalTx,
+          delayOverride: flags.delay,
         });
 
         this.log("");

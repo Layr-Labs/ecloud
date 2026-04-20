@@ -62,6 +62,10 @@ export const timelockFlags = {
     description: "Cancel a pending Timelock operation by its op ID",
     required: false,
   }),
+  delay: Flags.string({
+    description: "Override Timelock delay (e.g., 10m, 1h, 2d). Must be >= minDelay. Defaults to minDelay.",
+    required: false,
+  }),
 };
 
 /**

@@ -27,7 +27,7 @@ export default class TeamGrant extends Command {
   static args = {
     address: Args.string({
       description: "Address to grant the role to",
-      required: true,
+      required: false,
     }),
   };
 
@@ -74,6 +74,9 @@ export default class TeamGrant extends Command {
       }
 
       const account = args.address;
+      if (!account) {
+        this.error("ADDRESS argument is required when not using --execute or --cancel");
+      }
       if (!isAddress(account)) {
         this.error(`Invalid address: ${account}`);
       }
@@ -134,6 +137,7 @@ export default class TeamGrant extends Command {
           pendingMessage: `Granting ${flags.role} role to ${account}...`,
           txDescription: "GrantTeamRole",
           gas: finalTx,
+          delayOverride: flags.delay,
         });
 
         this.log("");
