@@ -22,10 +22,10 @@ export class AttestClient {
   }
 
   async attest(extraData?: Buffer): Promise<string> {
-    // Intel TDX REPORTDATA and AMD SEV-SNP ReportData fields are exactly 64 bytes
-    // at the hardware level. Callers must pre-hash large payloads (SHA-512 = 64 bytes).
-    if (extraData && extraData.length > 64) {
-      throw new Error(`extraData exceeds 64-byte hardware limit (${extraData.length} bytes); pre-hash with SHA-512 before passing`);
+    // go-tpm-tools hashes extraData (SHA-256/SHA-512) before binding it into the
+    // hardware nonce, so callers can pass arbitrary data up to 1MB.
+    if (extraData && extraData.length > 1_048_576) {
+      throw new Error(`extraData exceeds 1MB limit (${extraData.length} bytes)`);
     }
 
     const { publicKey, privateKey } = generateKeyPairSync('rsa', {
@@ -89,7 +89,7 @@ export class AttestClient {
     return new Promise((resolve, reject) => {
       const requestBody: Record<string, string> = { challenge: challenge.toString('base64') };
       if (extraData && extraData.length > 0) {
-        requestBody.extra_data = extraData.toString('hex');
+        requestBody.extra_data = extraData.toString('base64');
       }
       const body = JSON.stringify(requestBody);
 
@@ -135,7 +135,7 @@ export class AttestClient {
       audience: this.config.audience,
     };
     if (extraData && extraData.length > 0) {
-      requestBody.extra_data = extraData.toString('hex');
+      requestBody.extra_data = extraData.toString('base64');
     }
     const body = JSON.stringify(requestBody);
 

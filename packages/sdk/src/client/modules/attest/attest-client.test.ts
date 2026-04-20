@@ -35,7 +35,7 @@ describe('AttestClient extraData', () => {
 
     expect(capturedBodies.length).toBeGreaterThan(0);
     const teeBody = JSON.parse(capturedBodies[0]);
-    expect(teeBody.extra_data).toBe(extraData.toString('hex'));
+    expect(teeBody.extra_data).toBe(extraData.toString('base64'));
 
     vi.restoreAllMocks();
   });
@@ -74,14 +74,14 @@ describe('AttestClient extraData', () => {
 
     expect(kmsCapture.length).toBeGreaterThan(0);
     const kmsBody = JSON.parse(kmsCapture[0]);
-    expect(kmsBody.extra_data).toBe(extraData.toString('hex'));
+    expect(kmsBody.extra_data).toBe(extraData.toString('base64'));
 
     vi.restoreAllMocks();
   });
 
-  it('throws if extraData exceeds 64 bytes', async () => {
+  it('throws if extraData exceeds 1MB', async () => {
     const client = new AttestClient({ kmsServerURL: 'http://localhost:8080', kmsPublicKey: 'fake-key', audience: 'test' });
-    const tooLarge = Buffer.alloc(65);
-    await expect(client.attest(tooLarge)).rejects.toThrow('extraData exceeds 64-byte hardware limit');
+    const tooLarge = Buffer.alloc(1_048_576 + 1);
+    await expect(client.attest(tooLarge)).rejects.toThrow('extraData exceeds 1MB limit');
   });
 });
