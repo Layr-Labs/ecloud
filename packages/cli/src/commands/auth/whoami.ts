@@ -21,6 +21,7 @@ import {
   formatIdentity,
   type StoredIdentity,
 } from "../../utils/globalConfig";
+import { formatCountdown } from "../../utils/format";
 import chalk from "chalk";
 import type { Address } from "viem";
 
@@ -108,7 +109,7 @@ export default class AuthWhoami extends Command {
               const status = op.ready
                 ? chalk.green("ready to execute")
                 : `executable in ${formatCountdown(op.executableAt - now)}`;
-              this.log(`      ⏳ ${op.description}  [${status}]  id: ${op.id.slice(0, 10)}…`);
+              this.log(`      ⏳ ${op.description}  [${status}]  id: ${verbose ? op.id : `${op.id.slice(0, 10)}…`}`);
             }
           }
         }
@@ -128,15 +129,4 @@ export default class AuthWhoami extends Command {
       }
     });
   }
-}
-
-function formatCountdown(seconds: bigint): string {
-  const s = Number(seconds);
-  if (s <= 0) return "now";
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const rem = s % 60;
-  if (h > 0) return `${h}h ${m}m`;
-  if (m > 0) return `${m}m ${rem}s`;
-  return `${rem}s`;
 }

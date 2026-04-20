@@ -8,11 +8,12 @@ import {
   getAppOwner,
 } from "@layr-labs/ecloud-sdk";
 import { withTelemetry } from "../../../telemetry";
-import { commonFlags, applyTxOverrides } from "../../../flags";
+import { commonFlags, timelockFlags, applyTxOverrides } from "../../../flags";
 import { createComputeClient } from "../../../client";
 import { getOrPromptAppID, getPrivateKeyInteractive, confirm } from "../../../utils/prompts";
 import { createViemClients } from "../../../utils/viemClients";
 import { printIdentityContext, executeWithIdentity, printTransactionResult } from "../../../utils/identityTransaction";
+import { handleTimelockExecute, handleTimelockCancel } from "../../../utils/timelockExecute";
 import { isAddress } from "viem";
 import type { Address } from "viem";
 import chalk from "chalk";
@@ -38,7 +39,7 @@ export default class TeamGrant extends Command {
       env: "ECLOUD_APP_ID",
     }),
     role: Flags.string({
-      required: true,
+      required: false,
       description: "Role to grant: ADMIN, PAUSER, or DEVELOPER",
       options: ROLE_CHOICES as unknown as string[],
       env: "ECLOUD_TEAM_ROLE",
@@ -47,6 +48,7 @@ export default class TeamGrant extends Command {
       description: "Skip all confirmation prompts",
       default: false,
     }),
+    ...timelockFlags,
   };
 
   async run() {
@@ -57,6 +59,19 @@ export default class TeamGrant extends Command {
       const environmentConfig = getEnvironmentConfig(environment);
       const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
       const privateKey = await getPrivateKeyInteractive(flags["private-key"]);
+
+      if (flags.execute) {
+        await handleTimelockExecute({ opId: flags.execute, environment, privateKey, rpcUrl, log: this.log.bind(this), error: this.error.bind(this) });
+        return;
+      }
+      if (flags.cancel) {
+        await handleTimelockCancel({ opId: flags.cancel, environment, privateKey, rpcUrl, log: this.log.bind(this), error: this.error.bind(this) });
+        return;
+      }
+
+      if (!flags.role) {
+        this.error("--role is required when not using --execute");
+      }
 
       const account = args.address;
       if (!isAddress(account)) {

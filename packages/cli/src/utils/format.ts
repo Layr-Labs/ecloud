@@ -188,6 +188,17 @@ export function formatDelay(seconds: bigint): string {
   return `${s}s`;
 }
 
+export function formatCountdown(seconds: bigint): string {
+  const s = Number(seconds);
+  if (s <= 0) return "now";
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const rem = s % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${rem}s`;
+  return `${rem}s`;
+}
+
 /**
  * Print formatted app display with given indent
  * @param display - Formatted app display data

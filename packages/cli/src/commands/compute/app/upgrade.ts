@@ -1,10 +1,11 @@
 import { Command, Args, Flags } from "@oclif/core";
 import { getEnvironmentConfig, UserApiClient, isMainnet } from "@layr-labs/ecloud-sdk";
 import { withTelemetry } from "../../../telemetry";
-import { commonFlags, applyTxOverrides } from "../../../flags";
+import { commonFlags, timelockFlags, applyTxOverrides } from "../../../flags";
 import { createBuildClient, createComputeClient } from "../../../client";
 import { createViemClients } from "../../../utils/viemClients";
 import { printIdentityContext, executeWithIdentity, printTransactionResult } from "../../../utils/identityTransaction";
+import { handleTimelockExecute, handleTimelockCancel } from "../../../utils/timelockExecute";
 import type { Address } from "viem";
 import {
   getDockerfileInteractive,
@@ -126,6 +127,7 @@ export default class AppUpgrade extends Command {
       description: "Skip all confirmation prompts",
       default: false,
     }),
+    ...timelockFlags,
   };
 
   async run() {
@@ -138,6 +140,16 @@ export default class AppUpgrade extends Command {
       const environmentConfig = getEnvironmentConfig(environment);
       const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
       const privateKey = flags["private-key"]!;
+
+      // --execute / --cancel path: handle pending Timelock ops, skipping the build flow
+      if (flags.execute) {
+        await handleTimelockExecute({ opId: flags.execute, environment, privateKey, rpcUrl, log: this.log.bind(this), error: this.error.bind(this) });
+        return;
+      }
+      if (flags.cancel) {
+        await handleTimelockCancel({ opId: flags.cancel, environment, privateKey, rpcUrl, log: this.log.bind(this), error: this.error.bind(this) });
+        return;
+      }
 
       // 1. Get app ID interactively if not provided
       const appID = await getOrPromptAppID({

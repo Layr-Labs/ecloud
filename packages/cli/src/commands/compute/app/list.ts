@@ -5,6 +5,8 @@ import {
   getAppLatestReleaseBlockNumbers,
   getBlockTimestamps,
   UserApiClient,
+  getPendingTimelockOps,
+  type PendingTimelockOp,
 } from "@layr-labs/ecloud-sdk";
 import { commonFlags, validateCommonFlags } from "../../../flags";
 import { privateKeyToAccount } from "viem/accounts";
@@ -16,7 +18,7 @@ import {
   getStatusSortPriority,
 } from "../../../utils/prompts";
 import { getAppInfosChunked } from "../../../utils/appResolver";
-import { formatAppDisplay, printAppDisplay } from "../../../utils/format";
+import { formatAppDisplay, printAppDisplay, formatCountdown } from "../../../utils/format";
 import { createViemClients } from "../../../utils/viemClients";
 import { getDashboardUrl } from "../../../utils/dashboard";
 import { getClientId } from "../../../utils/version";
@@ -82,6 +84,27 @@ export default class AppList extends Command {
 
       const activeAddress = getActiveIdentityAddress(environment);
       let totalApps = 0;
+
+      // Fetch pending Timelock ops for any Timelock identities
+      const pendingOpsMap = new Map<string, PendingTimelockOp[]>(); // app address → ops
+      const timelockIdentities = identities.filter((id) => id.type === "timelock" && id.environment === environment);
+      for (const tlId of timelockIdentities) {
+        try {
+          const ops = await getPendingTimelockOps(publicClient, tlId.address as Address);
+          for (const op of ops) {
+            // Extract app address from description (format: "functionName(0x...)")
+            const match = op.description.match(/\((0x[0-9a-fA-F]{40})\)/);
+            if (match) {
+              const appAddr = match[1].toLowerCase();
+              const existing = pendingOpsMap.get(appAddr) ?? [];
+              existing.push(op);
+              pendingOpsMap.set(appAddr, existing);
+            }
+          }
+        } catch {
+          // skip if Timelock doesn't support getPendingOperations
+        }
+      }
 
       console.log();
 
@@ -197,6 +220,18 @@ export default class AppList extends Command {
 
           const dashboardUrl = getDashboardUrl(environment, appItems[i].appAddr);
           this.log(`    Dashboard:      ${chalk.blue.underline(dashboardUrl)}`);
+
+          // Show pending Timelock ops for this app
+          const appOps = pendingOpsMap.get(appItems[i].appAddr.toLowerCase());
+          if (appOps && appOps.length > 0) {
+            for (const op of appOps) {
+              const now = BigInt(Math.floor(Date.now() / 1000));
+              const status = op.ready
+                ? chalk.green("ready to execute")
+                : `executable in ${formatCountdown(op.executableAt - now)}`;
+              this.log(`    ⏳ ${op.description}  [${status}]`);
+            }
+          }
 
           if (i < appItems.length - 1) {
             this.log(chalk.gray("  ──────────────────────────────────────────────────────────────"));

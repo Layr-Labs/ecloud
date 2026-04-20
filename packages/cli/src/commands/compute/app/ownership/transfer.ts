@@ -6,11 +6,12 @@ import {
   encodeTransferOwnershipData,
 } from "@layr-labs/ecloud-sdk";
 import { withTelemetry } from "../../../../telemetry";
-import { commonFlags, applyTxOverrides } from "../../../../flags";
+import { commonFlags, timelockFlags, applyTxOverrides } from "../../../../flags";
 import { createComputeClient } from "../../../../client";
 import { getOrPromptAppID, getPrivateKeyInteractive, confirm } from "../../../../utils/prompts";
 import { createViemClients } from "../../../../utils/viemClients";
 import { printIdentityContext, executeWithIdentity, printTransactionResult } from "../../../../utils/identityTransaction";
+import { handleTimelockExecute, handleTimelockCancel } from "../../../../utils/timelockExecute";
 import { isAddress } from "viem";
 import type { Address } from "viem";
 import chalk from "chalk";
@@ -28,7 +29,7 @@ export default class AppOwnershipTransfer extends Command {
   static flags = {
     ...commonFlags,
     to: Flags.string({
-      required: true,
+      required: false,
       description: "New owner address (Safe or Timelock address enables governance mode)",
       env: "ECLOUD_NEW_OWNER",
     }),
@@ -36,6 +37,7 @@ export default class AppOwnershipTransfer extends Command {
       description: "Skip all confirmation prompts",
       default: false,
     }),
+    ...timelockFlags,
   };
 
   async run() {
@@ -47,6 +49,19 @@ export default class AppOwnershipTransfer extends Command {
       const environmentConfig = getEnvironmentConfig(environment);
       const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
       const privateKey = await getPrivateKeyInteractive(flags["private-key"]);
+
+      if (flags.execute) {
+        await handleTimelockExecute({ opId: flags.execute, environment, privateKey, rpcUrl, log: this.log.bind(this), error: this.error.bind(this) });
+        return;
+      }
+      if (flags.cancel) {
+        await handleTimelockCancel({ opId: flags.cancel, environment, privateKey, rpcUrl, log: this.log.bind(this), error: this.error.bind(this) });
+        return;
+      }
+
+      if (!flags.to) {
+        this.error("--to is required when not using --execute");
+      }
 
       const appId = await getOrPromptAppID({
         appID: args["app-id"],

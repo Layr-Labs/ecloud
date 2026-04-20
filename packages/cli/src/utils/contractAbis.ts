@@ -13,6 +13,8 @@ export const SAFE_ABI = [
 export const TIMELOCK_ABI = [
   { name: "getMinDelay", type: "function", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" },
   { name: "hasRole", type: "function", inputs: [{ type: "bytes32" }, { type: "address" }], outputs: [{ type: "bool" }], stateMutability: "view" },
+  { name: "execute", type: "function", inputs: [{ name: "target", type: "address" }, { name: "value", type: "uint256" }, { name: "payload", type: "bytes" }, { name: "predecessor", type: "bytes32" }, { name: "salt", type: "bytes32" }], outputs: [], stateMutability: "payable" },
+  { name: "cancel", type: "function", inputs: [{ name: "id", type: "bytes32" }], outputs: [], stateMutability: "nonpayable" },
 ] as const;
 
 // keccak256("PROPOSER_ROLE")

@@ -1,6 +1,6 @@
 import { Command, Args, Flags } from "@oclif/core";
 import { createComputeClient } from "../../../client";
-import { commonFlags, applyTxOverrides } from "../../../flags";
+import { commonFlags, timelockFlags, applyTxOverrides } from "../../../flags";
 import {
   getEnvironmentConfig,
   estimateTransactionGas,
@@ -11,6 +11,7 @@ import { getOrPromptAppID, confirm } from "../../../utils/prompts";
 import { getPrivateKeyInteractive } from "../../../utils/prompts";
 import { createViemClients } from "../../../utils/viemClients";
 import { printIdentityContext, executeWithIdentity, printTransactionResult } from "../../../utils/identityTransaction";
+import { handleTimelockExecute, handleTimelockCancel } from "../../../utils/timelockExecute";
 import chalk from "chalk";
 import { withTelemetry } from "../../../telemetry";
 import type { Address } from "viem";
@@ -32,6 +33,7 @@ export default class AppLifecycleTerminate extends Command {
       description: "Force termination without confirmation",
       default: false,
     }),
+    ...timelockFlags,
   };
 
   async run() {
@@ -43,6 +45,15 @@ export default class AppLifecycleTerminate extends Command {
       const environmentConfig = getEnvironmentConfig(environment);
       const rpcUrl = flags.rpcUrl || environmentConfig.defaultRPCURL;
       const privateKey = await getPrivateKeyInteractive(flags["private-key"]);
+
+      if (flags.execute) {
+        await handleTimelockExecute({ opId: flags.execute, environment, privateKey, rpcUrl, log: this.log.bind(this), error: this.error.bind(this) });
+        return;
+      }
+      if (flags.cancel) {
+        await handleTimelockCancel({ opId: flags.cancel, environment, privateKey, rpcUrl, log: this.log.bind(this), error: this.error.bind(this) });
+        return;
+      }
 
       const appId = await getOrPromptAppID({
         appID: args["app-id"],

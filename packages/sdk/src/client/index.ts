@@ -121,6 +121,7 @@ export {
   getTimelocksByDeployer,
   getSafesByDeployer,
   getPendingTimelockOps,
+  executeTimelockOp,
   CANONICAL_SALT,
   type DeploySafeOptions,
   type DeployTimelockOptions,
