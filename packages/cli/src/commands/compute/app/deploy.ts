@@ -261,7 +261,7 @@ export default class AppDeploy extends Command {
         // Interactive verifiable selection when --verifiable is not set.
         // If the user explicitly provided --dockerfile, assume they want the normal local-build flow.
         if (!flags.dockerfile) {
-          const useVerifiable = await promptUseVerifiableBuild();
+          const useVerifiable = await promptUseVerifiableBuild(flags.force);
           if (useVerifiable) {
             const sourceType = await promptVerifiableSourceType();
             verifiableMode = sourceType;

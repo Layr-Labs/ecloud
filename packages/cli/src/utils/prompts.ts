@@ -15,7 +15,6 @@ import { privateKeyToAccount } from "viem/accounts";
 import {
   getEnvironmentConfig,
   getAvailableEnvironments,
-  isEnvironmentAvailable,
   getAllAppsByDeveloper,
   getCategoryDescriptions,
   fetchTemplateCatalog,
@@ -152,8 +151,14 @@ function detectGitRepoInfo(): { repoUrl?: string; commitSha?: string } {
 
 /**
  * Prompt: "Build from verifiable source?" (only used when --verifiable is not set)
+ *
+ * When `force` is true (i.e. the user passed --force), skip the prompt entirely
+ * and return the default answer (false = regular build). Without this short-circuit,
+ * `confirmWithDefault` throws in non-interactive mode, which means --force on an
+ * image-ref-only deploy or upgrade was unusable in CI.
  */
-export async function promptUseVerifiableBuild(): Promise<boolean> {
+export async function promptUseVerifiableBuild(force: boolean = false): Promise<boolean> {
+  if (force) return false;
   return confirmWithDefault("Build from verifiable source?", false);
 }
 
@@ -1522,15 +1527,15 @@ export async function getPrivateKeyInteractive(privateKey?: string): Promise<str
  */
 export async function getEnvironmentInteractive(environment?: string): Promise<string> {
   if (environment) {
-    try {
-      getEnvironmentConfig(environment);
-      if (!isEnvironmentAvailable(environment)) {
-        throw new Error(`Environment ${environment} is not available in this build`);
-      }
-      return environment;
-    } catch {
-      // Invalid environment, continue to prompt
-    }
+    // Validate the explicit value and surface the real error to the user.
+    // getEnvironmentConfig throws a descriptive error for unknown environments
+    // AND for environments not available in the current build (dev vs prod).
+    // Previously we caught this silently and fell through to the interactive
+    // prompt, which in non-TTY mode surfaced the generic "Cannot prompt in
+    // non-interactive mode" error — hiding the real reason (e.g. "mainnet-alpha
+    // is not available in this build type" when using a dev build).
+    getEnvironmentConfig(environment);
+    return environment;
   }
 
   ensureInteractive("--environment or ECLOUD_ENV");
