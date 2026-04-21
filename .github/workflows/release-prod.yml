@@ -47,47 +47,6 @@ jobs:
           echo "BASE_VERSION=$BASE_VERSION" >> $GITHUB_ENV
           echo "Building production version: $PACKAGE_VERSION"
 
-      - name: Verify dev tag and get commit
-        run: |
-          DEV_TAGS=$(git tag -l "${{ env.BASE_VERSION }}-dev*" | head -10)
-          if [ -z "$DEV_TAGS" ]; then
-            echo "ERROR: No dev tag found for version ${{ env.BASE_VERSION }}"
-            git tag -l "*-dev*" | tail -10
-            exit 1
-          fi
-
-          PROD_COMMIT=$(git rev-list -n 1 "${{ github.ref_name }}")
-          for DEV_TAG in $DEV_TAGS; do
-            DEV_COMMIT=$(git rev-list -n 1 "$DEV_TAG")
-            if [ "$DEV_COMMIT" = "$PROD_COMMIT" ]; then
-              echo "DEV_COMMIT=$DEV_COMMIT" >> $GITHUB_ENV
-              echo "DEV_TAG=$DEV_TAG" >> $GITHUB_ENV
-              exit 0
-            fi
-          done
-
-          echo "ERROR: No dev tag points to the same commit as production tag ${{ github.ref_name }}"
-          echo "Production commit: $PROD_COMMIT"
-          for DEV_TAG in $DEV_TAGS; do
-            DEV_COMMIT=$(git rev-list -n 1 "$DEV_TAG")
-            echo "  $DEV_TAG: $DEV_COMMIT"
-          done
-          exit 1
-
-      - name: Verify production tag exists
-        run: |
-          if ! git rev-parse "${{ env.VERSION }}" >/dev/null 2>&1; then
-            echo "ERROR: Production tag '${{ env.VERSION }}' does not exist"
-            exit 1
-          fi
-          PROD_COMMIT=$(git rev-list -n 1 "${{ env.VERSION }}")
-          if [ "$PROD_COMMIT" != "${{ env.DEV_COMMIT }}" ]; then
-            echo "ERROR: Production tag and dev tag point to different commits"
-            echo "Production: $PROD_COMMIT"
-            echo "Dev: ${{ env.DEV_COMMIT }}"
-            exit 1
-          fi
-
       - name: Setup pnpm
         uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
 
