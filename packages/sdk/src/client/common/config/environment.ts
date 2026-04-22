@@ -135,6 +135,12 @@ export function getEnvironmentConfig(environment: string, chainID?: bigint): Env
     ...env,
     chainID: BigInt(resolvedChainID),
     ...(apiUrlOverride ? { userApiServerURL: apiUrlOverride } : {}),
+    ...(process.env.ECLOUD_USER_API_URL && {
+      userApiServerURL: process.env.ECLOUD_USER_API_URL,
+    }),
+    ...(process.env.ECLOUD_RPC_URL && {
+      defaultRPCURL: process.env.ECLOUD_RPC_URL,
+    }),
   };
 }
 
@@ -153,7 +159,12 @@ export function getBillingEnvironmentConfig(build: "dev" | "prod"): {
   if (apiUrlOverride) {
     return { billingApiServerURL: apiUrlOverride };
   }
-  return config;
+  return {
+    ...config,
+    ...(process.env.ECLOUD_BILLING_API_URL && {
+      billingApiServerURL: process.env.ECLOUD_BILLING_API_URL,
+    }),
+  };
 }
 
 /**
