@@ -78,7 +78,7 @@ export function createBillingModule(config: BillingModuleConfig): BillingModule 
   const billingEnvConfig = getBillingEnvironmentConfig(getBuildType());
 
   // Create billing API client
-  const billingApi = new BillingApiClient(billingEnvConfig, walletClient, { verbose });
+  const billingApi = new BillingApiClient(billingEnvConfig, walletClient);
 
   // Resolve on-chain config
   const environmentConfig = getEnvironmentConfig(environment);

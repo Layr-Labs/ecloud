@@ -37,8 +37,6 @@ export interface BillingApiClientOptions {
    * When false (default), uses EIP-712 typed data signatures for each request.
    */
   useSession?: boolean;
-  /** Log request/response details to stderr */
-  verbose?: boolean;
 }
 
 /**
@@ -193,22 +191,10 @@ export class BillingApiClient {
     productId: ProductID,
     body?: Record<string, unknown>,
   ): Promise<{ json: () => Promise<any>; text: () => Promise<string> }> {
-    if (this.options.verbose) {
-      console.debug(`[BillingAPI] ${method} ${url}`);
+    if (this.useSession) {
+      return this.makeSessionAuthenticatedRequest(url, method, body);
     }
-    const resp = this.useSession
-      ? await this.makeSessionAuthenticatedRequest(url, method, body)
-      : await this.makeSignatureAuthenticatedRequest(url, method, productId, body);
-
-    if (this.options.verbose) {
-      const data = await resp.json();
-      console.debug(`[BillingAPI] Response:`, JSON.stringify(data, null, 2));
-      return {
-        json: async () => data,
-        text: async () => JSON.stringify(data),
-      };
-    }
-    return resp;
+    return this.makeSignatureAuthenticatedRequest(url, method, productId, body);
   }
 
   /**
