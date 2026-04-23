@@ -419,6 +419,23 @@ export interface SubscriptionOpts {
   cancelUrl?: string;
 }
 
+export interface PaymentMethod {
+  id: string;
+  stripePaymentMethodId: string;
+  createdAt: string;
+}
+
+export interface PaymentMethodsResponse {
+  paymentMethods: PaymentMethod[];
+}
+
+export interface CreditPurchaseResponse {
+  purchaseId?: string;
+  checkoutSessionId?: string;
+  checkoutUrl?: string;
+  amountCents: string;
+}
+
 // Billing environment configuration
 export interface BillingEnvironmentConfig {
   billingApiServerURL: string;
