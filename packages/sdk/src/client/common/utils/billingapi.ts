@@ -18,6 +18,8 @@ import {
   CreateSubscriptionResponse,
   GetSubscriptionOptions,
   ProductSubscriptionResponse,
+  PaymentMethodsResponse,
+  CreditPurchaseResponse,
 } from "../types";
 import { calculateBillingAuthSignature } from "./auth";
 import { BillingEnvironmentConfig } from "../types";
@@ -176,6 +178,25 @@ export class BillingApiClient {
   async cancelSubscription(productId: ProductID = "compute"): Promise<void> {
     const endpoint = `${this.config.billingApiServerURL}/products/${productId}/subscription`;
     await this.makeAuthenticatedRequest(endpoint, "DELETE", productId);
+  }
+
+  async getPaymentMethods(): Promise<PaymentMethodsResponse> {
+    const endpoint = `${this.config.billingApiServerURL}/v1/payment-methods`;
+    const resp = await this.makeAuthenticatedRequest(endpoint, "GET", "compute");
+    return resp.json();
+  }
+
+  async purchaseCredits(
+    amountCents: number,
+    paymentMethodId?: string,
+  ): Promise<CreditPurchaseResponse> {
+    const endpoint = `${this.config.billingApiServerURL}/v1/credits/purchase`;
+    const body: Record<string, unknown> = { amountCents };
+    if (paymentMethodId) {
+      body.paymentMethodId = paymentMethodId;
+    }
+    const resp = await this.makeAuthenticatedRequest(endpoint, "POST", "compute", body);
+    return resp.json();
   }
 
   // ==========================================================================
