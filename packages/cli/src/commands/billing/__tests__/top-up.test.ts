@@ -10,11 +10,17 @@ vi.mock("../../../telemetry", () => ({
 
 vi.mock("@inquirer/prompts", () => ({
   input: vi.fn(),
+  select: vi.fn(),
+  confirm: vi.fn(),
+}));
+
+vi.mock("open", () => ({
+  default: vi.fn(),
 }));
 
 import BillingTopUp from "../top-up";
 import { createBillingClient } from "../../../client";
-import { input } from "@inquirer/prompts";
+import { input, select, confirm } from "@inquirer/prompts";
 
 const WALLET_ADDRESS = "0x1234567890abcdef1234567890abcdef12345678";
 const TX_HASH = "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890";
@@ -26,6 +32,8 @@ describe("ecloud billing top-up", () => {
     getStatus: ReturnType<typeof vi.fn>;
     getTopUpInfo: ReturnType<typeof vi.fn>;
     topUp: ReturnType<typeof vi.fn>;
+    getPaymentMethods: ReturnType<typeof vi.fn>;
+    purchaseCredits: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {
@@ -37,6 +45,8 @@ describe("ecloud billing top-up", () => {
       getStatus: vi.fn(),
       getTopUpInfo: vi.fn(),
       topUp: vi.fn(),
+      getPaymentMethods: vi.fn(),
+      purchaseCredits: vi.fn(),
     };
     (createBillingClient as ReturnType<typeof vi.fn>).mockResolvedValue(mockBilling);
 
@@ -86,6 +96,8 @@ describe("ecloud billing top-up", () => {
     return cmd;
   }
 
+  // ── USDC Tests ──
+
   it("happy path: sufficient balance, purchase succeeds", async () => {
     setupOnChainState();
     mockBilling.topUp.mockResolvedValue({ txHash: TX_HASH, walletAddress: WALLET_ADDRESS });
@@ -93,29 +105,22 @@ describe("ecloud billing top-up", () => {
       .mockResolvedValueOnce({ subscriptionStatus: "active", remainingCredits: 10.0 })
       .mockResolvedValueOnce({ subscriptionStatus: "active", remainingCredits: 60.0 });
 
-    const cmd = createCommand({ amount: "50" });
+    const cmd = createCommand({ amount: "50", method: "usdc" });
     const promise = cmd.run();
-    // Advance timers to resolve the polling setTimeout
     for (let i = 0; i < 10; i++) {
       await vi.advanceTimersByTimeAsync(5_000);
     }
     await promise;
     const fullOutput = logOutput.join("\n");
 
-    // Shows wallet address
     expect(fullOutput).toContain(WALLET_ADDRESS);
-    // Shows credits
     expect(fullOutput).toContain("$10.00");
-    // Shows USDC balance
     expect(fullOutput).toContain("100 USDC");
-    // Shows purchase step
     expect(fullOutput).toContain("Purchasing");
     expect(fullOutput).toContain("Transaction confirmed");
-    // Shows final balance after polling
     expect(fullOutput).toContain("Credits received");
     expect(fullOutput).toContain("$60.00");
 
-    // Verify topUp was called with correct args
     expect(mockBilling.topUp).toHaveBeenCalledWith({
       amount: BigInt(50_000_000),
       account: WALLET_ADDRESS,
@@ -126,7 +131,7 @@ describe("ecloud billing top-up", () => {
     setupOnChainState({ usdcBalance: BigInt(0) });
     mockBilling.getStatus.mockResolvedValue({ subscriptionStatus: "inactive" });
 
-    const cmd = createCommand({ amount: "50" });
+    const cmd = createCommand({ amount: "50", method: "usdc" });
     await cmd.run();
     const fullOutput = logOutput.join("\n");
 
@@ -134,7 +139,6 @@ describe("ecloud billing top-up", () => {
     expect(fullOutput).toContain("Send USDC on Sepolia to");
     expect(fullOutput).toContain(WALLET_ADDRESS);
 
-    // Should not have called topUp
     expect(mockBilling.topUp).not.toHaveBeenCalled();
   });
 
@@ -142,7 +146,7 @@ describe("ecloud billing top-up", () => {
     setupOnChainState({ minimumPurchase: BigInt(10_000_000) }); // 10 USDC minimum
     mockBilling.getStatus.mockResolvedValue({ subscriptionStatus: "inactive" });
 
-    const cmd = createCommand({ amount: "5" });
+    const cmd = createCommand({ amount: "5", method: "usdc" });
     await expect(cmd.run()).rejects.toThrow("Minimum purchase is 10 USDC");
   });
 
@@ -154,7 +158,7 @@ describe("ecloud billing top-up", () => {
       .mockResolvedValueOnce({ subscriptionStatus: "active", remainingCredits: 10.0 })
       .mockResolvedValueOnce({ subscriptionStatus: "active", remainingCredits: 60.0 });
 
-    const cmd = createCommand({ amount: "50", account: targetAccount });
+    const cmd = createCommand({ amount: "50", method: "usdc", account: targetAccount });
     const promise = cmd.run();
     for (let i = 0; i < 10; i++) {
       await vi.advanceTimersByTimeAsync(5_000);
@@ -162,10 +166,8 @@ describe("ecloud billing top-up", () => {
     await promise;
     const fullOutput = logOutput.join("\n");
 
-    // Shows target account
     expect(fullOutput).toContain(targetAccount);
 
-    // Verify topUp was called with the target account
     expect(mockBilling.topUp).toHaveBeenCalledWith({
       amount: BigInt(50_000_000),
       account: targetAccount,
@@ -175,15 +177,13 @@ describe("ecloud billing top-up", () => {
   it("billing API poll timeout: shows timeout message", async () => {
     setupOnChainState();
     mockBilling.topUp.mockResolvedValue({ txHash: TX_HASH, walletAddress: WALLET_ADDRESS });
-    // getStatus always returns the same credits (no increase)
     mockBilling.getStatus.mockResolvedValue({
       subscriptionStatus: "active",
       remainingCredits: 10.0,
     });
 
-    const cmd = createCommand({ amount: "50" });
+    const cmd = createCommand({ amount: "50", method: "usdc" });
     const promise = cmd.run();
-    // Advance past the 3-minute poll timeout
     await vi.advanceTimersByTimeAsync(200_000);
     await promise;
     const fullOutput = logOutput.join("\n");
@@ -199,7 +199,7 @@ describe("ecloud billing top-up", () => {
       .mockResolvedValueOnce({ subscriptionStatus: "inactive" })
       .mockResolvedValueOnce({ subscriptionStatus: "active", remainingCredits: 100.0 });
 
-    const cmd = createCommand({ amount: "100" });
+    const cmd = createCommand({ amount: "100", method: "usdc" });
     const promise = cmd.run();
     for (let i = 0; i < 10; i++) {
       await vi.advanceTimersByTimeAsync(5_000);
@@ -214,17 +214,129 @@ describe("ecloud billing top-up", () => {
     mockBilling.topUp.mockResolvedValue({ txHash: TX_HASH, walletAddress: WALLET_ADDRESS });
     mockBilling.getStatus.mockRejectedValue(new Error("API unavailable"));
 
-    const cmd = createCommand({ amount: "50" });
+    const cmd = createCommand({ amount: "50", method: "usdc" });
     const promise = cmd.run();
-    // Advance past poll timeout since getStatus always errors
     await vi.advanceTimersByTimeAsync(200_000);
     await promise;
     const fullOutput = logOutput.join("\n");
 
-    // Should still proceed with on-chain purchase
     expect(fullOutput).toContain("Purchasing");
     expect(fullOutput).toContain("Transaction confirmed");
-    // Will timeout on polling since status always errors
     expect(fullOutput).toContain("Credits haven't appeared yet");
+  });
+
+  // ── Credit Card Tests ──
+
+  it("credit card: charges existing card on file", async () => {
+    mockBilling.getStatus
+      .mockResolvedValueOnce({ subscriptionStatus: "active", remainingCredits: 10.0 })
+      .mockResolvedValueOnce({ subscriptionStatus: "active", remainingCredits: 35.0 });
+    mockBilling.getPaymentMethods.mockResolvedValue({
+      paymentMethods: [
+        {
+          id: "029641fc-3e5c-11f1-986c-5601121cbf6d",
+          stripePaymentMethodId: "pm_1ABC1234",
+          createdAt: "2026-04-20T15:00:00Z",
+        },
+      ],
+    });
+    mockBilling.purchaseCredits.mockResolvedValue({
+      purchaseId: "a1b2c3d4",
+      amountCents: "2500",
+    });
+    (confirm as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+
+    const cmd = createCommand({ amount: "25", method: "card" });
+    const promise = cmd.run();
+    for (let i = 0; i < 10; i++) {
+      await vi.advanceTimersByTimeAsync(5_000);
+    }
+    await promise;
+    const fullOutput = logOutput.join("\n");
+
+    expect(mockBilling.purchaseCredits).toHaveBeenCalledWith(2500, "029641fc-3e5c-11f1-986c-5601121cbf6d");
+    expect(fullOutput).toContain("Payment submitted");
+    expect(fullOutput).toContain("Credits received");
+  });
+
+  it("credit card: opens checkout when user declines existing card", async () => {
+    const openMock = (await import("open")).default as ReturnType<typeof vi.fn>;
+    mockBilling.getStatus.mockResolvedValue({ subscriptionStatus: "active", remainingCredits: 10.0 });
+    mockBilling.getPaymentMethods.mockResolvedValue({
+      paymentMethods: [
+        {
+          id: "029641fc-3e5c-11f1-986c-5601121cbf6d",
+          stripePaymentMethodId: "pm_1ABC1234",
+          createdAt: "2026-04-20T15:00:00Z",
+        },
+      ],
+    });
+    mockBilling.purchaseCredits.mockResolvedValue({
+      checkoutSessionId: "cs_test_abc123",
+      checkoutUrl: "https://checkout.stripe.com/test",
+      amountCents: "2500",
+    });
+    (confirm as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+
+    const cmd = createCommand({ amount: "25", method: "card" });
+    const promise = cmd.run();
+    await vi.advanceTimersByTimeAsync(200_000);
+    await promise;
+    const fullOutput = logOutput.join("\n");
+
+    expect(mockBilling.purchaseCredits).toHaveBeenCalledWith(2500, undefined);
+    expect(openMock).toHaveBeenCalledWith("https://checkout.stripe.com/test");
+    expect(fullOutput).toContain("https://checkout.stripe.com/test");
+  });
+
+  it("credit card: opens checkout when no card on file", async () => {
+    const openMock = (await import("open")).default as ReturnType<typeof vi.fn>;
+    mockBilling.getStatus.mockResolvedValue({ subscriptionStatus: "active", remainingCredits: 10.0 });
+    mockBilling.getPaymentMethods.mockResolvedValue({ paymentMethods: [] });
+    mockBilling.purchaseCredits.mockResolvedValue({
+      checkoutSessionId: "cs_test_abc123",
+      checkoutUrl: "https://checkout.stripe.com/test",
+      amountCents: "5000",
+    });
+
+    const cmd = createCommand({ amount: "50", method: "card" });
+    const promise = cmd.run();
+    await vi.advanceTimersByTimeAsync(200_000);
+    await promise;
+    const fullOutput = logOutput.join("\n");
+
+    expect(confirm).not.toHaveBeenCalled();
+    expect(mockBilling.purchaseCredits).toHaveBeenCalledWith(5000, undefined);
+    expect(openMock).toHaveBeenCalledWith("https://checkout.stripe.com/test");
+    expect(fullOutput).toContain("https://checkout.stripe.com/test");
+  });
+
+  it("credit card: rejects amount below $5 minimum", async () => {
+    mockBilling.getStatus.mockResolvedValue({ subscriptionStatus: "active", remainingCredits: 10.0 });
+
+    const cmd = createCommand({ amount: "3", method: "card" });
+    await expect(cmd.run()).rejects.toThrow("Minimum purchase is $5");
+  });
+
+  it("credit card: --method and --amount flags skip prompts", async () => {
+    mockBilling.getStatus
+      .mockResolvedValueOnce({ subscriptionStatus: "active", remainingCredits: 10.0 })
+      .mockResolvedValueOnce({ subscriptionStatus: "active", remainingCredits: 60.0 });
+    mockBilling.getPaymentMethods.mockResolvedValue({ paymentMethods: [] });
+    mockBilling.purchaseCredits.mockResolvedValue({
+      checkoutSessionId: "cs_test_abc123",
+      checkoutUrl: "https://checkout.stripe.com/test",
+      amountCents: "5000",
+    });
+
+    const cmd = createCommand({ amount: "50", method: "card" });
+    const promise = cmd.run();
+    for (let i = 0; i < 10; i++) {
+      await vi.advanceTimersByTimeAsync(5_000);
+    }
+    await promise;
+
+    expect(select).not.toHaveBeenCalled();
+    expect(input).not.toHaveBeenCalled();
   });
 });
