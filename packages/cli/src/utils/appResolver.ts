@@ -24,6 +24,7 @@ import {
   resolveAppIDFromRegistry,
 } from "./appNames";
 import { getClientId } from "./version";
+import { identityForAllContexts } from "./apiIdentity";
 
 const CHUNK_SIZE = 10;
 
@@ -242,12 +243,14 @@ export class AppResolver {
         return;
       }
 
-      // Fetch info for all apps to get profile names
+      // Fetch info for all apps to get profile names. Apps may be owned by any
+      // of the user's identities, so declare all non-EOA identities so the
+      // platform evaluates permissions across them in one batched request.
       const userApiClient = new UserApiClient(
         this.environmentConfig,
         walletClient,
         publicClient,
-        { clientId: getClientId() },
+        { clientId: getClientId(), identities: identityForAllContexts(this.environment) },
       );
       const appInfos = await getAppInfosChunked(userApiClient, apps);
 

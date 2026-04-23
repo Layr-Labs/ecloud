@@ -109,6 +109,13 @@ export default class AppList extends Command {
       console.log();
 
       for (const { address, label } of addressesToQuery) {
+        // Declare the identity we're querying under so the platform evaluates
+        // permissions against this address rather than the signing EOA.
+        // EOA queries keep the header empty — server falls back to signer.
+        userApiClient.setIdentities(
+          address.toLowerCase() === eoaAddress.toLowerCase() ? [] : [address],
+        );
+
         // Query apps owned by this address from blockchain
         const result = await getAllAppsByDeveloper(publicClient, environmentConfig, address);
 

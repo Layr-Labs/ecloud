@@ -14,6 +14,7 @@ import { getClientId } from "../../../utils/version";
 import { getDashboardUrl } from "../../../utils/dashboard";
 import { createViemClients } from "../../../utils/viemClients";
 import { getIdentities } from "../../../utils/globalConfig";
+import { identityForActiveContext } from "../../../utils/apiIdentity";
 import { Address, type PublicClient } from "viem";
 import chalk from "chalk";
 
@@ -69,6 +70,7 @@ export default class AppInfo extends Command {
     });
     const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, {
       clientId: getClientId(),
+      identities: identityForActiveContext(environment),
     });
 
     if (flags.watch) {

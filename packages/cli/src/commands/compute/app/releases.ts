@@ -5,6 +5,7 @@ import { getOrPromptAppID } from "../../../utils/prompts";
 import { withTelemetry } from "../../../telemetry";
 import { getClientId } from "../../../utils/version";
 import { createViemClients } from "../../../utils/viemClients";
+import { identityForActiveContext } from "../../../utils/apiIdentity";
 import chalk from "chalk";
 import { formatAppRelease } from "../../../utils/releases";
 import { Address } from "viem";
@@ -106,6 +107,7 @@ export default class AppReleases extends Command {
       });
       const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, {
         clientId: getClientId(),
+        identities: identityForActiveContext(environment),
       });
 
       const data = await userApiClient.getApp(appID as Address);

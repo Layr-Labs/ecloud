@@ -6,6 +6,7 @@ import { createBuildClient, createComputeClient } from "../../../client";
 import { createViemClients } from "../../../utils/viemClients";
 import { printIdentityContext, executeWithIdentity, printTransactionResult } from "../../../utils/identityTransaction";
 import { handleTimelockExecute, handleTimelockCancel } from "../../../utils/timelockExecute";
+import { identityForActiveContext } from "../../../utils/apiIdentity";
 import type { Address } from "viem";
 import {
   getDockerfileInteractive,
@@ -331,7 +332,7 @@ export default class AppUpgrade extends Command {
           environmentConfig,
           walletClient,
           publicClient,
-          { clientId: getClientId() },
+          { clientId: getClientId(), identities: identityForActiveContext(environment) },
         );
         const infos = await userApiClient.getInfos([appID], 1);
         if (infos.length > 0) {

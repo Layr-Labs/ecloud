@@ -153,6 +153,14 @@ export interface UserApiClientOptions {
    * When false (default), each request is signed individually.
    */
   useSession?: boolean;
+  /**
+   * On-chain identities the caller is acting as. Sent via the X-eigenx-identity
+   * header so the server evaluates permissions against these addresses instead
+   * of the recovered EOA. Leave empty to preserve legacy behavior (server
+   * infers identity from the signing EOA). When multiple identities are
+   * supplied (e.g., for list endpoints) they are comma-joined on the wire.
+   */
+  identities?: Address[];
 }
 
 /**
@@ -161,6 +169,7 @@ export interface UserApiClientOptions {
 export class UserApiClient {
   private readonly clientId: string;
   private readonly useSession: boolean;
+  private identities: Address[];
 
   constructor(
     private readonly config: EnvironmentConfig,
@@ -170,6 +179,16 @@ export class UserApiClient {
   ) {
     this.clientId = options?.clientId || getDefaultClientId();
     this.useSession = options?.useSession ?? false;
+    this.identities = options?.identities ?? [];
+  }
+
+  /**
+   * Override the identities the client declares on subsequent requests.
+   * Useful when one UserApiClient instance is reused across multiple identity
+   * contexts (e.g., `app list` iterating over every identity the user holds).
+   */
+  setIdentities(identities: Address[]): void {
+    this.identities = identities;
   }
 
   /**
@@ -372,6 +391,7 @@ export class UserApiClient {
       const authHeaders = await this.generateAuthHeaders(CanUpdateAppProfilePermission, expiry);
       Object.assign(headers, authHeaders);
     }
+    this.addIdentityHeader(headers);
 
     try {
       const response: AxiosResponse = await axios.post(endpoint, formData, {
@@ -436,6 +456,7 @@ export class UserApiClient {
       const authHeaders = await this.generateAuthHeaders(permission, expiry);
       Object.assign(headers, authHeaders);
     }
+    this.addIdentityHeader(headers);
 
     try {
       const response: AxiosResponse = await requestWithRetry({
@@ -481,6 +502,17 @@ export class UserApiClient {
       // Re-throw other errors as-is
       throw error;
     }
+  }
+
+  /**
+   * Apply the X-eigenx-identity header to an outgoing request when identities
+   * are configured. Platform reads this header to resolve permissions against
+   * the declared identities instead of the recovered EOA. Case doesn't matter
+   * on the wire; we use canonical checksum form for readability in logs.
+   */
+  private addIdentityHeader(headers: Record<string, string>): void {
+    if (this.identities.length === 0) return;
+    headers["X-eigenx-identity"] = this.identities.join(",");
   }
 
   /**

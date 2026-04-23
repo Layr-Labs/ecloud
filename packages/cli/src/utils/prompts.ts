@@ -41,6 +41,7 @@ import {
 import { listApps, isAppNameAvailable, findAvailableName } from "./appNames";
 import { execSync } from "child_process";
 import { getClientId } from "./version";
+import { identityForAllContexts } from "./apiIdentity";
 
 // Helper to add hex prefix
 function addHexPrefix(value: string): Hex {
@@ -1126,7 +1127,7 @@ async function getAppIDInteractive(options: GetAppIDOptions): Promise<Address> {
         environmentConfig,
         walletClient,
         publicClient,
-        { clientId: getClientId() },
+        { clientId: getClientId(), identities: identityForAllContexts(environment) },
       );
       const appInfos = await getAppInfosChunked(userApiClient, apps);
 
