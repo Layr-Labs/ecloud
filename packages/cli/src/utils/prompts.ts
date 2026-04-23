@@ -15,7 +15,6 @@ import { privateKeyToAccount } from "viem/accounts";
 import {
   getEnvironmentConfig,
   getAvailableEnvironments,
-  isEnvironmentAvailable,
   getAllAppsByDeveloper,
   getCategoryDescriptions,
   fetchTemplateCatalog,
@@ -51,6 +50,19 @@ function addHexPrefix(value: string): Hex {
   return `0x${value}`;
 }
 
+/**
+ * Ensure the terminal is interactive before prompting.
+ * In non-TTY environments (CI, agents), @inquirer/prompts throws an opaque
+ * ExitPromptError. This gives a clear, actionable error instead.
+ */
+function ensureInteractive(missingFlagHint: string): void {
+  if (!process.stdin.isTTY) {
+    throw new Error(
+      `Cannot prompt in non-interactive mode. Provide ${missingFlagHint} via CLI flags or environment variables.`,
+    );
+  }
+}
+
 // ==================== Dockerfile Selection ====================
 
 /**
@@ -73,6 +85,7 @@ export async function getDockerfileInteractive(dockerfilePath?: string): Promise
   }
 
   // Interactive prompt when Dockerfile exists
+  ensureInteractive("--dockerfile or --image-ref");
   console.log(`\nFound Dockerfile in ${cwd}`);
 
   const choice = await select({
@@ -139,8 +152,14 @@ function detectGitRepoInfo(): { repoUrl?: string; commitSha?: string } {
 
 /**
  * Prompt: "Build from verifiable source?" (only used when --verifiable is not set)
+ *
+ * When `force` is true (i.e. the user passed --force), skip the prompt entirely
+ * and return the default answer (false = regular build). Without this short-circuit,
+ * `confirmWithDefault` throws in non-interactive mode, which means --force on an
+ * image-ref-only deploy or upgrade was unusable in CI.
  */
-export async function promptUseVerifiableBuild(): Promise<boolean> {
+export async function promptUseVerifiableBuild(force: boolean = false): Promise<boolean> {
+  if (force) return false;
   return confirmWithDefault("Build from verifiable source?", false);
 }
 
@@ -148,6 +167,7 @@ export async function promptUseVerifiableBuild(): Promise<boolean> {
  * Prompt: select verifiable build source type
  */
 export async function promptVerifiableSourceType(): Promise<VerifiableSourceType> {
+  ensureInteractive("--verifiable with --repo/--commit or --image-ref");
   return select({
     message: "Choose verifiable source type:",
     choices: [
@@ -161,6 +181,7 @@ export async function promptVerifiableSourceType(): Promise<VerifiableSourceType
  * Prompt for Git-source verifiable build inputs.
  */
 export async function promptVerifiableGitSourceInputs(): Promise<VerifiableGitSourceInputs> {
+  ensureInteractive("--repo, --commit");
   const detected = detectGitRepoInfo();
 
   const repoUrl = (
@@ -286,6 +307,7 @@ export async function promptVerifiableGitSourceInputs(): Promise<VerifiableGitSo
  * Required format: docker.io/eigenlayer/eigencloud-containers:<tag>
  */
 export async function promptVerifiablePrebuiltImageRef(): Promise<string> {
+  ensureInteractive("--image-ref");
   const ref = await input({
     message: "Enter prebuilt verifiable image ref:",
     default: "docker.io/eigenlayer/eigencloud-containers:",
@@ -430,6 +452,7 @@ async function getAvailableRegistries(): Promise<RegistryInfo[]> {
     const auths = config.auths || {};
     const credsStore = config.credsStore;
     const gcrProjects = new Map<string, RegistryInfo>();
+    const dockerhubUsers = new Map<string, RegistryInfo>();
     const registries: RegistryInfo[] = [];
 
     for (const [registry, auth] of Object.entries(auths)) {
@@ -480,7 +503,19 @@ async function getAvailableRegistries(): Promise<RegistryInfo[]> {
         continue;
       }
 
+      // Dedup dockerhub entries (Docker Desktop creates multiple auth entries for the same account)
+      if (registryType === "dockerhub") {
+        if (!dockerhubUsers.has(username)) {
+          dockerhubUsers.set(username, info);
+        }
+        continue;
+      }
+
       registries.push(info);
+    }
+
+    for (const dhInfo of Array.from(dockerhubUsers.values())) {
+      registries.push(dhInfo);
     }
 
     for (const gcrInfo of Array.from(gcrProjects.values())) {
@@ -615,6 +650,8 @@ export async function getImageReferenceInteractive(
     return imageRef;
   }
 
+  ensureInteractive("--image-ref");
+
   const registries = await getAvailableRegistries();
   const appName = getDefaultAppName();
 
@@ -661,6 +698,7 @@ async function getAvailableAppNameInteractive(
   suggestedBaseName?: string,
   skipDefaultName?: boolean,
 ): Promise<string> {
+  ensureInteractive("--name");
   const baseName = skipDefaultName
     ? undefined
     : suggestedBaseName || extractAppNameFromImage(imageRef);
@@ -783,6 +821,7 @@ export async function getEnvFileInteractive(envFilePath?: string): Promise<strin
     return ".env";
   }
 
+  ensureInteractive("--env-file");
   console.log("\nEnvironment file not found.");
   console.log("Environment files contain variables like RPC_URL, etc.");
 
@@ -830,7 +869,12 @@ export interface SkuInfo {
 
 function formatSkuChoice(it: SkuInfo): string {
   // Rich format when pricing data is available
-  if (it.vcpus != null && it.memory_mb != null && it.monthly_price_usd != null && it.hourly_price_usd != null) {
+  if (
+    it.vcpus != null &&
+    it.memory_mb != null &&
+    it.monthly_price_usd != null &&
+    it.hourly_price_usd != null
+  ) {
     const tier = it.friendly_name ?? it.sku;
     const isShared = it.description.toLowerCase().includes("shared");
     const vcpuLabel = isShared ? `Shared ${it.vcpus} vCPU` : `${it.vcpus} vCPU`;
@@ -864,6 +908,8 @@ export async function getInstanceTypeInteractive(
     throw new Error(`Invalid instance-type: ${instanceType} (must be one of: ${validSKUs})`);
   }
 
+  ensureInteractive("--instance-type");
+
   const isCurrentType = defaultSKU !== "";
 
   // Show pricing header and platform descriptions
@@ -871,8 +917,12 @@ export async function getInstanceTypeInteractive(
   if (hasPricing) {
     console.log("\nPay for what you use \u2014 no upfront costs, per-hour billing.\n");
     console.log(`  ${chalk.bold("Shielded VM (vTPM)")}: Verified boot and runtime attestation.`);
-    console.log(`  ${chalk.bold("SEV-SNP (TEE)")}: Verified boot, runtime attestation, and hardware-encrypted memory (AMD).`);
-    console.log(`  ${chalk.bold("TDX (TEE)")}: Verified boot, runtime attestation, and hardware-encrypted memory (Intel).\n`);
+    console.log(
+      `  ${chalk.bold("SEV-SNP (TEE)")}: Verified boot, runtime attestation, and hardware-encrypted memory (AMD).`,
+    );
+    console.log(
+      `  ${chalk.bold("TDX (TEE)")}: Verified boot, runtime attestation, and hardware-encrypted memory (Intel).\n`,
+    );
   }
 
   if (isCurrentType && defaultSKU) {
@@ -919,6 +969,8 @@ export async function getLogSettingsInteractive(
         );
     }
   }
+
+  ensureInteractive("--log-visibility");
 
   const choice = await select({
     message: "Do you want to view your app's logs?",
@@ -1075,10 +1127,13 @@ export async function getOrPromptAppID(
     }
 
     throw new Error(
-      `App name '${options.appID}' not found in environment '${options.environment}'`,
+      `App name '${options.appID}' not found in environment '${options.environment}'. ` +
+        `Name lookup uses a local cache that may be stale. ` +
+        `Try using the app ID (0x...) directly, or run 'ecloud compute app list' to refresh the cache.`,
     );
   }
 
+  ensureInteractive("app-id argument");
   return getAppIDInteractive(options);
 }
 
@@ -1123,12 +1178,10 @@ async function getAppIDInteractive(options: GetAppIDOptions): Promise<Address> {
   // If cache is empty/expired, fetch fresh profile names from API
   if (!cachedProfiles) {
     try {
-      const userApiClient = new UserApiClient(
-        environmentConfig,
-        walletClient,
-        publicClient,
-        { clientId: getClientId(), identities: identityForAllContexts(environment) },
-      );
+      const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, {
+        clientId: getClientId(),
+        identities: identityForAllContexts(environment),
+      });
       const appInfos = await getAppInfosChunked(userApiClient, apps);
 
       // Build and cache profile names
@@ -1388,6 +1441,8 @@ export async function getResourceUsageMonitoringInteractive(
     }
   }
 
+  ensureInteractive("--resource-usage-monitoring");
+
   const choice = await select({
     message: "Show resource usage (CPU/memory) for your app?",
     choices: [
@@ -1415,6 +1470,11 @@ export async function confirmWithDefault(
   prompt: string,
   defaultValue: boolean = false,
 ): Promise<boolean> {
+  if (!process.stdin.isTTY) {
+    throw new Error(
+      `Cannot confirm "${prompt}" in non-interactive mode. Use --force to skip confirmation prompts.`,
+    );
+  }
   return await inquirerConfirm({
     message: prompt,
     default: defaultValue,
@@ -1444,6 +1504,7 @@ export async function getPrivateKeyInteractive(privateKey?: string): Promise<str
   }
 
   // No key in keyring, prompt user
+  ensureInteractive("--private-key or ECLOUD_PRIVATE_KEY");
   const key = await password({
     message: "Enter private key:",
     mask: true,
@@ -1468,16 +1529,18 @@ export async function getPrivateKeyInteractive(privateKey?: string): Promise<str
  */
 export async function getEnvironmentInteractive(environment?: string): Promise<string> {
   if (environment) {
-    try {
-      getEnvironmentConfig(environment);
-      if (!isEnvironmentAvailable(environment)) {
-        throw new Error(`Environment ${environment} is not available in this build`);
-      }
-      return environment;
-    } catch {
-      // Invalid environment, continue to prompt
-    }
+    // Validate the explicit value and surface the real error to the user.
+    // getEnvironmentConfig throws a descriptive error for unknown environments
+    // AND for environments not available in the current build (dev vs prod).
+    // Previously we caught this silently and fell through to the interactive
+    // prompt, which in non-TTY mode surfaced the generic "Cannot prompt in
+    // non-interactive mode" error — hiding the real reason (e.g. "mainnet-alpha
+    // is not available in this build type" when using a dev build).
+    getEnvironmentConfig(environment);
+    return environment;
   }
+
+  ensureInteractive("--environment or ECLOUD_ENV");
 
   const availableEnvs = getAvailableEnvironments();
 
@@ -1717,6 +1780,7 @@ export async function getAppProfileInteractive(
   defaultName: string = "",
   allowRetry: boolean = true,
 ): Promise<AppProfile | undefined> {
+  ensureInteractive("--skip-profile or --website/--description/--x-url/--image");
   while (true) {
     const name = await getAppNameForProfile(defaultName);
     const website = await getAppWebsiteInteractive();

@@ -66,7 +66,8 @@ export default class AppDeploy extends Command {
     }),
     env: Flags.string({
       required: false,
-      description: "Inline environment variable in KEY=VALUE format (can be specified multiple times)",
+      description:
+        "Inline environment variable in KEY=VALUE format (can be specified multiple times)",
       multiple: true,
     }),
     "log-visibility": Flags.string({
@@ -169,11 +170,11 @@ export default class AppDeploy extends Command {
       if (balance === 0n) {
         const isSepolia = environmentConfig.chainID === BigInt(11155111);
         this.log(
-          chalk.yellow(`\nWarning: Wallet ${chalk.bold(address)} has zero balance on ${environment}.`),
+          chalk.yellow(
+            `\nWarning: Wallet ${chalk.bold(address)} has zero balance on ${environment}.`,
+          ),
         );
-        this.log(
-          chalk.yellow(`You will need ETH to pay for deployment gas fees.`),
-        );
+        this.log(chalk.yellow(`You will need ETH to pay for deployment gas fees.`));
         if (isSepolia) {
           this.log(
             chalk.yellow(
@@ -260,7 +261,7 @@ export default class AppDeploy extends Command {
         // Interactive verifiable selection when --verifiable is not set.
         // If the user explicitly provided --dockerfile, assume they want the normal local-build flow.
         if (!flags.dockerfile) {
-          const useVerifiable = await promptUseVerifiableBuild();
+          const useVerifiable = await promptUseVerifiableBuild(flags.force);
           if (useVerifiable) {
             const sourceType = await promptVerifiableSourceType();
             verifiableMode = sourceType;
@@ -422,32 +423,37 @@ export default class AppDeploy extends Command {
       // the normal prepareDeploy path so that layerRemoteImageIfNeeded can
       // add the ecloud runtime layer (startup script, KMS client, Caddy) if
       // the image doesn't already have it.
-      const { prepared, gasEstimate } = verifiableMode === "git"
-        ? await compute.app.prepareDeployFromVerifiableBuild({
-            name: appName,
-            imageRef,
-            imageDigest: verifiableImageDigest!,
-            envFile: envFilePath,
-            instanceType,
-            logVisibility,
-            resourceUsageMonitoring,
-            billTo: "developer",
-          })
-        : await compute.app.prepareDeploy({
-            name: appName,
-            dockerfile: dockerfilePath,
-            imageRef,
-            envFile: envFilePath,
-            instanceType,
-            logVisibility,
-            resourceUsageMonitoring,
-            billTo: "developer",
-          });
+      const { prepared, gasEstimate } =
+        verifiableMode === "git"
+          ? await compute.app.prepareDeployFromVerifiableBuild({
+              name: appName,
+              imageRef,
+              imageDigest: verifiableImageDigest!,
+              envFile: envFilePath,
+              instanceType,
+              logVisibility,
+              resourceUsageMonitoring,
+              billTo: "developer",
+            })
+          : await compute.app.prepareDeploy({
+              name: appName,
+              dockerfile: dockerfilePath,
+              imageRef,
+              envFile: envFilePath,
+              instanceType,
+              logVisibility,
+              resourceUsageMonitoring,
+              billTo: "developer",
+            });
 
       // 9. Apply gas overrides if provided, show estimate, and prompt for confirmation on mainnet
       const finalTx = await applyTxOverrides(gasEstimate, flags, { publicClient, address });
       if (flags["max-fee-per-gas"] || flags["max-priority-fee"]) {
-        this.log(chalk.yellow(`\nGas override active — max fee: ${flags["max-fee-per-gas"] || "estimated"} gwei, priority fee: ${flags["max-priority-fee"] || "estimated"} gwei`));
+        this.log(
+          chalk.yellow(
+            `\nGas override active — max fee: ${flags["max-fee-per-gas"] || "estimated"} gwei, priority fee: ${flags["max-priority-fee"] || "estimated"} gwei`,
+          ),
+        );
       }
       if (finalTx.nonce != null) {
         this.log(chalk.yellow(`Nonce override active — nonce: ${finalTx.nonce}`));
@@ -543,6 +549,16 @@ export default class AppDeploy extends Command {
       // Show dashboard link
       const dashboardUrl = getDashboardUrl(environment, res.appId);
       this.log(`\n${chalk.gray("View your app:")} ${chalk.blue.underline(dashboardUrl)}`);
+
+      // Health verification hint — "Running" means container started, not serving traffic
+      if (ipAddress) {
+        this.log(
+          chalk.gray(
+            `\nNote: "Running" means the container started — verify it is serving traffic with:`,
+          ),
+        );
+        this.log(chalk.gray(`  curl -s -o /dev/null -w "%{http_code}" http://${ipAddress}/`));
+      }
     });
   }
 }
@@ -562,12 +578,9 @@ async function fetchAvailableInstanceTypes(
       rpcUrl,
       environment,
     });
-    const userApiClient = new UserApiClient(
-      environmentConfig,
-      walletClient,
-      publicClient,
-      { clientId: getClientId() },
-    );
+    const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, {
+      clientId: getClientId(),
+    });
 
     const skuList = await userApiClient.getSKUs();
     if (skuList.skus.length === 0) {
