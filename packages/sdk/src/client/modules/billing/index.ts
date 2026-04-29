@@ -23,6 +23,8 @@ import type {
   SubscribeResponse,
   CancelResponse,
   ProductSubscriptionResponse,
+  PaymentMethodsResponse,
+  CreditPurchaseResponse,
 } from "../../common/types";
 
 export interface TopUpOpts {
@@ -53,6 +55,8 @@ export interface BillingModule {
   getTopUpInfo: () => Promise<TopUpInfo>;
   /** Purchase credits with USDC on-chain */
   topUp: (opts: TopUpOpts) => Promise<TopUpResult>;
+  getPaymentMethods: () => Promise<PaymentMethodsResponse>;
+  purchaseCredits: (amountCents: number, paymentMethodId?: string) => Promise<CreditPurchaseResponse>;
 }
 
 export interface BillingModuleConfig {
@@ -78,7 +82,7 @@ export function createBillingModule(config: BillingModuleConfig): BillingModule 
   const billingEnvConfig = getBillingEnvironmentConfig(getBuildType());
 
   // Create billing API client
-  const billingApi = new BillingApiClient(billingEnvConfig, walletClient);
+  const billingApi = new BillingApiClient(billingEnvConfig, walletClient, { verbose });
 
   // Resolve on-chain config
   const environmentConfig = getEnvironmentConfig(environment);
@@ -280,6 +284,14 @@ export function createBillingModule(config: BillingModuleConfig): BillingModule 
           };
         },
       );
+    },
+
+    async getPaymentMethods() {
+      return billingApi.getPaymentMethods();
+    },
+
+    async purchaseCredits(amountCents: number, paymentMethodId?: string) {
+      return billingApi.purchaseCredits(amountCents, paymentMethodId);
     },
   };
 
