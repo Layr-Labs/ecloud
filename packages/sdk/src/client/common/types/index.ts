@@ -395,6 +395,17 @@ export interface NoActiveSubscriptionResponse {
 
 export type CancelResponse = CancelSuccessResponse | NoActiveSubscriptionResponse;
 
+export interface RedeemCodeRequest {
+  code: string;
+}
+
+export interface RedeemCodeResponse {
+  code: string;
+  grantedAmount: number;
+  remainingCredits?: number;
+  expiresAt?: number;
+}
+
 export interface ProductSubscriptionResponse {
   productId: ProductID;
   subscriptionStatus: SubscriptionStatus;

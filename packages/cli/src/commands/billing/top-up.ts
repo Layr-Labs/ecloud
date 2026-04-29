@@ -23,7 +23,7 @@ const POLL_INTERVAL_MS = 5_000;
 const POLL_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
 
 export default class BillingTopUp extends Command {
-  static description = "Purchase EigenCompute credits with USDC";
+  static description = "Purchase EigenCompute credits with USDC, or redeem a promo code";
 
   static flags = {
     ...commonFlags,
@@ -34,6 +34,10 @@ export default class BillingTopUp extends Command {
     account: Flags.string({
       required: false,
       description: "Target account address for purchaseCreditsFor (defaults to your wallet)",
+    }),
+    code: Flags.string({
+      required: false,
+      description: "Redeem a promotion code for promotional credits (skips USDC flow)",
     }),
     product: Flags.string({
       required: false,
@@ -50,6 +54,10 @@ export default class BillingTopUp extends Command {
 
       // Create billing client
       const billing = await createBillingClient(flags);
+
+      if (flags.code) {
+        return this.redeemCode(billing, flags.product as "compute", flags.code);
+      }
 
       const walletAddress = billing.address;
       const targetAccount = (flags.account as Address) ?? walletAddress;
@@ -175,5 +183,40 @@ export default class BillingTopUp extends Command {
       );
       this.log(`  ${chalk.gray("Check your balance:")} ecloud billing status\n`);
     });
+  }
+
+  private async redeemCode(
+    billing: Awaited<ReturnType<typeof createBillingClient>>,
+    productId: "compute",
+    code: string,
+  ) {
+    this.log(`\n${chalk.bold("Redeem promotion code")}`);
+    this.log(`${chalk.gray("─".repeat(45))}`);
+    this.log(`\n  ${chalk.bold("Wallet:")}  ${billing.address}`);
+    this.log(`  ${chalk.bold("Code:")}    ${code}`);
+
+    try {
+      const result = await billing.redeemCode({ code, productId });
+      this.log(
+        `\n  ${chalk.green("✓")} Redeemed ${chalk.bold(code)}: ${chalk.cyan(`$${result.grantedAmount.toFixed(2)}`)} in credits`,
+      );
+      if (result.remainingCredits !== undefined) {
+        this.log(`  ${chalk.bold("Balance:")} ${chalk.cyan(`$${result.remainingCredits.toFixed(2)}`)}`);
+      }
+      if (result.expiresAt) {
+        const expiry = new Date(result.expiresAt * 1000).toLocaleDateString();
+        this.log(`  ${chalk.gray(`Credits expire: ${expiry}`)}`);
+      }
+      this.log();
+    } catch (err: any) {
+      const msg = err?.message ?? String(err);
+      if (msg.includes("404") || msg.toLowerCase().includes("not found")) {
+        this.error(`Code "${code}" is not valid, inactive, or already redeemed.`);
+      }
+      if (msg.includes("422")) {
+        this.error(`Code "${code}" is not a fixed-amount credit code (percent-off codes are not supported).`);
+      }
+      this.error(`Failed to redeem code: ${msg}`);
+    }
   }
 }

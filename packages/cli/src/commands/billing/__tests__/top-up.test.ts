@@ -26,6 +26,7 @@ describe("ecloud billing top-up", () => {
     getStatus: ReturnType<typeof vi.fn>;
     getTopUpInfo: ReturnType<typeof vi.fn>;
     topUp: ReturnType<typeof vi.fn>;
+    redeemCode: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {
@@ -37,6 +38,7 @@ describe("ecloud billing top-up", () => {
       getStatus: vi.fn(),
       getTopUpInfo: vi.fn(),
       topUp: vi.fn(),
+      redeemCode: vi.fn(),
     };
     (createBillingClient as ReturnType<typeof vi.fn>).mockResolvedValue(mockBilling);
 
@@ -226,5 +228,36 @@ describe("ecloud billing top-up", () => {
     expect(fullOutput).toContain("Transaction confirmed");
     // Will timeout on polling since status always errors
     expect(fullOutput).toContain("Credits haven't appeared yet");
+  });
+
+  it("--code: happy path prints granted amount and new balance", async () => {
+    const expiresAt = Math.floor(Date.now() / 1000) + 90 * 24 * 3600;
+    mockBilling.redeemCode.mockResolvedValue({
+      code: "LAUNCH50",
+      grantedAmount: 50,
+      remainingCredits: 55,
+      expiresAt,
+    });
+
+    const cmd = createCommand({ code: "LAUNCH50" });
+    await cmd.run();
+    const fullOutput = logOutput.join("\n");
+
+    expect(mockBilling.redeemCode).toHaveBeenCalledWith({ code: "LAUNCH50", productId: "compute" });
+    expect(fullOutput).toContain("Redeem promotion code");
+    expect(fullOutput).toContain("LAUNCH50");
+    expect(fullOutput).toContain("$50.00");
+    expect(fullOutput).toContain("$55.00");
+    // USDC flow must not run
+    expect(mockBilling.getTopUpInfo).not.toHaveBeenCalled();
+    expect(mockBilling.topUp).not.toHaveBeenCalled();
+  });
+
+  it("--code: surfaces friendly error on 404", async () => {
+    mockBilling.redeemCode.mockRejectedValue(new Error("BillingAPI request failed: 404 Error - Promotion code not found or inactive"));
+
+    const cmd = createCommand({ code: "BADCODE" });
+    await expect(cmd.run()).rejects.toThrow(/not valid|inactive|already redeemed/i);
+    expect(mockBilling.topUp).not.toHaveBeenCalled();
   });
 });

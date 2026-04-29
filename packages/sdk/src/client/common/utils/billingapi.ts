@@ -18,6 +18,7 @@ import {
   CreateSubscriptionResponse,
   GetSubscriptionOptions,
   ProductSubscriptionResponse,
+  RedeemCodeResponse,
 } from "../types";
 import { calculateBillingAuthSignature } from "./auth";
 import { BillingEnvironmentConfig } from "../types";
@@ -174,6 +175,15 @@ export class BillingApiClient {
   async cancelSubscription(productId: ProductID = "compute"): Promise<void> {
     const endpoint = `${this.config.billingApiServerURL}/products/${productId}/subscription`;
     await this.makeAuthenticatedRequest(endpoint, "DELETE", productId);
+  }
+
+  async redeemCode(
+    code: string,
+    productId: ProductID = "compute",
+  ): Promise<RedeemCodeResponse> {
+    const endpoint = `${this.config.billingApiServerURL}/products/${productId}/redeem`;
+    const resp = await this.makeAuthenticatedRequest(endpoint, "POST", productId, { code });
+    return resp.json();
   }
 
   // ==========================================================================
