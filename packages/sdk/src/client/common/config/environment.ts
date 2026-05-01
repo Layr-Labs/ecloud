@@ -78,6 +78,25 @@ const CHAIN_ID_TO_ENVIRONMENT: Record<string, string> = {
 };
 
 /**
+ * Read the ECLOUD_API_URL runtime override, if set.
+ *
+ * When set, this overrides both `userApiServerURL` and `billingApiServerURL`
+ * so that all API traffic is directed at a single host. This is the intended
+ * way to point the CLI/SDK at an ecloud-platform deployment (which serves
+ * both the compute-tee UserAPI and BillingAPI surfaces from one host via its
+ * legacy-compatibility shim), or at any local/staging server.
+ *
+ * Trailing slashes are trimmed so consumers can safely do `${base}/path`.
+ * Empty strings are treated as unset.
+ */
+function getApiUrlOverride(): string | undefined {
+  const raw = process.env.ECLOUD_API_URL;
+  if (!raw) return undefined;
+  const trimmed = raw.trim().replace(/\/+$/, "");
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+/**
  * Get environment configuration
  */
 export function getEnvironmentConfig(environment: string, chainID?: bigint): EnvironmentConfig {
@@ -110,9 +129,12 @@ export function getEnvironmentConfig(environment: string, chainID?: bigint): Env
       ? SEPOLIA_CHAIN_ID
       : MAINNET_CHAIN_ID);
 
+  const apiUrlOverride = getApiUrlOverride();
+
   return {
     ...env,
     chainID: BigInt(resolvedChainID),
+    ...(apiUrlOverride ? { userApiServerURL: apiUrlOverride } : {}),
   };
 }
 
@@ -126,6 +148,10 @@ export function getBillingEnvironmentConfig(build: "dev" | "prod"): {
   const config = BILLING_ENVIRONMENTS[build];
   if (!config) {
     throw new Error(`Unknown billing environment: ${build}`);
+  }
+  const apiUrlOverride = getApiUrlOverride();
+  if (apiUrlOverride) {
+    return { billingApiServerURL: apiUrlOverride };
   }
   return config;
 }
