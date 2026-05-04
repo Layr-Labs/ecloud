@@ -1,4 +1,47 @@
 #!/bin/sh
+# EigenCompute container entrypoint script
+# This script handles KMS secret fetching, TLS setup, and privilege dropping
+# before executing the user's application.
+#
+# Handlebars template variables (replaced at build time by the CLI):
+#   kmsServerURL - URL of the KMS server
+#   userAPIURL   - URL of the user API (ecloud-platform)
+# The KMS signing public key is copied into the image as
+#   /usr/local/bin/kms-signing-public-key.pem at layer-build time by the CLI.
+#
+# ecloud-platform divergence from compute-tee:
+#   This script emits ECLOUD_READY / ECLOUD_FAIL / ECLOUD_AWAITING_USERDATA /
+#   ECLOUD_DETACHED markers to stdout at key lifecycle points. The GCP
+#   provisioner's serial-console watcher in ecloud-platform
+#   (pkg/services/infraService/providers/gcp/compute.go) parses those
+#   markers to gate "VM ready" and to coordinate the prewarm-detach
+#   upgrade flow. Without the markers, the platform's waitForStartupReady
+#   times out at ~10 minutes per deploy, rollback fires, and the VM is
+#   deleted — seen in dev on 2026-05-04 with an older copy of this
+#   template that lacked the markers.
+#
+#   Prewarm-detach contract:
+#     - If ECLOUD_PD_EXPECTED=1 and /mnt/disks/userdata is not present at boot,
+#       emit ECLOUD_AWAITING_USERDATA and wait until the disk is attached.
+#     - On SIGTERM (drain-requested), forward to child, wait for exit, sync
+#       + unmount /mnt/disks/userdata, emit ECLOUD_DETACHED, exit.
+#     - ECLOUD_READY is emitted once runtime is bootstrapped (same as before).
+#     - ECLOUD_FAIL is emitted on any unrecoverable setup error.
+#   Keep the markers on any line that resolves a lifecycle outcome.
+#
+#   This file is kept in lockstep with
+#   ecloud-platform/pkg/services/buildService/assets/compute-source-env.sh.tmpl
+#   — if you change one, change the other. Differences vs the platform copy
+#   are intentionally minimal:
+#     - Handlebars placeholders use the CLI's naming (kmsServerURL,
+#       userAPIURL) rather than the platform's (KMS_SERVER_URL,
+#       USER_API_URL). (See top of file for real placeholder syntax —
+#       not repeated here so Handlebars doesn't expand it in this comment.)
+#     - KMS signing key is read from a file the CLI copies into the image,
+#       not heredoc-embedded in the script, because the CLI's image
+#       layering writes it as a separate file (kms-signing-public-key.pem).
+#     - TLS binary is `tls-keygen` (CLI-bundled) not `tls-client`.
+
 echo "compute-source-env.sh: Running setup script..."
 
 # Fetch and source environment variables from KMS
@@ -14,92 +57,93 @@ if /usr/local/bin/kms-client \
 else
     echo "compute-source-env.sh: ERROR - Failed to fetch environment variables from KMS"
     echo "compute-source-env.sh: Exiting - cannot start user workload without KMS secrets"
+    echo "ECLOUD_FAIL kms_bootstrap"
     exit 1
 fi
 
-# Setup TLS if tls-keygen is present (which means TLS was configured at build time)
+# Setup TLS if tls-keygen is present and DOMAIN is configured
 setup_tls() {
     # If tls-keygen isn't present, TLS wasn't configured during build
     if [ ! -x /usr/local/bin/tls-keygen ]; then
         echo "compute-source-env.sh: TLS not configured (no tls-keygen binary)"
         return 0
     fi
-    
+
     local domain="${DOMAIN:-}"
     local mnemonic="${MNEMONIC:-}"
-    
-    # Since tls-keygen is present, TLS is expected - validate requirements
+
+    # If DOMAIN is not set or is localhost, skip TLS setup
     if [ -z "$domain" ] || [ "$domain" = "localhost" ]; then
-        echo "compute-source-env.sh: ERROR - TLS binary present but DOMAIN not configured or is localhost"
-        echo "compute-source-env.sh: Set DOMAIN environment variable to a valid domain"
-        exit 1
+        echo "compute-source-env.sh: TLS skipped (DOMAIN not set or is localhost)"
+        return 0
     fi
-    
+
     if [ -z "$mnemonic" ]; then
-        echo "compute-source-env.sh: ERROR - TLS binary present but MNEMONIC not available"
+        echo "compute-source-env.sh: ERROR - TLS requested but MNEMONIC not available"
         echo "compute-source-env.sh: Cannot obtain TLS certificate without mnemonic"
+        echo "ECLOUD_FAIL tls_mnemonic_missing"
         exit 1
     fi
-    
+
     if [ ! -x /usr/local/bin/caddy ]; then
-        echo "compute-source-env.sh: ERROR - TLS binary present but Caddy not found"
+        echo "compute-source-env.sh: ERROR - TLS requested but Caddy not found"
+        echo "ECLOUD_FAIL tls_caddy_missing"
         exit 1
     fi
-    
+
     echo "compute-source-env.sh: Setting up TLS for domain: $domain"
-    
+
     # Obtain TLS certificate using ACME
-    # Default to http-01, but allow override via ACME_CHALLENGE env var
     local challenge="${ACME_CHALLENGE:-http-01}"
-    
+
     # Check if we should use staging (for testing)
     local staging_flag=""
     if [ "${ACME_STAGING:-false}" = "true" ]; then
         staging_flag="-staging"
-        echo "compute-source-env.sh: Using Let's Encrypt STAGING environment (certificates won't be trusted)"
+        echo "compute-source-env.sh: Using Let's Encrypt STAGING environment"
     fi
-    
+
     echo "compute-source-env.sh: Obtaining TLS certificate using $challenge challenge..."
-    # Pass the API URL for certificate persistence
     if ! MNEMONIC="$mnemonic" DOMAIN="$domain" API_URL="{{userAPIURL}}" /usr/local/bin/tls-keygen \
         -challenge "$challenge" \
         $staging_flag; then
         echo "compute-source-env.sh: ERROR - Failed to obtain TLS certificate"
-        echo "compute-source-env.sh: Certificate issuance failed for $domain"
+        echo "ECLOUD_FAIL tls_setup"
         exit 1
     fi
-    
+
     echo "compute-source-env.sh: TLS certificate obtained successfully"
-    
+
     # Validate Caddyfile before starting
-    if ! /usr/local/bin/caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile 2>/dev/null; then
-        echo "compute-source-env.sh: ERROR - Invalid Caddyfile"
-        echo "compute-source-env.sh: TLS was requested (DOMAIN=$domain) but setup failed"
-        exit 1
-    fi
-    
-    # Start Caddy in background
-    echo "compute-source-env.sh: Starting Caddy reverse proxy..."
-    
-    # Check if Caddy logs should be enabled
-    if [ "${ENABLE_CADDY_LOGS:-false}" = "true" ]; then
-        if ! /usr/local/bin/caddy start --config /etc/caddy/Caddyfile --adapter caddyfile 2>&1; then
-            echo "compute-source-env.sh: ERROR - Failed to start Caddy"
-            echo "compute-source-env.sh: TLS was requested (DOMAIN=$domain) but setup failed"
+    if [ -f /etc/caddy/Caddyfile ]; then
+        if ! /usr/local/bin/caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile 2>/dev/null; then
+            echo "compute-source-env.sh: ERROR - Invalid Caddyfile"
+            echo "ECLOUD_FAIL tls_invalid_caddyfile"
             exit 1
         fi
+
+        # Start Caddy in background
+        echo "compute-source-env.sh: Starting Caddy reverse proxy..."
+        if [ "${ENABLE_CADDY_LOGS:-false}" = "true" ]; then
+            if ! /usr/local/bin/caddy start --config /etc/caddy/Caddyfile --adapter caddyfile 2>&1; then
+                echo "compute-source-env.sh: ERROR - Failed to start Caddy"
+                echo "ECLOUD_FAIL tls_caddy_start"
+                exit 1
+            fi
+        else
+            if ! /usr/local/bin/caddy start --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1; then
+                echo "compute-source-env.sh: ERROR - Failed to start Caddy"
+                echo "ECLOUD_FAIL tls_caddy_start"
+                exit 1
+            fi
+        fi
+
+        sleep 2
+        echo "compute-source-env.sh: Caddy started successfully"
     else
-        # Redirect Caddy output to /dev/null to silence logs
-        if ! /usr/local/bin/caddy start --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1; then
-            echo "compute-source-env.sh: ERROR - Failed to start Caddy"
-            echo "compute-source-env.sh: TLS was requested (DOMAIN=$domain) but setup failed"
-            exit 1
-        fi
+        echo "compute-source-env.sh: No Caddyfile found, skipping Caddy"
     fi
-    
-    # Give Caddy a moment to fully initialize
-    sleep 2
-    echo "compute-source-env.sh: Caddy started successfully"
+
     return 0
 }
 
@@ -110,12 +154,226 @@ setup_tls
 export KMS_SERVER_URL="{{kmsServerURL}}"
 export KMS_PUBLIC_KEY="$(cat /usr/local/bin/kms-signing-public-key.pem)"
 
+# ── Prewarm-detach: wait for PD if expected ──
+# Orchestrator sets ECLOUD_PD_EXPECTED=1 on apps using StorageBackend=pd.
+# When the prewarm path is used, the new VM boots WITHOUT the disk; we
+# signal awaiting-userdata and poll until the disk is attached.
+USERDATA_MOUNT="/mnt/disks/userdata"
+USERDATA_DEV="/dev/disk/by-id/google-persistent_storage_1"
+
+wait_for_userdata() {
+    if [ "${ECLOUD_PD_EXPECTED:-0}" != "1" ]; then
+        return 0
+    fi
+    if mountpoint -q "$USERDATA_MOUNT" 2>/dev/null; then
+        echo "compute-source-env.sh: userdata already mounted at $USERDATA_MOUNT"
+        return 0
+    fi
+    # Refuse to proceed if the tools we need for safe first-attach
+    # detection are missing. Without blkid we cannot tell an empty new
+    # disk from an already-formatted one — running mkfs.ext4 on the
+    # latter would destroy data.
+    if ! command -v blkid >/dev/null 2>&1; then
+        echo "ECLOUD_FAIL pd_tools_missing"
+        exit 1
+    fi
+    echo "ECLOUD_AWAITING_USERDATA"
+    echo "compute-source-env.sh: waiting for PD at $USERDATA_DEV..."
+    # Poll for up to 10 minutes (120 * 5s). The orchestrator's overall
+    # attach timeout is shorter; the ceiling here just bounds the wait
+    # for manual / diagnostic scenarios.
+    local i=0
+    local mount_failures=0
+    while [ "$i" -lt 120 ]; do
+        if [ -e "$USERDATA_DEV" ]; then
+            mkdir -p "$USERDATA_MOUNT"
+            if mount -o noatime "$USERDATA_DEV" "$USERDATA_MOUNT" 2>/dev/null; then
+                echo "compute-source-env.sh: PD mounted at $USERDATA_MOUNT"
+                return 0
+            fi
+            # Disk present but mount failed. Check whether it has a
+            # recognized filesystem. `blkid -s TYPE -o value` prints the
+            # FS type (empty if none). We only mkfs when there is
+            # demonstrably NO filesystem — never on the basis of blkid
+            # returning non-zero alone, which could mean "blkid missing"
+            # or "device busy".
+            local fstype
+            fstype=$(blkid -s TYPE -o value "$USERDATA_DEV" 2>/dev/null)
+            if [ -z "$fstype" ]; then
+                echo "compute-source-env.sh: formatting $USERDATA_DEV (first attach)"
+                mkfs.ext4 -F -L eclouddata "$USERDATA_DEV" >/dev/null 2>&1 || {
+                    echo "ECLOUD_FAIL pd_mkfs_failed"
+                    exit 1
+                }
+                mount -o noatime "$USERDATA_DEV" "$USERDATA_MOUNT" || {
+                    echo "ECLOUD_FAIL pd_mount_after_format_failed"
+                    exit 1
+                }
+                return 0
+            fi
+            # Disk has a filesystem but mount still failed. Give it a
+            # few retries to cover transient cases (device busy, udev
+            # still settling), but don't pretend this is an attach
+            # timeout if it persists.
+            mount_failures=$((mount_failures + 1))
+            if [ "$mount_failures" -ge 6 ]; then
+                echo "ECLOUD_FAIL pd_mount_failed"
+                exit 1
+            fi
+        else
+            # Device disappeared (e.g. udev re-enumeration between
+            # attach and mount). Reset the consecutive-failure counter
+            # so only true back-to-back mount failures trip
+            # pd_mount_failed; a device blip should not steal retries.
+            mount_failures=0
+        fi
+        i=$((i + 1))
+        sleep 5
+    done
+    echo "ECLOUD_FAIL pd_attach_timeout"
+    exit 1
+}
+
+wait_for_userdata
+
+# ── Prewarm-detach: install SIGTERM handler for graceful drain ──
+# Orchestrator signals drain by setting the instance metadata key
+# ECLOUD_DRAIN_REQUESTED=1, which a host-level agent translates into
+# SIGTERM on PID 1. On SIGTERM we:
+#   1. Forward to the child (wakes the user's app for graceful exit)
+#   2. Wait for child exit
+#   3. Sync + unmount the PD
+#   4. Emit ECLOUD_DETACHED so the orchestrator can proceed to detach
+CHILD_PID=""
+_DRAIN_IN_PROGRESS=0
+
+drain_handler() {
+    # Guard against re-entry if SIGTERM arrives twice (e.g. both the
+    # drain_watcher and an external signal fire in quick succession).
+    if [ "$_DRAIN_IN_PROGRESS" = "1" ]; then
+        return 0
+    fi
+    _DRAIN_IN_PROGRESS=1
+    echo "compute-source-env.sh: received drain signal, forwarding to child pgid=$CHILD_PID"
+    if [ -n "$CHILD_PID" ]; then
+        # Send to the process group so intermediate wrappers (su, sh -c,
+        # etc.) don't swallow the signal. The leading `-` targets the
+        # pgid, which equals the direct child's pid for a shell-backgrounded
+        # process. Fall back to the pid alone if pgid signaling fails
+        # (e.g. kernel older than 3.9 or PID namespace edge cases).
+        kill -TERM -"$CHILD_PID" 2>/dev/null || kill -TERM "$CHILD_PID" 2>/dev/null || true
+        # Give the app up to 30s to exit cleanly.
+        local i=0
+        while [ "$i" -lt 30 ] && kill -0 "$CHILD_PID" 2>/dev/null; do
+            i=$((i + 1))
+            sleep 1
+        done
+        if kill -0 "$CHILD_PID" 2>/dev/null; then
+            echo "compute-source-env.sh: child did not exit in 30s, sending SIGKILL"
+            kill -KILL -"$CHILD_PID" 2>/dev/null || kill -KILL "$CHILD_PID" 2>/dev/null || true
+            # Reap the process so its in-flight I/O is flushed to the
+            # filesystem before we sync + unmount. SIGKILL schedules
+            # death; wait guarantees it's complete.
+            wait "$CHILD_PID" 2>/dev/null || true
+        fi
+    fi
+    if [ "${ECLOUD_PD_EXPECTED:-0}" = "1" ] && mountpoint -q "$USERDATA_MOUNT" 2>/dev/null; then
+        sync
+        if umount "$USERDATA_MOUNT" 2>/dev/null; then
+            echo "compute-source-env.sh: unmounted $USERDATA_MOUNT cleanly"
+        else
+            # Force lazy unmount as last resort — orchestrator still needs
+            # the DETACHED signal to proceed.
+            umount -l "$USERDATA_MOUNT" 2>/dev/null || true
+            echo "compute-source-env.sh: WARNING - used lazy unmount on $USERDATA_MOUNT"
+        fi
+        # ECLOUD_DETACHED is strictly a PD-lifecycle signal. Only emit
+        # it when we actually had a PD mount in play, so serial-log
+        # parsers and alerting for non-PD apps don't see spurious
+        # lifecycle markers on routine container SIGTERM.
+        echo "ECLOUD_DETACHED"
+    fi
+    # Always exit 0: drain is a managed shutdown and the orchestrator
+    # waits on ECLOUD_DETACHED, not the container exit code. Forwarding
+    # the child's exit status here would make a crash-during-drain look
+    # like a drain failure to whatever reads the container exit code.
+    exit 0
+}
+trap drain_handler TERM
+
+# ── Prewarm-detach: background drain watcher ──
+# Container metadata delivery in Confidential Space is limited, so we
+# poll the instance metadata server for ECLOUD_DRAIN_REQUESTED and
+# raise SIGTERM on ourselves when it flips to "1".
+#
+# Try wget first (present in most Alpine bases), fall back to curl.
+# If neither is present, drain watcher is disabled — the orchestrator
+# will hit its drain timeout and fail the upgrade explicitly, which is
+# the correct behavior (we cannot silently ignore a drain request).
+_fetch_drain_flag() {
+    local url="http://metadata.google.internal/computeMetadata/v1/instance/attributes/ECLOUD_DRAIN_REQUESTED"
+    if command -v wget >/dev/null 2>&1; then
+        wget -q --tries=1 --timeout=2 --header='Metadata-Flavor: Google' -O - "$url" 2>/dev/null
+    elif command -v curl >/dev/null 2>&1; then
+        curl -sf --max-time 2 -H 'Metadata-Flavor: Google' "$url" 2>/dev/null
+    else
+        return 2
+    fi
+}
+
+drain_watcher() {
+    # Preflight: confirm we have an HTTP client
+    if ! _fetch_drain_flag >/dev/null 2>&1; then
+        # Either no http client available OR metadata server not
+        # responding yet. If no client, give up and log; otherwise the
+        # loop below will retry.
+        if ! command -v wget >/dev/null 2>&1 && ! command -v curl >/dev/null 2>&1; then
+            echo "compute-source-env.sh: WARNING - no wget/curl; drain_watcher disabled"
+            return 0
+        fi
+    fi
+    while true; do
+        local v
+        v=$(_fetch_drain_flag || true)
+        if [ "$v" = "1" ]; then
+            echo "compute-source-env.sh: drain_watcher saw ECLOUD_DRAIN_REQUESTED=1, signaling PID 1"
+            # The CS launcher runs this script directly as PID 1, so
+            # kill -TERM 1 delivers SIGTERM to the shell that installed
+            # the drain_handler trap. If the launch mechanism ever
+            # wraps this script in another process, this assumption
+            # breaks and drain will silently no-op — audit here.
+            kill -TERM 1 2>/dev/null || true
+            return 0
+        fi
+        sleep 2
+    done
+}
+
+if [ "${ECLOUD_PD_EXPECTED:-0}" = "1" ]; then
+    # Assumption: the orchestrator only flips ECLOUD_DRAIN_REQUESTED=1
+    # after observing ECLOUD_AWAITING_USERDATA (old VM) or
+    # ECLOUD_READY (new VM), so CHILD_PID is always set by the time
+    # drain_handler fires. If drain somehow arrived in the tiny window
+    # between this watcher spawn and CHILD_PID assignment below,
+    # drain_handler would skip the child-kill branch and still emit
+    # ECLOUD_DETACHED — harmless because there's nothing to drain yet.
+    drain_watcher &
+fi
+
 echo "compute-source-env.sh: Environment sourced."
+echo "ECLOUD_READY runtime_bootstrapped"
 
 # Drop privileges to original user for the application command
 if [ -n "$__ECLOUD_ORIGINAL_USER" ] && [ "$(id -u)" = "0" ]; then
     echo "compute-source-env.sh: Dropping privileges to user: $__ECLOUD_ORIGINAL_USER"
-    exec su -s /bin/sh "$__ECLOUD_ORIGINAL_USER" -c 'exec "$@"' -- sh "$@"
+    # Must background the child so our trap can fire; exec replaces PID 1.
+    su -s /bin/sh "$__ECLOUD_ORIGINAL_USER" -c 'exec "$@"' -- sh "$@" &
+    CHILD_PID=$!
+    wait "$CHILD_PID"
+    exit $?
 fi
 
-exec "$@"
+"$@" &
+CHILD_PID=$!
+wait "$CHILD_PID"
+exit $?
