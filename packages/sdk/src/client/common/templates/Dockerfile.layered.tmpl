@@ -50,6 +50,17 @@ LABEL tee.launch_policy.log_redirect={{logRedirect}}
 LABEL tee.launch_policy.monitoring_memory_allow={{resourceUsageAllow}}
 {{/if}}
 
+# Allow-list the envvars the ecloud-platform sets via GCE `tee-env-*`
+# metadata. Without this label, Confidential Space's launcher rejects
+# any `tee-env-*` override at container-start with
+# "env var {...} is not allowed to be overridden on this image" and
+# exits with code 1 — which terminates the VM before the entrypoint
+# ever runs. ECLOUD_PD_EXPECTED is set on PD-backed apps so the
+# entrypoint (compute-source-env.sh) knows to wait for the persistent
+# disk before exec'ing the user workload. User-supplied env vars
+# flow through KMS (not tee-env-*) and don't need to be listed here.
+LABEL tee.launch_policy.allow_env_override=ECLOUD_PD_EXPECTED
+
 LABEL eigenx_cli_version={{ecloudCLIVersion}}
 LABEL eigenx_vm_image=eigen
 
