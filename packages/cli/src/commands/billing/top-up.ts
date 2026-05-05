@@ -22,7 +22,8 @@ import open from "open";
 import { withTelemetry } from "../../telemetry";
 
 const POLL_INTERVAL_MS = 5_000;
-const POLL_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
+const POLL_TIMEOUT_USDC_MS = 3 * 60 * 1000; // 3 minutes
+const POLL_TIMEOUT_CARD_MS = 5 * 60 * 1000; // 5 minutes
 
 export default class BillingTopUp extends Command {
   static description = "Purchase EigenCompute credits with USDC or credit card";
@@ -162,7 +163,7 @@ export default class BillingTopUp extends Command {
     });
     this.log(`  ${chalk.green("✓")} Transaction confirmed: ${txHash}`);
 
-    await this.pollForCredits(billing, flags, baselineTotal, amountFloat);
+    await this.pollForCredits(billing, flags, baselineTotal, amountFloat, POLL_TIMEOUT_USDC_MS);
   }
 
   private async handleCard(
@@ -230,7 +231,7 @@ export default class BillingTopUp extends Command {
       this.log(`  ${chalk.green("✓")} Payment submitted`);
     }
 
-    await this.pollForCredits(billing, flags, baselineTotal, dollars);
+    await this.pollForCredits(billing, flags, baselineTotal, dollars, POLL_TIMEOUT_CARD_MS);
   }
 
   private async pollForCredits(
@@ -238,10 +239,11 @@ export default class BillingTopUp extends Command {
     flags: Record<string, any>,
     baselineTotal: number | undefined,
     amountPurchased: number,
+    timeoutMs: number,
   ) {
     this.log(chalk.gray("\n  Waiting for credits to appear..."));
     const startTime = Date.now();
-    while (Date.now() - startTime < POLL_TIMEOUT_MS) {
+    while (Date.now() - startTime < timeoutMs) {
       await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
       try {
         const status = await billing.getStatus({
@@ -270,9 +272,8 @@ export default class BillingTopUp extends Command {
       }
     }
 
-    this.log(
-      `\n  ${chalk.yellow("⚠")} Credits haven't appeared yet. This can take a few minutes.`,
+    this.error(
+      `Timed out waiting for credits to appear. Check your balance with: ecloud billing status`,
     );
-    this.log(`  ${chalk.gray("Check your balance:")} ecloud billing status\n`);
   }
 }
