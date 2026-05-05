@@ -60,11 +60,41 @@ setup_tls() {
     fi
     
     echo "compute-source-env.sh: Obtaining TLS certificate using $challenge challenge..."
-    # Pass the API URL for certificate persistence
-    if ! MNEMONIC="$mnemonic" DOMAIN="$domain" API_URL="{{userAPIURL}}" /usr/local/bin/tls-keygen \
-        -challenge "$challenge" \
-        $staging_flag; then
-        echo "compute-source-env.sh: ERROR - Failed to obtain TLS certificate"
+    # Bounded retry around tls-keygen to absorb transient ACME 5xx
+    # responses (Let's Encrypt staging in particular returns
+    # "Service busy; retry later" intermittently, and tls-keygen
+    # has no internal retry — a single 503 today will terminate
+    # the VM). Total attempts capped at 3 with 1s/5s/15s backoff
+    # to stay well under LE's failed-auth rate limit
+    # (5/hour/account/host on prod, 60/hour on staging) in the
+    # worst case of sustained failure across reprovisions.
+    # Pass the API URL for certificate persistence.
+    tls_attempt=1
+    tls_max_attempts=3
+    tls_ok=0
+    while [ "$tls_attempt" -le "$tls_max_attempts" ]; do
+        if [ "$tls_attempt" -gt 1 ]; then
+            echo "compute-source-env.sh: tls-keygen attempt $tls_attempt/$tls_max_attempts"
+        fi
+        if MNEMONIC="$mnemonic" DOMAIN="$domain" API_URL="{{userAPIURL}}" /usr/local/bin/tls-keygen \
+            -challenge "$challenge" \
+            $staging_flag; then
+            tls_ok=1
+            break
+        fi
+        if [ "$tls_attempt" -lt "$tls_max_attempts" ]; then
+            case "$tls_attempt" in
+                1) tls_delay=1 ;;
+                2) tls_delay=5 ;;
+                *) tls_delay=15 ;;
+            esac
+            echo "compute-source-env.sh: tls-keygen failed on attempt $tls_attempt, retrying in ${tls_delay}s..."
+            sleep "$tls_delay"
+        fi
+        tls_attempt=$((tls_attempt + 1))
+    done
+    if [ "$tls_ok" != "1" ]; then
+        echo "compute-source-env.sh: ERROR - Failed to obtain TLS certificate after $tls_max_attempts attempts"
         echo "compute-source-env.sh: Certificate issuance failed for $domain"
         exit 1
     fi
