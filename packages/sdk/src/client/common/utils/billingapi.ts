@@ -216,6 +216,9 @@ export class BillingApiClient {
   ): Promise<{ json: () => Promise<any>; text: () => Promise<string> }> {
     if (this.options.verbose) {
       console.debug(`[BillingAPI] ${method} ${url}`);
+      if (body) {
+        console.debug(`[BillingAPI] Payload:`, JSON.stringify(body, null, 2));
+      }
     }
     const resp = this.useSession
       ? await this.makeSessionAuthenticatedRequest(url, method, body)
