@@ -422,6 +422,8 @@ export interface SubscriptionOpts {
 export interface PaymentMethod {
   id: string;
   stripePaymentMethodId: string;
+  brand: string;
+  last4: string;
   createdAt: string;
 }
 
