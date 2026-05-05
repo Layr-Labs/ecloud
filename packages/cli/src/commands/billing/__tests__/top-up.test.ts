@@ -11,7 +11,6 @@ vi.mock("../../../telemetry", () => ({
 vi.mock("@inquirer/prompts", () => ({
   input: vi.fn(),
   select: vi.fn(),
-  confirm: vi.fn(),
 }));
 
 vi.mock("open", () => ({
@@ -20,7 +19,7 @@ vi.mock("open", () => ({
 
 import BillingTopUp from "../top-up";
 import { createBillingClient } from "../../../client";
-import { input, select, confirm } from "@inquirer/prompts";
+import { input, select } from "@inquirer/prompts";
 
 const WALLET_ADDRESS = "0x1234567890abcdef1234567890abcdef12345678";
 const TX_HASH = "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890";
@@ -227,7 +226,7 @@ describe("ecloud billing top-up", () => {
 
   // ── Credit Card Tests ──
 
-  it("credit card: charges existing card on file", async () => {
+  it("credit card: charges selected card on file", async () => {
     mockBilling.getStatus
       .mockResolvedValueOnce({ subscriptionStatus: "active", remainingCredits: 10.0 })
       .mockResolvedValueOnce({ subscriptionStatus: "active", remainingCredits: 35.0 });
@@ -236,7 +235,16 @@ describe("ecloud billing top-up", () => {
         {
           id: "029641fc-3e5c-11f1-986c-5601121cbf6d",
           stripePaymentMethodId: "pm_1ABC1234",
+          brand: "visa",
+          last4: "1234",
           createdAt: "2026-04-20T15:00:00Z",
+        },
+        {
+          id: "139752fd-4e6d-22f2-a97d-6712232dcg7e",
+          stripePaymentMethodId: "pm_2DEF5678",
+          brand: "mastercard",
+          last4: "5678",
+          createdAt: "2026-04-21T10:00:00Z",
         },
       ],
     });
@@ -244,7 +252,7 @@ describe("ecloud billing top-up", () => {
       purchaseId: "a1b2c3d4",
       amountCents: "2500",
     });
-    (confirm as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+    (select as unknown as ReturnType<typeof vi.fn>).mockResolvedValue("029641fc-3e5c-11f1-986c-5601121cbf6d");
 
     const cmd = createCommand({ amount: "25", method: "card" });
     const promise = cmd.run();
@@ -259,7 +267,7 @@ describe("ecloud billing top-up", () => {
     expect(fullOutput).toContain("Credits received");
   });
 
-  it("credit card: opens checkout when user declines existing card", async () => {
+  it("credit card: opens checkout when user selects add new card", async () => {
     const openMock = (await import("open")).default as ReturnType<typeof vi.fn>;
     mockBilling.getStatus.mockResolvedValue({ subscriptionStatus: "active", remainingCredits: 10.0 });
     mockBilling.getPaymentMethods.mockResolvedValue({
@@ -267,6 +275,8 @@ describe("ecloud billing top-up", () => {
         {
           id: "029641fc-3e5c-11f1-986c-5601121cbf6d",
           stripePaymentMethodId: "pm_1ABC1234",
+          brand: "visa",
+          last4: "1234",
           createdAt: "2026-04-20T15:00:00Z",
         },
       ],
@@ -276,7 +286,7 @@ describe("ecloud billing top-up", () => {
       checkoutUrl: "https://checkout.stripe.com/test",
       amountCents: "2500",
     });
-    (confirm as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+    (select as unknown as ReturnType<typeof vi.fn>).mockResolvedValue("new");
 
     const cmd = createCommand({ amount: "25", method: "card" });
     const promise = cmd.run();
@@ -305,7 +315,7 @@ describe("ecloud billing top-up", () => {
     await promise;
     const fullOutput = logOutput.join("\n");
 
-    expect(confirm).not.toHaveBeenCalled();
+    expect(select).not.toHaveBeenCalled();
     expect(mockBilling.purchaseCredits).toHaveBeenCalledWith(5000, undefined);
     expect(openMock).toHaveBeenCalledWith("https://checkout.stripe.com/test");
     expect(fullOutput).toContain("https://checkout.stripe.com/test");

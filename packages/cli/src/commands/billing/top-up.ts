@@ -17,7 +17,7 @@ import { createBillingClient } from "../../client";
 import { commonFlags } from "../../flags";
 import { type Address, formatUnits } from "viem";
 import chalk from "chalk";
-import { input, select, confirm } from "@inquirer/prompts";
+import { input, select } from "@inquirer/prompts";
 import open from "open";
 import { withTelemetry } from "../../telemetry";
 
@@ -195,18 +195,22 @@ export default class BillingTopUp extends Command {
     // Check for existing payment methods
     const { paymentMethods } = await billing.getPaymentMethods();
 
-    let useExistingCard = false;
     let paymentMethodId: string | undefined;
 
     if (paymentMethods.length > 0) {
-      const card = paymentMethods[0];
-      const lastFour = card.stripePaymentMethodId.slice(-4);
-      useExistingCard = await confirm({
-        message: `Use card on file (ending in ${lastFour})?`,
-        default: true,
+      const choices = paymentMethods.map((card) => ({
+        value: card.id,
+        name: `${card.brand.charAt(0).toUpperCase() + card.brand.slice(1)} ending in ${card.last4}`,
+      }));
+      choices.push({ value: "new", name: "Add a new card" });
+
+      const selection = await select({
+        message: "Which card would you like to use?",
+        choices,
       });
-      if (useExistingCard) {
-        paymentMethodId = card.id;
+
+      if (selection !== "new") {
+        paymentMethodId = selection;
       }
     }
 
@@ -218,6 +222,10 @@ export default class BillingTopUp extends Command {
       this.log(`\n  ${chalk.cyan(result.checkoutUrl)}`);
       this.log(chalk.gray("  Opening checkout in browser..."));
       await open(result.checkoutUrl);
+    } else if (result.checkoutSessionId) {
+      this.error(
+        "Checkout session created but no URL was returned. Please contact support.",
+      );
     } else {
       this.log(`  ${chalk.green("✓")} Payment submitted`);
     }
