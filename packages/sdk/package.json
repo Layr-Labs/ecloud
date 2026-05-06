@@ -39,13 +39,14 @@
     }
   },
   "scripts": {
-    "build": "tsup",
-    "build:dev": "BUILD_TYPE=dev tsup",
+    "build": "pnpm run fetch:runtime-binaries && tsup",
+    "build:dev": "BUILD_TYPE=dev pnpm run fetch:runtime-binaries && tsup",
     "prepublishOnly": "cp ../../README.md .",
     "lint": "eslint .",
     "format": "prettier --check .",
     "format:fix": "prettier --write .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "fetch:runtime-binaries": "pnpm -w exec tsx packages/sdk/scripts/fetch-runtime-binaries.ts"
   },
   "dependencies": {
     "@inquirer/prompts": "7.10.1",

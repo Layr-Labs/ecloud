@@ -57,4 +57,10 @@ describe("Dockerfile.layered.tmpl", () => {
     const rendered = render(base);
     expect(rendered).toContain("LABEL eigenx_container_contract=v1");
   });
+
+  it("copies the optional ecloud-drain-watcher runtime binary", () => {
+    const rendered = render(base);
+    expect(rendered).toContain("COPY ecloud-drain-watcher* /usr/local/bin/");
+    expect(rendered).toContain("/usr/local/bin/ecloud-drain-watcher");
+  });
 });

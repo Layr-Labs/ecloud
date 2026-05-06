@@ -27,6 +27,7 @@ import {
   KMS_CLIENT_BINARY_NAME,
   KMS_SIGNING_KEY_NAME,
   TLS_KEYGEN_BINARY_NAME,
+  DRAIN_WATCHER_BINARY_NAME,
   CADDYFILE_NAME,
   LAYERED_BUILD_DIR_PREFIX,
   DOCKER_PLATFORM,
@@ -315,6 +316,16 @@ async function setupLayeredBuildDirectory(
     }
     fs.copyFileSync(kmsClientSource, kmsClientPath);
     fs.chmodSync(kmsClientPath, 0o755);
+
+    // Copy ecloud-drain-watcher binary when the versioned runtime artifact
+    // has been fetched. Older/dev checkouts can still build without it; the
+    // entrypoint falls back to curl/wget-based drain polling.
+    const drainWatcherPath = path.join(tempDir, DRAIN_WATCHER_BINARY_NAME);
+    const drainWatcherSource = findBinary("ecloud-drain-watcher-linux-amd64");
+    if (fs.existsSync(drainWatcherSource)) {
+      fs.copyFileSync(drainWatcherSource, drainWatcherPath);
+      fs.chmodSync(drainWatcherPath, 0o755);
+    }
 
     // Include TLS components if requested
     if (includeTLS) {
