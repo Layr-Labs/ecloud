@@ -27,11 +27,15 @@ import type {
   CreditPurchaseResponse,
 } from "../../common/types";
 
+export type BillingChain = "ethereum" | "base";
+
 export interface TopUpOpts {
   /** Amount in raw USDC units (6 decimals, e.g. 50_000_000n = 50 USDC) */
   amount: bigint;
   /** Target account for purchaseCreditsFor (defaults to wallet address) */
   account?: Address;
+  /** Which blockchain to transact on (defaults to "ethereum") */
+  chain?: BillingChain;
 }
 
 export interface TopUpResult {
@@ -52,11 +56,13 @@ export interface BillingModule {
   getStatus: (opts?: SubscriptionOpts) => Promise<ProductSubscriptionResponse>;
   cancel: (opts?: SubscriptionOpts) => Promise<CancelResponse>;
   /** Read on-chain state needed for top-up */
-  getTopUpInfo: () => Promise<TopUpInfo>;
+  getTopUpInfo: (opts?: { chain?: BillingChain }) => Promise<TopUpInfo>;
   /** Purchase credits with USDC on-chain */
   topUp: (opts: TopUpOpts) => Promise<TopUpResult>;
   getPaymentMethods: () => Promise<PaymentMethodsResponse>;
   purchaseCredits: (amountCents: number, paymentMethodId?: string) => Promise<CreditPurchaseResponse>;
+  /** Check if Base chain is configured for this environment */
+  hasBaseSupport: () => boolean;
 }
 
 export interface BillingModuleConfig {
