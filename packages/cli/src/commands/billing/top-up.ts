@@ -20,6 +20,7 @@ import chalk from "chalk";
 import { input, select } from "@inquirer/prompts";
 import open from "open";
 import { withTelemetry } from "../../telemetry";
+import { type BillingChain } from "@layr-labs/ecloud-sdk";
 
 const POLL_INTERVAL_MS = 5_000;
 const POLL_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
@@ -54,6 +55,11 @@ export default class BillingTopUp extends Command {
       default: "compute",
       options: ["compute"],
       env: "ECLOUD_PRODUCT_ID",
+    }),
+    chain: Flags.string({
+      required: false,
+      description: "Blockchain network for USDC payment: ethereum or base",
+      options: ["ethereum", "base"],
     }),
   };
 
@@ -112,15 +118,30 @@ export default class BillingTopUp extends Command {
     targetAccount: Address,
     baselineTotal: number | undefined,
   ) {
-    const onChainState = await billing.getTopUpInfo();
+    let selectedChain: BillingChain = "ethereum";
+
+    if (billing.hasBaseSupport()) {
+      selectedChain =
+        (flags.chain as BillingChain) ??
+        (await select({
+          message: "Which network?",
+          choices: [
+            { value: "ethereum", name: "Ethereum" },
+            { value: "base", name: "Base" },
+          ],
+        }));
+    }
+
+    const onChainState = await billing.getTopUpInfo({ chain: selectedChain });
     const { usdcBalance, minimumPurchase } = onChainState;
 
     const balanceFormatted = formatUnits(usdcBalance, 6);
     this.log(`  ${chalk.bold("USDC:")}    ${balanceFormatted} USDC`);
 
     if (usdcBalance === BigInt(0)) {
+      const networkName = selectedChain === "base" ? "Base Sepolia" : "Sepolia";
       this.log(`\n${chalk.yellow("  No USDC in wallet.")}`);
-      this.log(`  Send USDC on Sepolia to: ${chalk.cyan(walletAddress)}`);
+      this.log(`  Send USDC on ${networkName} to: ${chalk.cyan(walletAddress)}`);
       this.log(`  Then re-run: ${chalk.cyan("ecloud billing top-up")}\n`);
       return;
     }
@@ -159,6 +180,7 @@ export default class BillingTopUp extends Command {
     const { txHash } = await billing.topUp({
       amount: amountRaw,
       account: targetAccount,
+      chain: selectedChain,
     });
     this.log(`  ${chalk.green("✓")} Transaction confirmed: ${txHash}`);
 
