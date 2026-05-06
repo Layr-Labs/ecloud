@@ -52,4 +52,9 @@ describe("Dockerfile.layered.tmpl", () => {
     const rendered = render(base);
     expect(rendered).toContain("LABEL eigenx_vm_image=eigen");
   });
+
+  it("stamps eigenx_container_contract=v1 for prewarm-detach eligibility gate", () => {
+    const rendered = render(base);
+    expect(rendered).toContain("LABEL eigenx_container_contract=v1");
+  });
 });
