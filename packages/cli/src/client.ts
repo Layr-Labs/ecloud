@@ -67,6 +67,7 @@ export async function createBillingClient(flags: CommonFlags) {
     publicClient,
     environment,
     skipTelemetry: true,
+    privateKey: privateKey as Hex,
   });
 }
 
