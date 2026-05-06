@@ -9,7 +9,8 @@ import type { WalletClient, PublicClient } from "viem";
 import { type Address, type Hex, encodeFunctionData } from "viem";
 
 import { BillingApiClient } from "../../common/utils/billingapi";
-import { getBillingEnvironmentConfig, getBuildType, getEnvironmentConfig } from "../../common/config/environment";
+import { getBillingEnvironmentConfig, getBuildType, getEnvironmentConfig, BASE_SEPOLIA_CHAIN_ID } from "../../common/config/environment";
+import { createClients } from "../../common/utils/helpers";
 import { getLogger, isSubscriptionActive } from "../../common/utils";
 import { withSDKTelemetry } from "../../common/telemetry/wrapper";
 import { executeBatch, type Execution } from "../../common/contract/eip7702";
@@ -71,10 +72,11 @@ export interface BillingModuleConfig {
   skipTelemetry?: boolean; // Skip telemetry when called from CLI
   publicClient: PublicClient;
   environment: string;
+  privateKey?: Hex;
 }
 
 export function createBillingModule(config: BillingModuleConfig): BillingModule {
-  const { verbose = false, skipTelemetry = false, walletClient, publicClient, environment } = config;
+  const { verbose = false, skipTelemetry = false, walletClient, publicClient, environment, privateKey } = config;
 
   // Get address from wallet client's account
   if (!walletClient.account) {
@@ -92,38 +94,80 @@ export function createBillingModule(config: BillingModuleConfig): BillingModule 
 
   // Resolve on-chain config
   const environmentConfig = getEnvironmentConfig(environment);
-  const usdcCreditsAddress = environmentConfig.usdcCreditsAddress;
-  if (!usdcCreditsAddress) {
+  if (!environmentConfig.usdcCreditsAddress) {
     throw new Error(`USDCCredits contract address not configured for environment "${environment}"`);
+  }
+  const usdcCreditsAddress: Address = environmentConfig.usdcCreditsAddress;
+
+  const baseUsdcCreditsAddress = environmentConfig.baseUsdcCreditsAddress;
+  const baseRPCURL = environmentConfig.baseRPCURL;
+
+  function resolveChainConfig(chain?: BillingChain): {
+    pub: PublicClient;
+    wallet: WalletClient;
+    creditsAddress: Address;
+    envConfig: typeof environmentConfig;
+  } {
+    if (chain === "base") {
+      if (!baseUsdcCreditsAddress || !baseRPCURL) {
+        throw new Error(`Base chain not configured for environment "${environment}"`);
+      }
+      if (!privateKey) {
+        throw new Error("Private key required for Base chain transactions");
+      }
+      const baseClients = createClients({
+        privateKey,
+        rpcUrl: baseRPCURL,
+        chainId: BigInt(BASE_SEPOLIA_CHAIN_ID),
+      });
+      return {
+        pub: baseClients.publicClient as PublicClient,
+        wallet: baseClients.walletClient as WalletClient,
+        creditsAddress: baseUsdcCreditsAddress,
+        envConfig: {
+          ...environmentConfig,
+          chainID: BigInt(BASE_SEPOLIA_CHAIN_ID),
+          defaultRPCURL: baseRPCURL,
+        },
+      };
+    }
+    return {
+      pub: publicClient,
+      wallet: walletClient,
+      creditsAddress: usdcCreditsAddress,
+      envConfig: environmentConfig,
+    };
   }
 
   const module: BillingModule = {
     address,
 
-    async getTopUpInfo(): Promise<TopUpInfo> {
-      const usdcAddress = await publicClient.readContract({
-        address: usdcCreditsAddress,
+    async getTopUpInfo(opts?: { chain?: BillingChain }): Promise<TopUpInfo> {
+      const { pub, creditsAddress } = resolveChainConfig(opts?.chain);
+
+      const usdcAddress = await pub.readContract({
+        address: creditsAddress,
         abi: USDCCreditsABI,
         functionName: "usdc",
       }) as Address;
 
       const [minimumPurchase, usdcBalance, currentAllowance] = await Promise.all([
-        publicClient.readContract({
-          address: usdcCreditsAddress,
+        pub.readContract({
+          address: creditsAddress,
           abi: USDCCreditsABI,
           functionName: "minimumPurchase",
         }) as Promise<bigint>,
-        publicClient.readContract({
+        pub.readContract({
           address: usdcAddress,
           abi: ERC20ABI,
           functionName: "balanceOf",
           args: [address],
         }) as Promise<bigint>,
-        publicClient.readContract({
+        pub.readContract({
           address: usdcAddress,
           abi: ERC20ABI,
           functionName: "allowance",
-          args: [address, usdcCreditsAddress],
+          args: [address, creditsAddress],
         }) as Promise<bigint>,
       ]);
 
@@ -135,13 +179,14 @@ export function createBillingModule(config: BillingModuleConfig): BillingModule 
         {
           functionName: "topUp",
           skipTelemetry,
-          properties: { amount: opts.amount.toString() },
+          properties: { amount: opts.amount.toString(), chain: opts.chain || "ethereum" },
         },
         async () => {
           const targetAccount = opts.account ?? address;
+          const { pub, wallet, creditsAddress, envConfig } = resolveChainConfig(opts.chain);
 
           // Read on-chain state
-          const { usdcAddress, currentAllowance } = await module.getTopUpInfo();
+          const { usdcAddress, currentAllowance } = await module.getTopUpInfo({ chain: opts.chain });
 
           // Build executions array
           const executions: Execution[] = [];
@@ -154,14 +199,14 @@ export function createBillingModule(config: BillingModuleConfig): BillingModule 
               callData: encodeFunctionData({
                 abi: ERC20ABI,
                 functionName: "approve",
-                args: [usdcCreditsAddress, opts.amount],
+                args: [creditsAddress, opts.amount],
               }),
             });
           }
 
           // Always include purchaseCreditsFor
           executions.push({
-            target: usdcCreditsAddress,
+            target: creditsAddress,
             value: 0n,
             callData: encodeFunctionData({
               abi: USDCCreditsABI,
@@ -172,9 +217,9 @@ export function createBillingModule(config: BillingModuleConfig): BillingModule 
 
           const txHash = await executeBatch(
             {
-              walletClient,
-              publicClient,
-              environmentConfig,
+              walletClient: wallet,
+              publicClient: pub,
+              environmentConfig: envConfig,
               executions,
               pendingMessage: "Submitting credit purchase...",
             },
@@ -298,6 +343,10 @@ export function createBillingModule(config: BillingModuleConfig): BillingModule 
 
     async purchaseCredits(amountCents: number, paymentMethodId?: string) {
       return billingApi.purchaseCredits(amountCents, paymentMethodId);
+    },
+
+    hasBaseSupport(): boolean {
+      return !!baseUsdcCreditsAddress && !!baseRPCURL;
     },
   };
 
