@@ -62,6 +62,10 @@ export {
   createBillingModule,
   type BillingModule,
   type BillingModuleConfig,
+  type BillingChain,
+  type TopUpOpts,
+  type TopUpResult,
+  type TopUpInfo,
 } from "./modules/billing";
 
 // Export environment config utilities
@@ -72,6 +76,7 @@ export {
   getBuildType,
   isMainnet,
   getBillingEnvironmentConfig,
+  BASE_SEPOLIA_CHAIN_ID,
 } from "./common/config/environment";
 export { isSubscriptionActive } from "./common/utils/billing";
 
