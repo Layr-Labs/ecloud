@@ -1,0 +1,13 @@
+{
+  "name": "ecloud-drain-watcher",
+  "version": "v0.0.1-placeholder",
+  "platform": "linux-amd64",
+  "source": {
+    "repo": "Layr-Labs/ecloud-platform",
+    "commit": "TO_BE_FILLED_AFTER_ECLOUD_PLATFORM_RELEASE"
+  },
+  "download": {
+    "url": "https://storage.googleapis.com/eigencloud-artifacts/ecloud-drain-watcher/v0.0.1-placeholder/linux-amd64/ecloud-drain-watcher",
+    "sha256": "TO_BE_FILLED_AFTER_ECLOUD_PLATFORM_RELEASE"
+  }
+}

@@ -14,6 +14,7 @@ export const KMS_CLIENT_BINARY_NAME = "kms-client";
 export const KMS_ENCRYPTION_KEY_NAME = "kms-encryption-public-key.pem";
 export const KMS_SIGNING_KEY_NAME = "kms-signing-public-key.pem";
 export const TLS_KEYGEN_BINARY_NAME = "tls-keygen";
+export const DRAIN_WATCHER_BINARY_NAME = "ecloud-drain-watcher";
 export const CADDYFILE_NAME = "Caddyfile";
 export const TEMP_IMAGE_PREFIX = "ecloud-temp-";
 export const LAYERED_BUILD_DIR_PREFIX = "ecloud-layered-build";
