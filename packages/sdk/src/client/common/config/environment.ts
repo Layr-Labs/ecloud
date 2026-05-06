@@ -8,6 +8,7 @@ import { BillingEnvironmentConfig, EnvironmentConfig } from "../types";
 // Chain IDs
 export const SEPOLIA_CHAIN_ID = 11155111;
 export const MAINNET_CHAIN_ID = 1;
+export const BASE_SEPOLIA_CHAIN_ID = 84532;
 
 // Common addresses across all chains
 export const CommonAddresses: Record<string, string> = {
@@ -46,6 +47,8 @@ const ENVIRONMENTS: Record<string, Omit<EnvironmentConfig, "chainID">> = {
     userApiServerURL: "https://userapi-compute-sepolia-dev.eigencloud.xyz",
     defaultRPCURL: "https://ethereum-sepolia-rpc.publicnode.com",
     usdcCreditsAddress: "0xbdA3897c3A428763B59015C64AB766c288C97376",
+    baseUsdcCreditsAddress: "0x7673a47463F80c6a3553Db9E54c8cDcd5313d0ac",
+    baseRPCURL: "https://base-sepolia-rpc.publicnode.com",
   },
   sepolia: {
     name: "sepolia",
@@ -58,6 +61,8 @@ const ENVIRONMENTS: Record<string, Omit<EnvironmentConfig, "chainID">> = {
     defaultRPCURL: "https://ethereum-sepolia-rpc.publicnode.com",
     billingRPCURL: "https://ethereum-rpc.publicnode.com",
     usdcCreditsAddress: "0xed9c88640ca9149Bd9f7ee6620074af10F2E145d",
+    baseUsdcCreditsAddress: "0x7673a47463F80c6a3553Db9E54c8cDcd5313d0ac",
+    baseRPCURL: "https://base-sepolia-rpc.publicnode.com",
   },
   "mainnet-alpha": {
     name: "mainnet-alpha",
