@@ -357,7 +357,11 @@ if [ "${ECLOUD_PD_EXPECTED:-0}" = "1" ]; then
     # between this watcher spawn and CHILD_PID assignment below,
     # drain_handler would skip the child-kill branch and still emit
     # ECLOUD_DETACHED — harmless because there's nothing to drain yet.
-    drain_watcher &
+    if [ -x /usr/local/bin/ecloud-drain-watcher ]; then
+        /usr/local/bin/ecloud-drain-watcher &
+    else
+        drain_watcher &
+    fi
 fi
 
 echo "compute-source-env.sh: Environment sourced."
