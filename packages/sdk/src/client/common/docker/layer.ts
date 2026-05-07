@@ -27,6 +27,7 @@ import {
   KMS_CLIENT_BINARY_NAME,
   KMS_SIGNING_KEY_NAME,
   TLS_KEYGEN_BINARY_NAME,
+  DRAIN_WATCHER_BINARY_NAME,
   CADDYFILE_NAME,
   LAYERED_BUILD_DIR_PREFIX,
   DOCKER_PLATFORM,
@@ -229,6 +230,9 @@ async function layerLocalImage(
     }
   }
 
+  const drainWatcherSource = findBinary("ecloud-drain-watcher-linux-amd64");
+  const includeDrainWatcher = fs.existsSync(drainWatcherSource);
+
   // 3. Generate template content
   const layeredDockerfileContent = processDockerfileTemplate({
     baseImage: sourceImageRef,
@@ -238,6 +242,7 @@ async function layerLocalImage(
     resourceUsageAllow: resourceUsageAllow,
     includeTLS: includeTLS,
     ecloudCLIVersion: "0.1.0", // TODO: Get from package.json
+    includeDrainWatcher,
   });
 
   const scriptContent = processScriptTemplate({
@@ -251,6 +256,7 @@ async function layerLocalImage(
     layeredDockerfileContent,
     scriptContent,
     includeTLS,
+    includeDrainWatcher ? drainWatcherSource : undefined,
     // logger
   );
 
@@ -280,6 +286,7 @@ async function setupLayeredBuildDirectory(
   layeredDockerfileContent: string,
   scriptContent: string,
   includeTLS: boolean,
+  drainWatcherSource?: string,
   // logger?: Logger
 ): Promise<string> {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), LAYERED_BUILD_DIR_PREFIX));
@@ -315,6 +322,15 @@ async function setupLayeredBuildDirectory(
     }
     fs.copyFileSync(kmsClientSource, kmsClientPath);
     fs.chmodSync(kmsClientPath, 0o755);
+
+    // Copy ecloud-drain-watcher binary when the versioned runtime artifact
+    // has been fetched. Older/dev checkouts can still build without it; the
+    // entrypoint falls back to curl/wget-based drain polling.
+    if (drainWatcherSource && fs.existsSync(drainWatcherSource)) {
+      const drainWatcherPath = path.join(tempDir, DRAIN_WATCHER_BINARY_NAME);
+      fs.copyFileSync(drainWatcherSource, drainWatcherPath);
+      fs.chmodSync(drainWatcherPath, 0o755);
+    }
 
     // Include TLS components if requested
     if (includeTLS) {

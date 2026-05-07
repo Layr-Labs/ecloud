@@ -66,6 +66,7 @@ describe("compute-source-env.sh.tmpl", () => {
     expect(rendered).toContain("wait_for_userdata");
     expect(rendered).toContain("drain_handler");
     expect(rendered).toContain("drain_watcher");
+    expect(rendered).toContain("/usr/local/bin/ecloud-drain-watcher");
     expect(rendered).toContain("ECLOUD_PD_EXPECTED");
     expect(rendered).toContain("ECLOUD_DRAIN_REQUESTED");
   });
