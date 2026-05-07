@@ -1,12 +1,12 @@
 {
   "name": "ecloud-drain-watcher",
-  "version": "v0.1.0-placeholder",
+  "version": "v0.0.1",
   "source": {
     "repo": "Layr-Labs/ecloud-platform",
-    "commit": "TO_BE_FILLED_AFTER_ECLOUD_PLATFORM_ARTIFACT_RELEASE"
+    "commit": "3c974baae86f3ebacfec30a0313c746caed6cbc5"
   },
   "download": {
-    "url": "https://storage.googleapis.com/ecloud-platform-public-artifacts/ecloud-drain-watcher/v0.1.0-placeholder/linux-amd64/ecloud-drain-watcher",
-    "sha256": "TO_BE_FILLED_AFTER_ECLOUD_PLATFORM_ARTIFACT_RELEASE"
+    "url": "https://storage.googleapis.com/ecloud-platform-public-artifacts-dev/ecloud-drain-watcher/v0.0.1/linux-amd64/ecloud-drain-watcher",
+    "sha256": "a180554748697bcfc13b2b648091a3272f6cb269727ef9f8e0187ae62add7bcb"
   }
 }
