@@ -14,7 +14,9 @@ USER root
 COPY compute-source-env.sh /usr/local/bin/
 COPY kms-client /usr/local/bin/
 COPY kms-signing-public-key.pem /usr/local/bin/
-COPY ecloud-drain-watcher* /usr/local/bin/
+{{#if includeDrainWatcher}}
+COPY ecloud-drain-watcher /usr/local/bin/
+{{/if}}
 
 {{#if includeTLS}}
 # Copy Caddy from official image
@@ -28,8 +30,8 @@ COPY Caddyfile /etc/caddy/
 {{#if originalUser}}
 # Make binaries executable (755 for executables, 644 for keys)
 RUN chmod 755 /usr/local/bin/compute-source-env.sh \
-    && chmod 755 /usr/local/bin/kms-client \
-    && if [ -f /usr/local/bin/ecloud-drain-watcher ]; then chmod 755 /usr/local/bin/ecloud-drain-watcher; fi{{#if includeTLS}} \
+    && chmod 755 /usr/local/bin/kms-client{{#if includeDrainWatcher}} \
+    && chmod 755 /usr/local/bin/ecloud-drain-watcher{{/if}}{{#if includeTLS}} \
     && chmod 755 /usr/local/bin/tls-keygen \
     && chmod 755 /usr/local/bin/caddy{{/if}} \
     && chmod 644 /usr/local/bin/kms-signing-public-key.pem
@@ -39,8 +41,8 @@ ENV __ECLOUD_ORIGINAL_USER={{originalUser}}
 {{else}}
 # Make binaries executable (preserve existing permissions, just add execute)
 RUN chmod +x /usr/local/bin/compute-source-env.sh \
-    && chmod +x /usr/local/bin/kms-client \
-    && if [ -f /usr/local/bin/ecloud-drain-watcher ]; then chmod +x /usr/local/bin/ecloud-drain-watcher; fi{{#if includeTLS}} \
+    && chmod +x /usr/local/bin/kms-client{{#if includeDrainWatcher}} \
+    && chmod +x /usr/local/bin/ecloud-drain-watcher{{/if}}{{#if includeTLS}} \
     && chmod +x /usr/local/bin/tls-keygen{{/if}}
 {{/if}}
 

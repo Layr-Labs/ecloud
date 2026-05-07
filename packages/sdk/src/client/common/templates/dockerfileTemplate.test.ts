@@ -21,6 +21,7 @@ type Data = {
   resourceUsageAllow: string;
   includeTLS: boolean;
   ecloudCLIVersion: string;
+  includeDrainWatcher?: boolean;
 };
 
 function render(data: Data): string {
@@ -59,8 +60,13 @@ describe("Dockerfile.layered.tmpl", () => {
   });
 
   it("copies the optional ecloud-drain-watcher runtime binary", () => {
-    const rendered = render(base);
-    expect(rendered).toContain("COPY ecloud-drain-watcher* /usr/local/bin/");
+    const rendered = render({ ...base, includeDrainWatcher: true });
+    expect(rendered).toContain("COPY ecloud-drain-watcher /usr/local/bin/");
     expect(rendered).toContain("/usr/local/bin/ecloud-drain-watcher");
+  });
+
+  it("omits ecloud-drain-watcher copy when runtime artifact is unavailable", () => {
+    const rendered = render({ ...base, includeDrainWatcher: false });
+    expect(rendered).not.toContain("COPY ecloud-drain-watcher /usr/local/bin/");
   });
 });
