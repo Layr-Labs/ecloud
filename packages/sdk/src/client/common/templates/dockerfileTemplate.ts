@@ -9,6 +9,7 @@ export interface DockerfileTemplateData {
   resourceUsageAllow: string; // "always" or "never" for memory monitoring
   includeTLS: boolean;
   ecloudCLIVersion: string;
+  includeDrainWatcher?: boolean;
 }
 
 /**

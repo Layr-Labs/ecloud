@@ -1,13 +1,13 @@
 {
   "name": "ecloud-drain-watcher",
-  "version": "v0.0.1-placeholder",
-  "platform": "linux-amd64",
+  "version": "ecloud-drain-watcher-v0.1.0-placeholder",
   "source": {
-    "repo": "Layr-Labs/ecloud-platform",
-    "commit": "TO_BE_FILLED_AFTER_ECLOUD_PLATFORM_RELEASE"
+    "repo": "Layr-Labs/eigencompute-containers",
+    "commit": "TO_BE_FILLED_AFTER_EIGENCOMPUTE_CONTAINERS_RELEASE"
   },
-  "download": {
-    "url": "https://storage.googleapis.com/eigencloud-artifacts/ecloud-drain-watcher/v0.0.1-placeholder/linux-amd64/ecloud-drain-watcher",
-    "sha256": "TO_BE_FILLED_AFTER_ECLOUD_PLATFORM_RELEASE"
+  "oci": {
+    "image": "docker.io/eigenlayer/eigencloud-containers@sha256:TO_BE_FILLED_AFTER_EIGENCOMPUTE_CONTAINERS_RELEASE",
+    "binaryPath": "/eigen/bin/ecloud-drain-watcher",
+    "binarySha256": "TO_BE_FILLED_AFTER_EIGENCOMPUTE_CONTAINERS_RELEASE"
   }
 }
