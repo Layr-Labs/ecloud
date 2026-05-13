@@ -1,6 +1,6 @@
 import axios, { AxiosResponse } from "axios";
 import { Address, Hex, type PublicClient, type WalletClient } from "viem";
-import { calculatePermissionSignature } from "./auth";
+import { calculatePermissionSignature, calculateBillingAuthSignature } from "./auth";
 import { EnvironmentConfig } from "../types";
 import { stripHexPrefix } from "./helpers";
 import { requestWithRetry } from "./retry";
@@ -117,6 +117,17 @@ export interface AppResponse {
   creator?: string;
   contractStatus?: AppContractStatus;
   releases: AppRelease[];
+}
+
+export interface DeploymentInfo {
+  id: string;
+  externalId: string;
+  endpoint: string;
+  releaseId: string;
+  upgradePhase: string;
+  replacesDeploymentId: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 const MAX_ADDRESS_COUNT = 5;
@@ -304,6 +315,30 @@ export class UserApiClient {
     return apps.map((app: any, i: number) => ({
       address: (app.address || appIDs[i]) as Address,
       status: app.app_status || app.App_Status || "",
+    }));
+  }
+
+  /**
+   * Get deployments for an app from the gRPC-gateway endpoint.
+   * Returns deployment records including upgrade_phase for tracking upgrade progress.
+   *
+   * Endpoint: GET /v1/apps/:appAddress/deployments
+   */
+  async getDeployments(appAddress: Address): Promise<DeploymentInfo[]> {
+    const endpoint = `${this.config.userApiServerURL}/v1/apps/${appAddress}/deployments`;
+    const response = await this.makeEIP712AuthenticatedRequest(endpoint);
+    const result = await response.json();
+
+    const deployments = result.deployments || [];
+    return deployments.map((dep: any) => ({
+      id: dep.id || "",
+      externalId: dep.external_id || dep.externalId || "",
+      endpoint: dep.endpoint || "",
+      releaseId: dep.release_id || dep.releaseId || "",
+      upgradePhase: dep.upgrade_phase || dep.upgradePhase || "",
+      replacesDeploymentId: dep.replaces_deployment_id || dep.replacesDeploymentId || "",
+      createdAt: dep.created_at || dep.createdAt || "",
+      updatedAt: dep.updated_at || dep.updatedAt || "",
     }));
   }
 
@@ -504,6 +539,63 @@ export class UserApiClient {
       Authorization: `Bearer ${stripHexPrefix(signature)}`,
       "X-eigenx-expiry": expiry.toString(),
     };
+  }
+
+  /**
+   * Make an EIP-712 authenticated request to the gRPC-gateway endpoints.
+   * Uses the billing/compute auth pattern: Authorization + X-Account + X-Expiry headers.
+   */
+  private async makeEIP712AuthenticatedRequest(
+    url: string,
+  ): Promise<{ json: () => Promise<any>; text: () => Promise<string> }> {
+    const expiry = BigInt(Math.floor(Date.now() / 1000) + 5 * 60); // 5 minutes
+
+    const { signature } = await calculateBillingAuthSignature({
+      walletClient: this.walletClient,
+      product: "compute",
+      expiry,
+    });
+
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${signature}`,
+      "X-Account": this.address,
+      "X-Expiry": expiry.toString(),
+      "x-client-id": this.clientId,
+    };
+
+    try {
+      const response: AxiosResponse = await requestWithRetry({
+        method: "GET",
+        url,
+        headers,
+        maxRedirects: 0,
+        withCredentials: true,
+      });
+
+      const status = response.status;
+      if (status < 200 || status >= 300) {
+        const body =
+          typeof response.data === "string" ? response.data : JSON.stringify(response.data);
+        throw new Error(`gRPC-gateway request failed: ${status} - ${body}`);
+      }
+
+      return {
+        json: async () => response.data,
+        text: async () =>
+          typeof response.data === "string" ? response.data : JSON.stringify(response.data),
+      };
+    } catch (error: any) {
+      if (
+        error.message?.includes("fetch failed") ||
+        error.message?.includes("ECONNREFUSED") ||
+        error.message?.includes("ENOTFOUND") ||
+        error.cause
+      ) {
+        const cause = error.cause?.message || error.cause || error.message;
+        throw new Error(`Failed to connect to API at ${url}: ${cause}`);
+      }
+      throw error;
+    }
   }
 
   // ==========================================================================
