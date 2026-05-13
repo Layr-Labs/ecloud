@@ -151,6 +151,20 @@ setup_tls() {
         user_domain=""
     fi
 
+    # If the user set DOMAIN to the same value as the platform
+    # hostname, collapse them. Without this we'd burn a second ACME
+    # issuance for the exact same name (each VM boot counts against
+    # Let's Encrypt's 5-certs-per-domain-per-week limit), and Caddy
+    # would then refuse to start because two site blocks bound to
+    # the same address is a config error. Also unset DOMAIN so the
+    # DOMAIN site block in the Caddyfile falls back to its
+    # "localhost.user.invalid" placeholder and stays dormant.
+    if [ -n "$platform_host" ] && [ "$user_domain" = "$platform_host" ]; then
+        echo "compute-source-env.sh: DOMAIN matches ECLOUD_PLATFORM_HOST; skipping duplicate cert"
+        user_domain=""
+        unset DOMAIN
+    fi
+
     if [ -z "$platform_host" ] && [ -z "$user_domain" ]; then
         echo "compute-source-env.sh: TLS skipped (neither ECLOUD_PLATFORM_HOST nor DOMAIN set)"
         return 0
