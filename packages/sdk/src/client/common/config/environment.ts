@@ -36,6 +36,15 @@ const BILLING_ENVIRONMENTS: Record<"dev" | "prod", BillingEnvironmentConfig> = {
 };
 
 // Chain environment configurations
+//
+// platformEnv mirrors the ecloud-platform `Environment` const labels
+// (pkg/config/config.go:EnvironmentTestnetSepolia / EnvironmentMainnetEthereum).
+// Both sepolia-dev and sepolia route through the shared testnet-sepolia
+// platform environment.
+const PLATFORM_ENV_TESTNET_SEPOLIA = "testnet-sepolia";
+const PLATFORM_ENV_MAINNET_ETHEREUM = "mainnet-ethereum";
+const DEFAULT_APP_BASE_DOMAIN = "eigencloud.xyz";
+
 const ENVIRONMENTS: Record<string, Omit<EnvironmentConfig, "chainID">> = {
   "sepolia-dev": {
     name: "sepolia",
@@ -49,6 +58,8 @@ const ENVIRONMENTS: Record<string, Omit<EnvironmentConfig, "chainID">> = {
     usdcCreditsAddress: "0xbdA3897c3A428763B59015C64AB766c288C97376",
     baseUsdcCreditsAddress: "0x7673a47463F80c6a3553Db9E54c8cDcd5313d0ac",
     baseRPCURL: "https://base-sepolia-rpc.publicnode.com",
+    platformEnv: PLATFORM_ENV_TESTNET_SEPOLIA,
+    appBaseDomain: DEFAULT_APP_BASE_DOMAIN,
   },
   sepolia: {
     name: "sepolia",
@@ -63,6 +74,8 @@ const ENVIRONMENTS: Record<string, Omit<EnvironmentConfig, "chainID">> = {
     usdcCreditsAddress: "0xed9c88640ca9149Bd9f7ee6620074af10F2E145d",
     baseUsdcCreditsAddress: "0x7673a47463F80c6a3553Db9E54c8cDcd5313d0ac",
     baseRPCURL: "https://base-sepolia-rpc.publicnode.com",
+    platformEnv: PLATFORM_ENV_TESTNET_SEPOLIA,
+    appBaseDomain: DEFAULT_APP_BASE_DOMAIN,
   },
   "mainnet-alpha": {
     name: "mainnet-alpha",
@@ -74,8 +87,31 @@ const ENVIRONMENTS: Record<string, Omit<EnvironmentConfig, "chainID">> = {
     userApiServerURL: "https://userapi-compute.eigencloud.xyz",
     defaultRPCURL: "https://ethereum-rpc.publicnode.com",
     usdcCreditsAddress: "0xed9c88640ca9149Bd9f7ee6620074af10F2E145d",
+    platformEnv: PLATFORM_ENV_MAINNET_ETHEREUM,
+    appBaseDomain: DEFAULT_APP_BASE_DOMAIN,
   },
 };
+
+/**
+ * Derive the platform-routed hostname for an app
+ * (<addr_without_0x>.<platformEnv>.<appBaseDomain>).
+ *
+ * Mirrors ecloud-platform's Config.DeriveAppHostname so the CLI can
+ * issue the same hostname as the platform without a round-trip.
+ * Returns an empty string when the environment has no platformEnv
+ * mapping (e.g., a future CLI env added before DNS delegation is
+ * provisioned).
+ */
+export function derivePlatformHost(
+  environmentConfig: EnvironmentConfig,
+  appAddress: string,
+): string {
+  if (!environmentConfig.platformEnv || !environmentConfig.appBaseDomain) {
+    return "";
+  }
+  const addr = appAddress.toLowerCase().replace(/^0x/, "");
+  return `${addr}.${environmentConfig.platformEnv}.${environmentConfig.appBaseDomain}`;
+}
 
 const CHAIN_ID_TO_ENVIRONMENT: Record<string, string> = {
   [SEPOLIA_CHAIN_ID.toString()]: "sepolia",

@@ -246,6 +246,18 @@ export interface EnvironmentConfig {
   usdcCreditsAddress?: Address;
   baseUsdcCreditsAddress?: Address;
   baseRPCURL?: string;
+  // platformEnv is the ecloud-platform environment label used as the
+  // middle segment of the platform-routed hostname
+  // (<addr>.<platformEnv>.<appBaseDomain>). Distinct from `name`
+  // because the CLI and the platform evolved different env labels
+  // (sepolia-dev / sepolia → testnet-sepolia, mainnet-alpha →
+  // mainnet-ethereum). Empty string means the CLI env does not map
+  // to a platform-routed environment.
+  platformEnv: string;
+  // appBaseDomain is the apex under which the platform delegates
+  // per-app DNS (typically "eigencloud.xyz"). Joined with
+  // platformEnv + app address to form the cert domain.
+  appBaseDomain: string;
 }
 
 export interface Release {
