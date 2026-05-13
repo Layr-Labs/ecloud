@@ -11,7 +11,6 @@ import { getImageDigestAndName } from "../registry/digest";
 import { encryptRSAOAEPAndAES256GCM, getAppProtectedHeaders } from "../encryption/kms"; // getAppProtectedHeaders
 import { getKMSKeysForEnvironment } from "../utils/keys";
 import { REGISTRY_PROPAGATION_WAIT_SECONDS } from "../constants";
-import { derivePlatformHost } from "../config/environment";
 
 import { parseAndValidateEnvFile } from "../env/parser";
 
@@ -151,18 +150,19 @@ export async function prepareRelease(
   publicEnv["EIGEN_MACHINE_TYPE_PUBLIC"] = instanceType;
   logger.info(`Instance type: ${instanceType}`);
 
-  // 4a. Inject the platform-routed hostname as a public env var so
-  // the VM entrypoint's setup_tls knows which hostname to obtain a
-  // cert for. Platform routing expects every app to answer on
-  // <addr>.<platformEnv>.<appBaseDomain>, so this replaces the
-  // compute-tee model where the user supplied DOMAIN manually. The
-  // user's DOMAIN env var (if any) is carried separately in the env
-  // file and is additive: setup_tls issues a cert for both.
-  const platformHost = derivePlatformHost(environmentConfig, options.appId);
-  if (platformHost !== "") {
-    publicEnv["ECLOUD_PLATFORM_HOST"] = platformHost;
-    logger.info(`Platform hostname: ${platformHost}`);
-  }
+  // ECLOUD_PLATFORM_HOST is intentionally NOT injected into publicEnv.
+  // The platform sets it directly as tee-env-* metadata at VM-create
+  // time (see ecloud-platform pkg/services/infraService/providers/gcp/
+  // compute.go) from cfg.DeriveAppHostname(appAddress). Putting it
+  // here too would mean the user's on-chain release blob carries a
+  // value the user never supplied, which has two costs:
+  //   1. The hostname appears in the public env list rendered by
+  //      `ecloud compute app info` and the verify dashboard, where
+  //      it's noise to anyone reading the release.
+  //   2. Releases cut against an environment whose AppBaseDomain
+  //      later changes would carry a stale hostname forever.
+  // Platform-derived values belong in platform metadata, not in the
+  // user's release.
 
   // 5. Encrypt private environment variables
   logger.info("Encrypting environment variables...");
