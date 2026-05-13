@@ -39,14 +39,24 @@ describe("Dockerfile.layered.tmpl", () => {
     ecloudCLIVersion: "0.0.0-test",
   };
 
-  it("emits the tee.launch_policy.allow_env_override label for ECLOUD_PD_EXPECTED", () => {
-    // Regression guard for the 2026-05-04 dev incident where the
-    // Confidential Space launcher rejected the orchestrator's
-    // `tee-env-ECLOUD_PD_EXPECTED=1` override because this label
-    // wasn't set, exiting the VM before the entrypoint ran. Without
-    // this label, PD-backed apps can never deploy.
+  it("allow-lists every tee-env-* var ecloud-platform sets on the VM", () => {
+    // Regression guard for the same class of CS-launcher
+    // env-override rejections that first hit us on 2026-05-04
+    // (ECLOUD_PD_EXPECTED) and again on 2026-05-13 with
+    // ECLOUD_PLATFORM_HOST. The launcher refuses to start the
+    // container when compute.go emits a tee-env-* whose key isn't
+    // in this label's comma-separated list. Missing a name here
+    // means every fresh deploy silently fails with the VM booting,
+    // the container refusing to start, and the platform incorrectly
+    // reporting 'Running' because the readiness check is skipped
+    // for imported builds.
     const rendered = render(base);
-    expect(rendered).toContain("LABEL tee.launch_policy.allow_env_override=ECLOUD_PD_EXPECTED");
+    expect(rendered).toMatch(
+      /LABEL tee\.launch_policy\.allow_env_override=([A-Z_,]*\b)ECLOUD_PD_EXPECTED\b/,
+    );
+    expect(rendered).toMatch(
+      /LABEL tee\.launch_policy\.allow_env_override=([A-Z_,]*\b)ECLOUD_PLATFORM_HOST\b/,
+    );
   });
 
   it("tags the image with eigenx_vm_image=eigen (needed for platform's image-family selection)", () => {
