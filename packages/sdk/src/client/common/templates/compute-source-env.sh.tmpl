@@ -61,45 +61,6 @@ else
     exit 1
 fi
 
-# dns_points_here returns 0 if $1 resolves (A record) to our external
-# IPv4. Used to gate ACME on DNS being wired before we start burning
-# Let's Encrypt's 5-cert-per-domain-per-week rate limit. Returns 1 on
-# any failure (tool missing, lookup error, mismatch) so callers treat
-# "I can't tell" the same as "not ready yet".
-dns_points_here() {
-    local host="$1"
-    local external_ip
-    # GCE metadata is always reachable from a VM on GCE. The
-    # alternative (dig OPT CHAOS to an upstream) adds a dependency;
-    # the metadata server is already a hard prereq for KMS auth above.
-    external_ip="$(curl -fsS -H 'Metadata-Flavor: Google' \
-        'http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip' 2>/dev/null || true)"
-    if [ -z "$external_ip" ]; then
-        echo "compute-source-env.sh: DNS precheck for $host skipped: no external IP from metadata"
-        return 1
-    fi
-    local resolved
-    if command -v getent >/dev/null 2>&1; then
-        resolved="$(getent ahostsv4 "$host" 2>/dev/null | awk 'NR==1{print $1}')"
-    elif command -v host >/dev/null 2>&1; then
-        resolved="$(host -t A "$host" 2>/dev/null | awk '/has address/{print $4; exit}')"
-    elif command -v dig >/dev/null 2>&1; then
-        resolved="$(dig +short A "$host" 2>/dev/null | awk 'NR==1{print}')"
-    else
-        echo "compute-source-env.sh: DNS precheck for $host skipped: no resolver tool available"
-        return 1
-    fi
-    if [ -z "$resolved" ]; then
-        echo "compute-source-env.sh: DNS precheck: $host has no A record yet"
-        return 1
-    fi
-    if [ "$resolved" != "$external_ip" ]; then
-        echo "compute-source-env.sh: DNS precheck: $host resolves to $resolved but this VM is $external_ip"
-        return 1
-    fi
-    return 0
-}
-
 # issue_cert_for runs tls-keygen for a single hostname and copies the
 # produced fullchain/privkey into $1's output directory ($2). Returns
 # 0 on success, non-zero on any failure (caller decides whether that's
@@ -131,9 +92,16 @@ issue_cert_for() {
 #   - ECLOUD_PLATFORM_HOST (platform-routed <addr>.<env>.eigencloud.xyz),
 #     when the CLI/platform has set it
 #   - DOMAIN (user-supplied custom domain), when set and non-localhost
-# Both hostnames are gated on DNS already pointing at this VM so we
-# don't burn Let's Encrypt rate limits on apps whose routing isn't
-# wired up yet (prewarm/migration window).
+#
+# No client-side DNS precheck. Earlier versions tried to gate ACME on
+# "does this hostname resolve to my external IP" but that's wrong for
+# the platform-routing model (DNS points at the shared nginx NLB, not
+# the VM) and was preventing cert issuance on the production path.
+# tls-client (eigencompute-containers/tls-client) does its own DNS
+# poll before calling ACME and surfaces a clear error when challenges
+# can't reach the VM, which is the right place for that check —
+# attempting it here from inside the VM cannot tell platform-routed
+# from compute-tee-routed apps.
 setup_tls() {
     # If tls-keygen isn't present, TLS wasn't configured during build
     if [ ! -x /usr/local/bin/tls-keygen ]; then
@@ -192,30 +160,22 @@ setup_tls() {
     local certs_issued=0
 
     if [ -n "$platform_host" ]; then
-        if dns_points_here "$platform_host"; then
-            if issue_cert_for "$platform_host" "/run/tls/platform" "$mnemonic" "$challenge" "$staging_flag"; then
-                certs_issued=$((certs_issued + 1))
-            else
-                echo "compute-source-env.sh: ERROR - failed to issue cert for platform host $platform_host"
-                echo "ECLOUD_FAIL tls_setup"
-                exit 1
-            fi
+        if issue_cert_for "$platform_host" "/run/tls/platform" "$mnemonic" "$challenge" "$staging_flag"; then
+            certs_issued=$((certs_issued + 1))
         else
-            echo "compute-source-env.sh: skipping platform cert for $platform_host — DNS not pointing here yet"
+            echo "compute-source-env.sh: ERROR - failed to issue cert for platform host $platform_host"
+            echo "ECLOUD_FAIL tls_setup"
+            exit 1
         fi
     fi
 
     if [ -n "$user_domain" ]; then
-        if dns_points_here "$user_domain"; then
-            if issue_cert_for "$user_domain" "/run/tls/domain" "$mnemonic" "$challenge" "$staging_flag"; then
-                certs_issued=$((certs_issued + 1))
-            else
-                echo "compute-source-env.sh: ERROR - failed to issue cert for user domain $user_domain"
-                echo "ECLOUD_FAIL tls_setup"
-                exit 1
-            fi
+        if issue_cert_for "$user_domain" "/run/tls/domain" "$mnemonic" "$challenge" "$staging_flag"; then
+            certs_issued=$((certs_issued + 1))
         else
-            echo "compute-source-env.sh: skipping user-domain cert for $user_domain — DNS not pointing here yet"
+            echo "compute-source-env.sh: ERROR - failed to issue cert for user domain $user_domain"
+            echo "ECLOUD_FAIL tls_setup"
+            exit 1
         fi
     fi
 
