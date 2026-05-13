@@ -31,19 +31,26 @@ function validatePort(value: string): true | string {
 }
 
 export default class ConfigureTLS extends Command {
-  static description = "Configure TLS for your application";
+  static description = "Configure a custom domain for your app (optional)";
 
-  static summary = `Configures TLS for your EigenCloud application.
+  static summary = `Configures a custom domain for your EigenCloud application.
 
-Prompts for domain and TLS settings (or accepts them via flags), then:
-- Creates a Caddyfile for automatic HTTPS via Caddy reverse proxy
-- Appends TLS variables to .env with your values
+By default, every deployed app is reachable at its platform-derived
+hostname (<app-address>.<env-name>.eigencloud.xyz) with TLS already
+set up. You only need this command if you also want the app reachable
+at a custom domain you control.
+
+Running this command:
+- Creates a Caddyfile serving both the platform hostname and your
+  custom domain
+- Appends DOMAIN + Caddy settings to .env
 - Appends TLS placeholders to .env.example
 
-TLS certificates are automatically obtained via Let's Encrypt using the tls-keygen tool.`;
+After running this, set a DNS A record for your custom domain
+pointing at the platform's proxy IP, then deploy/upgrade. Certs for
+both hostnames are obtained via Let's Encrypt at VM boot.`;
 
   static examples = [
-    "<%= config.bin %> compute app configure tls",
     "<%= config.bin %> compute app configure tls --domain myapp.example.com",
     "<%= config.bin %> compute app configure tls --domain myapp.example.com --app-port 8080",
     "<%= config.bin %> compute app configure tls --domain myapp.example.com --no-acme-staging",
@@ -51,7 +58,7 @@ TLS certificates are automatically obtained via Let's Encrypt using the tls-keyg
 
   static flags = {
     domain: Flags.string({
-      description: "Domain name for TLS certificate",
+      description: "Custom domain name for TLS certificate (additive to the platform hostname)",
     }),
     "app-port": Flags.string({
       description: "Port your application listens on",
@@ -73,14 +80,15 @@ TLS certificates are automatically obtained via Let's Encrypt using the tls-keyg
     const { flags } = await this.parse(ConfigureTLS);
     const cwd = process.cwd();
 
-    // Check if TLS is already configured in .env
     const envPath = path.join(cwd, ".env");
     if (envFileHasTlsConfig(envPath)) {
-      this.warn("TLS is already configured in .env (DOMAIN is set). Skipping.");
+      this.warn("Custom domain is already configured in .env (DOMAIN is set). Skipping.");
       return;
     }
 
-    // Write Caddyfile
+    // Write Caddyfile. The same template also serves the platform
+    // hostname so the file is safe to drop in even if the user
+    // later removes the DOMAIN line from .env.
     const caddyfilePath = path.join(cwd, "Caddyfile");
     if (fs.existsSync(caddyfilePath)) {
       this.log("Caddyfile already exists, keeping existing file.");
@@ -96,7 +104,7 @@ TLS certificates are automatically obtained via Let's Encrypt using the tls-keyg
     let domain = flags.domain;
     if (!domain) {
       domain = await input({
-        message: "Domain name:",
+        message: "Custom domain name:",
         validate: validateDomain,
       });
     } else {
@@ -104,9 +112,7 @@ TLS certificates are automatically obtained via Let's Encrypt using the tls-keyg
       if (result !== true) this.error(result);
     }
 
-    let appPort = flags["app-port"];
-    // Only prompt if the user didn't pass --app-port at all (default is "3000")
-    // Since oclif always provides the default, we use the default directly
+    const appPort = flags["app-port"];
     const portResult = validatePort(appPort);
     if (portResult !== true) this.error(portResult);
 
@@ -129,11 +135,17 @@ TLS certificates are automatically obtained via Let's Encrypt using the tls-keyg
 
     // Show summary
     this.log("");
-    this.log(chalk.bold("TLS Configuration:"));
-    this.log(`  Domain:          ${domain.trim()}`);
+    this.log(chalk.bold("Custom domain configuration:"));
+    this.log(`  Custom domain:   ${domain.trim()}`);
     this.log(`  App port:        ${appPort.trim()}`);
     this.log(`  ACME staging:    ${acmeStaging}`);
     this.log(`  Caddy logs:      ${enableCaddyLogs}`);
+    this.log("");
+    this.log(
+      chalk.gray(
+        "Note: your app will also be reachable at its platform-derived hostname (<app-address>.<env>.eigencloud.xyz) with its own cert.",
+      ),
+    );
     this.log("");
 
     // Only ask for confirmation in interactive mode (no --domain flag)
@@ -170,12 +182,12 @@ TLS certificates are automatically obtained via Let's Encrypt using the tls-keyg
 
     // Print next steps
     this.log("");
-    this.log(chalk.green("TLS configured successfully"));
+    this.log(chalk.green("Custom domain configured successfully"));
     this.log("");
     this.log("Next steps:");
     this.log("");
-    this.log("1. Set up DNS A record pointing to your instance IP");
-    this.log("   Run 'ecloud compute app list' to get IP address");
+    this.log(`1. Set up a DNS A record for ${domain.trim()} pointing at the platform proxy IP`);
+    this.log("   Run 'ecloud compute app list' to confirm the IP once the app is running");
     this.log("");
     this.log("2. Deploy or upgrade:");
     this.log("   ecloud compute app deploy    # new app");

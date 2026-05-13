@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { getBillingEnvironmentConfig, getEnvironmentConfig } from "./environment";
+import {
+  derivePlatformHost,
+  getBillingEnvironmentConfig,
+  getEnvironmentConfig,
+} from "./environment";
 
 describe("environment config ECLOUD_API_URL override", () => {
   const originalApiUrl = process.env.ECLOUD_API_URL;
@@ -81,5 +85,35 @@ describe("environment config ECLOUD_API_URL override", () => {
   it("overrides billingApiServerURL when ECLOUD_API_URL is set (prod)", () => {
     process.env.ECLOUD_API_URL = "https://example.com";
     expect(getBillingEnvironmentConfig("prod").billingApiServerURL).toBe("https://example.com");
+  });
+});
+
+describe("derivePlatformHost", () => {
+  const originalBuildType = process.env.BUILD_TYPE;
+  beforeEach(() => {
+    process.env.BUILD_TYPE = "dev";
+  });
+  afterEach(() => {
+    if (originalBuildType === undefined) delete process.env.BUILD_TYPE;
+    else process.env.BUILD_TYPE = originalBuildType;
+  });
+
+  it("maps sepolia-dev to testnet-sepolia.eigencloud.xyz", () => {
+    const cfg = getEnvironmentConfig("sepolia-dev");
+    expect(derivePlatformHost(cfg, "0xABCDEF")).toBe(
+      "abcdef.testnet-sepolia.eigencloud.xyz",
+    );
+  });
+
+  it("lowercases and strips the 0x prefix", () => {
+    const cfg = getEnvironmentConfig("sepolia-dev");
+    expect(derivePlatformHost(cfg, "ABCDEF")).toBe(
+      "abcdef.testnet-sepolia.eigencloud.xyz",
+    );
+  });
+
+  it("returns empty when platformEnv is not set", () => {
+    const cfg = { ...getEnvironmentConfig("sepolia-dev"), platformEnv: "" };
+    expect(derivePlatformHost(cfg, "0xABCDEF")).toBe("");
   });
 });
