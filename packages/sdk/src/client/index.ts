@@ -124,6 +124,7 @@ export {
   type AppRelease,
   type AppReleaseBuild,
   type AppResponse,
+  type DeploymentInfo,
 } from "./common/utils/userapi";
 
 export { BillingApiClient } from "./common/utils/billingapi";
