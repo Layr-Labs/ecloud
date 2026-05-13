@@ -60,11 +60,27 @@ LABEL tee.launch_policy.monitoring_memory_allow={{resourceUsageAllow}}
 # any `tee-env-*` override at container-start with
 # "env var {...} is not allowed to be overridden on this image" and
 # exits with code 1 — which terminates the VM before the entrypoint
-# ever runs. ECLOUD_PD_EXPECTED is set on PD-backed apps so the
-# entrypoint (compute-source-env.sh) knows to wait for the persistent
-# disk before exec'ing the user workload. User-supplied env vars
-# flow through KMS (not tee-env-*) and don't need to be listed here.
-LABEL tee.launch_policy.allow_env_override=ECLOUD_PD_EXPECTED
+# ever runs. User-supplied env vars flow through KMS (not tee-env-*)
+# and don't need to be listed here.
+#
+# Entries:
+#   - ECLOUD_PD_EXPECTED   set on PD-backed apps so the entrypoint
+#                          (compute-source-env.sh) knows to wait for
+#                          the persistent disk before exec'ing the
+#                          user workload.
+#   - ECLOUD_PLATFORM_HOST the platform-routed hostname
+#                          (<addr>.<env>.eigencloud.xyz) so the
+#                          entrypoint's setup_tls can issue an ACME
+#                          cert for it. Injected by the CLI into
+#                          publicEnv at deploy/upgrade time and
+#                          propagated by ecloud-platform's
+#                          compute.go as a tee-env-* metadata key.
+#
+# The CS launcher parses this label as a comma-separated list
+# (go-tpm-tools/launcher/spec/launch_policy.go:185 — strings.Split
+# on ","). Quotes are not required; keep the value bare for
+# consistency with compute-tee's and eigenx-kms's existing labels.
+LABEL tee.launch_policy.allow_env_override=ECLOUD_PD_EXPECTED,ECLOUD_PLATFORM_HOST
 
 LABEL eigenx_cli_version={{ecloudCLIVersion}}
 LABEL eigenx_vm_image=eigen
