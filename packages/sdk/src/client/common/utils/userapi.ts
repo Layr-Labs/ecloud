@@ -38,6 +38,10 @@ export interface AppInfo {
   status: string;
   ip: string;
   machineType: string;
+  // hostname is the platform-derived routing hostname
+  // (<addr>.<env>.<AppBaseDomain>). Absent when talking to compute-tee's
+  // legacy /info — only ecloud-platform emits it.
+  hostname?: string;
   profile?: AppProfileInfo;
   metrics?: AppMetrics;
   evmAddresses: DerivedAddress[];
@@ -56,6 +60,7 @@ export interface AppInfoResponse {
     app_status: string;
     ip: string;
     machine_type: string;
+    hostname?: string;
     profile?: AppProfileInfo;
     metrics?: AppMetrics;
   }>;
@@ -224,6 +229,7 @@ export class UserApiClient {
         status: app.app_status,
         ip: app.ip,
         machineType: app.machine_type,
+        hostname: app.hostname,
         profile: app.profile,
         metrics: app.metrics,
         evmAddresses,

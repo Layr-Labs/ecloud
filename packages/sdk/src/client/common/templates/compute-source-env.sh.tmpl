@@ -61,7 +61,79 @@ else
     exit 1
 fi
 
-# Setup TLS if tls-keygen is present and DOMAIN is configured
+# dns_points_here returns 0 if $1 resolves (A record) to our external
+# IPv4. Used to gate ACME on DNS being wired before we start burning
+# Let's Encrypt's 5-cert-per-domain-per-week rate limit. Returns 1 on
+# any failure (tool missing, lookup error, mismatch) so callers treat
+# "I can't tell" the same as "not ready yet".
+dns_points_here() {
+    local host="$1"
+    local external_ip
+    # GCE metadata is always reachable from a VM on GCE. The
+    # alternative (dig OPT CHAOS to an upstream) adds a dependency;
+    # the metadata server is already a hard prereq for KMS auth above.
+    external_ip="$(curl -fsS -H 'Metadata-Flavor: Google' \
+        'http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip' 2>/dev/null || true)"
+    if [ -z "$external_ip" ]; then
+        echo "compute-source-env.sh: DNS precheck for $host skipped: no external IP from metadata"
+        return 1
+    fi
+    local resolved
+    if command -v getent >/dev/null 2>&1; then
+        resolved="$(getent ahostsv4 "$host" 2>/dev/null | awk 'NR==1{print $1}')"
+    elif command -v host >/dev/null 2>&1; then
+        resolved="$(host -t A "$host" 2>/dev/null | awk '/has address/{print $4; exit}')"
+    elif command -v dig >/dev/null 2>&1; then
+        resolved="$(dig +short A "$host" 2>/dev/null | awk 'NR==1{print}')"
+    else
+        echo "compute-source-env.sh: DNS precheck for $host skipped: no resolver tool available"
+        return 1
+    fi
+    if [ -z "$resolved" ]; then
+        echo "compute-source-env.sh: DNS precheck: $host has no A record yet"
+        return 1
+    fi
+    if [ "$resolved" != "$external_ip" ]; then
+        echo "compute-source-env.sh: DNS precheck: $host resolves to $resolved but this VM is $external_ip"
+        return 1
+    fi
+    return 0
+}
+
+# issue_cert_for runs tls-keygen for a single hostname and copies the
+# produced fullchain/privkey into $1's output directory ($2). Returns
+# 0 on success, non-zero on any failure (caller decides whether that's
+# fatal). tls-keygen writes to /run/tls/{fullchain,privkey}.pem by
+# default; we move those to a per-host subdirectory so the two-site
+# Caddyfile can select the right cert by path.
+issue_cert_for() {
+    local host="$1"
+    local cert_dir="$2"
+    local mnemonic="$3"
+    local challenge="$4"
+    local staging_flag="$5"
+
+    echo "compute-source-env.sh: Obtaining TLS certificate for $host (challenge=$challenge)..."
+    # Remove any stale default outputs from a prior tls-keygen run
+    rm -f /run/tls/fullchain.pem /run/tls/privkey.pem
+    if ! MNEMONIC="$mnemonic" DOMAIN="$host" API_URL="{{userAPIURL}}" /usr/local/bin/tls-keygen \
+        -challenge "$challenge" \
+        $staging_flag; then
+        return 1
+    fi
+    mkdir -p "$cert_dir"
+    mv /run/tls/fullchain.pem "$cert_dir/fullchain.pem"
+    mv /run/tls/privkey.pem "$cert_dir/privkey.pem"
+    echo "compute-source-env.sh: Cert for $host written to $cert_dir"
+}
+
+# Setup TLS: issues certs for
+#   - ECLOUD_PLATFORM_HOST (platform-routed <addr>.<env>.eigencloud.xyz),
+#     when the CLI/platform has set it
+#   - DOMAIN (user-supplied custom domain), when set and non-localhost
+# Both hostnames are gated on DNS already pointing at this VM so we
+# don't burn Let's Encrypt rate limits on apps whose routing isn't
+# wired up yet (prewarm/migration window).
 setup_tls() {
     # If tls-keygen isn't present, TLS wasn't configured during build
     if [ ! -x /usr/local/bin/tls-keygen ]; then
@@ -69,18 +141,37 @@ setup_tls() {
         return 0
     fi
 
-    local domain="${DOMAIN:-}"
+    local platform_host="${ECLOUD_PLATFORM_HOST:-}"
+    local user_domain="${DOMAIN:-}"
     local mnemonic="${MNEMONIC:-}"
 
-    # If DOMAIN is not set or is localhost, skip TLS setup
-    if [ -z "$domain" ] || [ "$domain" = "localhost" ]; then
-        echo "compute-source-env.sh: TLS skipped (DOMAIN not set or is localhost)"
+    # Normalize "localhost" DOMAIN to unset — compute-tee apps often
+    # set DOMAIN=localhost as a sentinel for "no custom domain".
+    if [ "$user_domain" = "localhost" ]; then
+        user_domain=""
+    fi
+
+    # If the user set DOMAIN to the same value as the platform
+    # hostname, collapse them. Without this we'd burn a second ACME
+    # issuance for the exact same name (each VM boot counts against
+    # Let's Encrypt's 5-certs-per-domain-per-week limit), and Caddy
+    # would then refuse to start because two site blocks bound to
+    # the same address is a config error. Also unset DOMAIN so the
+    # DOMAIN site block in the Caddyfile falls back to its
+    # "localhost.user.invalid" placeholder and stays dormant.
+    if [ -n "$platform_host" ] && [ "$user_domain" = "$platform_host" ]; then
+        echo "compute-source-env.sh: DOMAIN matches ECLOUD_PLATFORM_HOST; skipping duplicate cert"
+        user_domain=""
+        unset DOMAIN
+    fi
+
+    if [ -z "$platform_host" ] && [ -z "$user_domain" ]; then
+        echo "compute-source-env.sh: TLS skipped (neither ECLOUD_PLATFORM_HOST nor DOMAIN set)"
         return 0
     fi
 
     if [ -z "$mnemonic" ]; then
         echo "compute-source-env.sh: ERROR - TLS requested but MNEMONIC not available"
-        echo "compute-source-env.sh: Cannot obtain TLS certificate without mnemonic"
         echo "ECLOUD_FAIL tls_mnemonic_missing"
         exit 1
     fi
@@ -91,28 +182,47 @@ setup_tls() {
         exit 1
     fi
 
-    echo "compute-source-env.sh: Setting up TLS for domain: $domain"
-
-    # Obtain TLS certificate using ACME
     local challenge="${ACME_CHALLENGE:-http-01}"
-
-    # Check if we should use staging (for testing)
     local staging_flag=""
     if [ "${ACME_STAGING:-false}" = "true" ]; then
         staging_flag="-staging"
         echo "compute-source-env.sh: Using Let's Encrypt STAGING environment"
     fi
 
-    echo "compute-source-env.sh: Obtaining TLS certificate using $challenge challenge..."
-    if ! MNEMONIC="$mnemonic" DOMAIN="$domain" API_URL="{{userAPIURL}}" /usr/local/bin/tls-keygen \
-        -challenge "$challenge" \
-        $staging_flag; then
-        echo "compute-source-env.sh: ERROR - Failed to obtain TLS certificate"
-        echo "ECLOUD_FAIL tls_setup"
-        exit 1
+    local certs_issued=0
+
+    if [ -n "$platform_host" ]; then
+        if dns_points_here "$platform_host"; then
+            if issue_cert_for "$platform_host" "/run/tls/platform" "$mnemonic" "$challenge" "$staging_flag"; then
+                certs_issued=$((certs_issued + 1))
+            else
+                echo "compute-source-env.sh: ERROR - failed to issue cert for platform host $platform_host"
+                echo "ECLOUD_FAIL tls_setup"
+                exit 1
+            fi
+        else
+            echo "compute-source-env.sh: skipping platform cert for $platform_host — DNS not pointing here yet"
+        fi
     fi
 
-    echo "compute-source-env.sh: TLS certificate obtained successfully"
+    if [ -n "$user_domain" ]; then
+        if dns_points_here "$user_domain"; then
+            if issue_cert_for "$user_domain" "/run/tls/domain" "$mnemonic" "$challenge" "$staging_flag"; then
+                certs_issued=$((certs_issued + 1))
+            else
+                echo "compute-source-env.sh: ERROR - failed to issue cert for user domain $user_domain"
+                echo "ECLOUD_FAIL tls_setup"
+                exit 1
+            fi
+        else
+            echo "compute-source-env.sh: skipping user-domain cert for $user_domain — DNS not pointing here yet"
+        fi
+    fi
+
+    if [ "$certs_issued" -eq 0 ]; then
+        echo "compute-source-env.sh: no certs issued, skipping Caddy (app will serve plaintext until DNS is wired)"
+        return 0
+    fi
 
     # Validate Caddyfile before starting
     if [ -f /etc/caddy/Caddyfile ]; then
@@ -122,7 +232,6 @@ setup_tls() {
             exit 1
         fi
 
-        # Start Caddy in background
         echo "compute-source-env.sh: Starting Caddy reverse proxy..."
         if [ "${ENABLE_CADDY_LOGS:-false}" = "true" ]; then
             if ! /usr/local/bin/caddy start --config /etc/caddy/Caddyfile --adapter caddyfile 2>&1; then

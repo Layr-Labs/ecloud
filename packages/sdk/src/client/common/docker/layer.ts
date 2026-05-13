@@ -19,6 +19,7 @@ import { buildDockerImage } from "./build";
 import { pushDockerImage } from "./push";
 import { processDockerfileTemplate } from "../templates/dockerfileTemplate";
 import { processScriptTemplate } from "../templates/scriptTemplate";
+import { getDefaultCaddyfile } from "../templates/caddyfileTemplate";
 import { getKMSKeysForEnvironment } from "../utils/keys";
 
 import {
@@ -219,16 +220,17 @@ async function layerLocalImage(
   const originalCmd = imageConfig.cmd.length > 0 ? imageConfig.cmd : imageConfig.entrypoint;
   const originalUser = imageConfig.user;
 
-  // 2. Check if TLS is needed (check for DOMAIN in env file)
-  let includeTLS = false;
-  if (envFilePath && fs.existsSync(envFilePath)) {
-    const envContent = fs.readFileSync(envFilePath, "utf-8");
-    const domainMatch = envContent.match(/^DOMAIN=(.+)$/m);
-    if (domainMatch && domainMatch[1] && domainMatch[1] !== "localhost") {
-      includeTLS = true;
-      logger.debug(`Found DOMAIN=${domainMatch[1]} in ${envFilePath}, including TLS components`);
-    }
-  }
+  // 2. Always include TLS components. Every platform-routed app
+  // needs a cert for its derived <addr>.<platformEnv>.<base> hostname,
+  // and the CLI cannot know at image-layer time whether the caller
+  // will ultimately set ECLOUD_PLATFORM_HOST or DOMAIN (both flow
+  // through GCE tee-env-* metadata, not the env file we're inspecting
+  // here). The entrypoint's setup_tls skips ACME at runtime when
+  // neither variable is set or resolves to localhost, so carrying
+  // Caddy + tls-keygen in the image is effectively free for legacy
+  // no-TLS workloads (binaries stay idle; no ACME calls, no rate
+  // limit burn).
+  const includeTLS = true;
 
   const drainWatcherSource = findBinary("ecloud-drain-watcher-linux-amd64");
   const includeDrainWatcher = fs.existsSync(drainWatcherSource);
@@ -346,17 +348,18 @@ async function setupLayeredBuildDirectory(
       fs.copyFileSync(tlsKeygenSource, tlsKeygenPath);
       fs.chmodSync(tlsKeygenPath, 0o755);
 
-      // Handle Caddyfile
-      const caddyfilePath = path.join(process.cwd(), CADDYFILE_NAME);
-      if (fs.existsSync(caddyfilePath)) {
-        const caddyfileContent = fs.readFileSync(caddyfilePath);
-        const destCaddyfilePath = path.join(tempDir, CADDYFILE_NAME);
-        fs.writeFileSync(destCaddyfilePath, caddyfileContent, { mode: 0o644 });
+      // Handle Caddyfile: prefer a user-supplied file in cwd (custom
+      // routing), else use the bundled default that serves
+      // ECLOUD_PLATFORM_HOST and optionally DOMAIN. A missing user
+      // Caddyfile is no longer an error — platform-routed apps can
+      // be deployed without running `configure tls` first.
+      const userCaddyfilePath = path.join(process.cwd(), CADDYFILE_NAME);
+      const destCaddyfilePath = path.join(tempDir, CADDYFILE_NAME);
+      if (fs.existsSync(userCaddyfilePath)) {
+        fs.copyFileSync(userCaddyfilePath, destCaddyfilePath);
+        fs.chmodSync(destCaddyfilePath, 0o644);
       } else {
-        throw new Error(
-          "TLS is enabled (DOMAIN is set) but Caddyfile not found. " +
-            "Run configure TLS to set up TLS configuration",
-        );
+        fs.writeFileSync(destCaddyfilePath, getDefaultCaddyfile(), { mode: 0o644 });
       }
     }
 

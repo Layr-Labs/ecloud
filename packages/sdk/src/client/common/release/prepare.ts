@@ -11,6 +11,7 @@ import { getImageDigestAndName } from "../registry/digest";
 import { encryptRSAOAEPAndAES256GCM, getAppProtectedHeaders } from "../encryption/kms"; // getAppProtectedHeaders
 import { getKMSKeysForEnvironment } from "../utils/keys";
 import { REGISTRY_PROPAGATION_WAIT_SECONDS } from "../constants";
+import { derivePlatformHost } from "../config/environment";
 
 import { parseAndValidateEnvFile } from "../env/parser";
 
@@ -149,6 +150,19 @@ export async function prepareRelease(
   // 4. Add instance type to public env
   publicEnv["EIGEN_MACHINE_TYPE_PUBLIC"] = instanceType;
   logger.info(`Instance type: ${instanceType}`);
+
+  // 4a. Inject the platform-routed hostname as a public env var so
+  // the VM entrypoint's setup_tls knows which hostname to obtain a
+  // cert for. Platform routing expects every app to answer on
+  // <addr>.<platformEnv>.<appBaseDomain>, so this replaces the
+  // compute-tee model where the user supplied DOMAIN manually. The
+  // user's DOMAIN env var (if any) is carried separately in the env
+  // file and is additive: setup_tls issues a cert for both.
+  const platformHost = derivePlatformHost(environmentConfig, options.appId);
+  if (platformHost !== "") {
+    publicEnv["ECLOUD_PLATFORM_HOST"] = platformHost;
+    logger.info(`Platform hostname: ${platformHost}`);
+  }
 
   // 5. Encrypt private environment variables
   logger.info("Encrypting environment variables...");
