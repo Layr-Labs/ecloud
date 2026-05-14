@@ -184,9 +184,34 @@ setup_tls() {
         return 0
     fi
 
-    # Validate Caddyfile before starting
+    # Caddy's validate step checks that every `tls <cert> <key>` file
+    # exists, even on site blocks bound to dormant placeholder
+    # hostnames. The default Caddyfile declares both a platform site
+    # and a user-domain site; when only one is configured, the other
+    # block's cert paths are never populated and validate fails with
+    # "Invalid Caddyfile". Point the unused block at the issued
+    # block's cert files so validate passes — the dormant block can't
+    # receive real traffic (its hostname falls back to
+    # localhost.{platform,user}.invalid, which Caddy routes by SNI and
+    # never matches public traffic), so the symlink is never actually
+    # presented. Skipped when a user-supplied Caddyfile is in use,
+    # since we don't know what cert paths it references.
+    if [ -d /run/tls/platform ] && [ ! -e /run/tls/domain/fullchain.pem ]; then
+        mkdir -p /run/tls/domain
+        ln -sf /run/tls/platform/fullchain.pem /run/tls/domain/fullchain.pem
+        ln -sf /run/tls/platform/privkey.pem /run/tls/domain/privkey.pem
+    elif [ -d /run/tls/domain ] && [ ! -e /run/tls/platform/fullchain.pem ]; then
+        mkdir -p /run/tls/platform
+        ln -sf /run/tls/domain/fullchain.pem /run/tls/platform/fullchain.pem
+        ln -sf /run/tls/domain/privkey.pem /run/tls/platform/privkey.pem
+    fi
+
+    # Validate Caddyfile before starting. Don't redirect stderr — when
+    # validate fails, Caddy's diagnostic is the only signal that lands
+    # in ReadinessError.SerialTail, so silencing it leaves operators
+    # staring at a bare "tls_invalid_caddyfile" with no detail.
     if [ -f /etc/caddy/Caddyfile ]; then
-        if ! /usr/local/bin/caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile 2>/dev/null; then
+        if ! /usr/local/bin/caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile; then
             echo "compute-source-env.sh: ERROR - Invalid Caddyfile"
             echo "ECLOUD_FAIL tls_invalid_caddyfile"
             exit 1
