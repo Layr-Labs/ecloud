@@ -70,4 +70,28 @@ describe("compute-source-env.sh.tmpl", () => {
     expect(rendered).toContain("ECLOUD_PD_EXPECTED");
     expect(rendered).toContain("ECLOUD_DRAIN_REQUESTED");
   });
+
+  it("backfills the dormant TLS site's cert paths so caddy validate passes", () => {
+    // Caddyfile.default.tmpl declares two `tls` directives, one per
+    // site block. When only one host is configured, the other block's
+    // cert files don't exist, and `caddy validate` fails on missing
+    // file paths — the original tls_invalid_caddyfile bug. The script
+    // must symlink the issued cert into the unused dir before
+    // validate runs.
+    const rendered = render(data);
+    expect(rendered).toContain("ln -sf /run/tls/platform/fullchain.pem /run/tls/domain/fullchain.pem");
+    expect(rendered).toContain("ln -sf /run/tls/platform/privkey.pem /run/tls/domain/privkey.pem");
+    expect(rendered).toContain("ln -sf /run/tls/domain/fullchain.pem /run/tls/platform/fullchain.pem");
+    expect(rendered).toContain("ln -sf /run/tls/domain/privkey.pem /run/tls/platform/privkey.pem");
+  });
+
+  it("lets caddy validate's stderr ride the launcher's stdout so the diagnostic lands in serial tail", () => {
+    // The platform's serial-console watcher captures stdout/stderr
+    // into ReadinessError.SerialTail. Silencing caddy validate with
+    // 2>/dev/null hides the actual config error and leaves operators
+    // with only "tls_invalid_caddyfile" to debug.
+    const rendered = render(data);
+    expect(rendered).not.toMatch(/caddy validate[^\n]*2>\/dev\/null/);
+    expect(rendered).toMatch(/caddy validate --config \/etc\/caddy\/Caddyfile --adapter caddyfile;/);
+  });
 });
