@@ -255,13 +255,89 @@ export KMS_PUBLIC_KEY="$(cat /usr/local/bin/kms-signing-public-key.pem)"
 USERDATA_MOUNT="/mnt/disks/userdata"
 USERDATA_DEV="/dev/disk/by-id/google-persistent_storage_1"
 
+# userdata_mount_backing_dev resolves the kernel device that currently
+# backs $USERDATA_MOUNT (or empty string if not mounted). The output is
+# canonicalized via readlink so we can compare against $USERDATA_DEV
+# without caring whether the mount table records the symlinked
+# /dev/disk/by-id/... path or the underlying /dev/sdb-style path.
+#
+# Tries findmnt first (clean structured output), falls back to parsing
+# /proc/self/mountinfo so we don't add a hard dependency on util-linux
+# being present in the image.
+userdata_mount_backing_dev() {
+    if command -v findmnt >/dev/null 2>&1; then
+        local src
+        src=$(findmnt -n -o SOURCE -- "$USERDATA_MOUNT" 2>/dev/null) || return 0
+        [ -n "$src" ] || return 0
+        readlink -f "$src" 2>/dev/null || echo "$src"
+        return 0
+    fi
+    # /proc/self/mountinfo line shape (kernel docs): mount-id parent-id
+    # major:minor root mount-point ... So column 5 is the mount point and
+    # the device path lives in the optional fields after the "-" separator.
+    # We just need the major:minor → device mapping; awk + a /sys lookup
+    # is cleaner than parsing the mountinfo's optional-field section.
+    local maj_min dev_basename
+    maj_min=$(awk -v mp="$USERDATA_MOUNT" '$5 == mp { print $3 }' /proc/self/mountinfo 2>/dev/null | head -1)
+    [ -n "$maj_min" ] || return 0
+    dev_basename=$(readlink "/sys/dev/block/${maj_min}" 2>/dev/null | awk -F/ '{print $NF}')
+    [ -n "$dev_basename" ] || return 0
+    readlink -f "/dev/${dev_basename}" 2>/dev/null || echo "/dev/${dev_basename}"
+}
+
+# expected_userdata_dev resolves $USERDATA_DEV through any symlinks so
+# string-compare against userdata_mount_backing_dev is meaningful even
+# when the kernel hands us a /dev/nvme0n1-style path while
+# /dev/disk/by-id/google-persistent_storage_1 is the symlink GCE
+# publishes.
+expected_userdata_dev() {
+    if [ -e "$USERDATA_DEV" ]; then
+        readlink -f "$USERDATA_DEV" 2>/dev/null || echo "$USERDATA_DEV"
+    else
+        echo "$USERDATA_DEV"
+    fi
+}
+
 wait_for_userdata() {
     if [ "${ECLOUD_PD_EXPECTED:-0}" != "1" ]; then
         return 0
     fi
     if mountpoint -q "$USERDATA_MOUNT" 2>/dev/null; then
-        echo "compute-source-env.sh: userdata already mounted at $USERDATA_MOUNT"
-        return 0
+        # The mount slot is taken — but is it taken by the PD we're
+        # about to attach, or by something else? The Confidential Space
+        # TEE runtime's SetupSecondaryEncryptedVolume step probes for a
+        # secondary GCE disk once at boot, doesn't see it (because the
+        # orchestrator hasn't called AttachPD yet — the contract says
+        # the new VM signals awaiting-userdata FIRST), and falls back
+        # to mounting an encrypted folder on the BOOT disk at this same
+        # path. If we accept that mount as-is, the user app boots on a
+        # fresh empty filesystem and the orchestrator's late AttachPD
+        # silently lands on a VM that's already serving from boot disk.
+        # See docs/solutions/2026-05-15-prewarm-detach-pd-preservation-boot-race.md
+        # in ecloud-platform.
+        local backing expected
+        backing=$(userdata_mount_backing_dev)
+        expected=$(expected_userdata_dev)
+        if [ -n "$backing" ] && [ "$backing" = "$expected" ]; then
+            echo "compute-source-env.sh: userdata already mounted at $USERDATA_MOUNT (backed by $backing)"
+            return 0
+        fi
+        # Mount slot taken, but NOT by our PD. This is the runtime
+        # premount on boot disk. Try to recover by lazy-unmounting (the
+        # filesystem is fresh and unused — no app has written to it
+        # yet), then fall through to the normal wait-for-PD loop.
+        echo "compute-source-env.sh: WARNING - $USERDATA_MOUNT premounted by TEE runtime fallback (backing=${backing:-unknown}, expected=$expected); attempting recovery"
+        if ! umount -l "$USERDATA_MOUNT" 2>/dev/null; then
+            # Lazy unmount should never fail under normal circumstances —
+            # it doesn't wait for open files, just detaches the namespace.
+            # If it did fail, we have no path forward: the orchestrator's
+            # strict-mode WaitAwaitingUserdata gate (ecloud-platform PR
+            # #174) catches our ECLOUD_FAIL within one poll tick and
+            # rolls back, leaving the user's data safe on the old VM.
+            echo "ECLOUD_FAIL pd_runtime_premount_unrecoverable"
+            exit 1
+        fi
+        echo "compute-source-env.sh: unmounted runtime fallback at $USERDATA_MOUNT, waiting for real PD"
     fi
     # Refuse to proceed if the tools we need for safe first-attach
     # detection are missing. Without blkid we cannot tell an empty new
