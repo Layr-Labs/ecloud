@@ -33,6 +33,7 @@ describe("ecloud billing top-up", () => {
     topUp: ReturnType<typeof vi.fn>;
     getPaymentMethods: ReturnType<typeof vi.fn>;
     purchaseCredits: ReturnType<typeof vi.fn>;
+    hasBaseSupport: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {
@@ -46,7 +47,9 @@ describe("ecloud billing top-up", () => {
       topUp: vi.fn(),
       getPaymentMethods: vi.fn(),
       purchaseCredits: vi.fn(),
+      hasBaseSupport: vi.fn(),
     };
+    mockBilling.hasBaseSupport.mockReturnValue(false);
     (createBillingClient as ReturnType<typeof vi.fn>).mockResolvedValue(mockBilling);
 
     (input as ReturnType<typeof vi.fn>).mockResolvedValue("50");
@@ -123,6 +126,7 @@ describe("ecloud billing top-up", () => {
     expect(mockBilling.topUp).toHaveBeenCalledWith({
       amount: BigInt(50_000_000),
       account: WALLET_ADDRESS,
+      chain: "ethereum",
     });
   });
 
@@ -170,6 +174,7 @@ describe("ecloud billing top-up", () => {
     expect(mockBilling.topUp).toHaveBeenCalledWith({
       amount: BigInt(50_000_000),
       account: targetAccount,
+      chain: "ethereum",
     });
   });
 
@@ -222,6 +227,85 @@ describe("ecloud billing top-up", () => {
     expect(fullOutput).toContain("Purchasing");
     expect(fullOutput).toContain("Transaction confirmed");
     expect(fullOutput).toContain("Credits haven't appeared yet");
+  });
+
+  it("usdc: prompts for chain selection when Base is available", async () => {
+    mockBilling.hasBaseSupport.mockReturnValue(true);
+    setupOnChainState();
+    mockBilling.topUp.mockResolvedValue({ txHash: TX_HASH, walletAddress: WALLET_ADDRESS });
+    mockBilling.getStatus
+      .mockResolvedValueOnce({ subscriptionStatus: "active", remainingCredits: 10.0 })
+      .mockResolvedValueOnce({ subscriptionStatus: "active", remainingCredits: 60.0 });
+
+    (select as unknown as ReturnType<typeof vi.fn>).mockResolvedValue("base");
+
+    const cmd = createCommand({ amount: "50", method: "usdc" });
+    const promise = cmd.run();
+    for (let i = 0; i < 10; i++) {
+      await vi.advanceTimersByTimeAsync(5_000);
+    }
+    await promise;
+
+    expect(select).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "Which network?",
+        choices: expect.arrayContaining([
+          expect.objectContaining({ value: "base" }),
+          expect.objectContaining({ value: "ethereum" }),
+        ]),
+      }),
+    );
+
+    expect(mockBilling.getTopUpInfo).toHaveBeenCalledWith({ chain: "base" });
+    expect(mockBilling.topUp).toHaveBeenCalledWith({
+      amount: BigInt(50_000_000),
+      account: WALLET_ADDRESS,
+      chain: "base",
+    });
+  });
+
+  it("usdc: skips chain prompt when Base is not configured", async () => {
+    mockBilling.hasBaseSupport.mockReturnValue(false);
+    setupOnChainState();
+    mockBilling.topUp.mockResolvedValue({ txHash: TX_HASH, walletAddress: WALLET_ADDRESS });
+    mockBilling.getStatus
+      .mockResolvedValueOnce({ subscriptionStatus: "active", remainingCredits: 10.0 })
+      .mockResolvedValueOnce({ subscriptionStatus: "active", remainingCredits: 60.0 });
+
+    const cmd = createCommand({ amount: "50", method: "usdc" });
+    const promise = cmd.run();
+    for (let i = 0; i < 10; i++) {
+      await vi.advanceTimersByTimeAsync(5_000);
+    }
+    await promise;
+
+    expect(mockBilling.topUp).toHaveBeenCalledWith({
+      amount: BigInt(50_000_000),
+      account: WALLET_ADDRESS,
+      chain: "ethereum",
+    });
+  });
+
+  it("usdc: --chain flag skips network prompt", async () => {
+    mockBilling.hasBaseSupport.mockReturnValue(true);
+    setupOnChainState();
+    mockBilling.topUp.mockResolvedValue({ txHash: TX_HASH, walletAddress: WALLET_ADDRESS });
+    mockBilling.getStatus
+      .mockResolvedValueOnce({ subscriptionStatus: "active", remainingCredits: 10.0 })
+      .mockResolvedValueOnce({ subscriptionStatus: "active", remainingCredits: 60.0 });
+
+    const cmd = createCommand({ amount: "50", method: "usdc", chain: "base" });
+    const promise = cmd.run();
+    for (let i = 0; i < 10; i++) {
+      await vi.advanceTimersByTimeAsync(5_000);
+    }
+    await promise;
+
+    expect(mockBilling.topUp).toHaveBeenCalledWith({
+      amount: BigInt(50_000_000),
+      account: WALLET_ADDRESS,
+      chain: "base",
+    });
   });
 
   // ── Credit Card Tests ──

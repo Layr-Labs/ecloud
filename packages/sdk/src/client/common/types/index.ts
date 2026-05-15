@@ -244,6 +244,8 @@ export interface EnvironmentConfig {
   defaultRPCURL: string;
   billingRPCURL?: string;
   usdcCreditsAddress?: Address;
+  baseUsdcCreditsAddress?: Address;
+  baseRPCURL?: string;
 }
 
 export interface Release {
