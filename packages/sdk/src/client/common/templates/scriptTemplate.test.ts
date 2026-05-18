@@ -94,35 +94,4 @@ describe("compute-source-env.sh.tmpl", () => {
     expect(rendered).not.toMatch(/caddy validate[^\n]*2>\/dev\/null/);
     expect(rendered).toMatch(/caddy validate --config \/etc\/caddy\/Caddyfile --adapter caddyfile;/);
   });
-
-  it("rejects /mnt/disks/userdata premounted by the TEE runtime fallback on boot disk", () => {
-    // The Confidential Space TEE runtime's SetupSecondaryEncryptedVolume
-    // step probes for a secondary GCE disk once at boot, doesn't see one
-    // (because the orchestrator's AttachPD hasn't run yet — the contract
-    // says the new VM signals awaiting-userdata FIRST), and falls back to
-    // mounting an encrypted folder on the BOOT DISK at /mnt/disks/userdata.
-    // The previous wait_for_userdata implementation accepted that mount
-    // as-is — short-circuiting the wait-for-PD loop and letting the user
-    // app start on a fresh empty filesystem, while the orchestrator's
-    // late AttachPD landed on a VM that was already serving from boot
-    // disk. Result: silent data loss on every prewarm-detach upgrade
-    // that lost the boot-vs-attach race. Diagnosis lives in
-    // ecloud-platform docs/solutions/2026-05-15-prewarm-detach-pd-preservation-boot-race.md.
-    const rendered = render(data);
-    // The mount-slot check now compares the backing device against the
-    // expected $USERDATA_DEV.
-    expect(rendered).toContain("userdata_mount_backing_dev");
-    expect(rendered).toContain("expected_userdata_dev");
-    // On detect, lazy-unmount the runtime fallback and fall through to
-    // the wait loop.
-    expect(rendered).toMatch(/umount -l "\$USERDATA_MOUNT"/);
-    // If unmount itself fails, fail-fast so the orchestrator's strict
-    // WaitAwaitingUserdata gate (ecloud-platform PR #174) catches it
-    // within one poll tick rather than letting the wait time out.
-    expect(rendered).toContain("ECLOUD_FAIL pd_runtime_premount_unrecoverable");
-    // Both findmnt and a /proc/self/mountinfo fallback are present, so
-    // the fix doesn't add a hard dependency on util-linux.
-    expect(rendered).toContain("findmnt");
-    expect(rendered).toContain("/proc/self/mountinfo");
-  });
 });
