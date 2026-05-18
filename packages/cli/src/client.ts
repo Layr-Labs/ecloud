@@ -2,6 +2,7 @@ import {
   createComputeModule,
   createBillingModule,
   createBuildModule,
+  createAdminModule,
   getEnvironmentConfig,
   requirePrivateKey,
 } from "@layr-labs/ecloud-sdk";
@@ -97,5 +98,33 @@ export async function createBuildClient(flags: CommonFlags) {
     environment,
     clientId: getClientId(),
     skipTelemetry: true, // CLI already has telemetry, skip SDK telemetry
+  });
+}
+
+export async function createAdminClient(flags: CommonFlags) {
+  flags = await validateCommonFlags(flags);
+
+  const environment = flags.environment;
+  const environmentConfig = getEnvironmentConfig(environment);
+  const rpcUrl = flags["rpc-url"] || environmentConfig.billingRPCURL || environmentConfig.defaultRPCURL;
+  const { key: privateKey, source } = await requirePrivateKey({
+    privateKey: flags["private-key"],
+  });
+
+  if (flags.verbose) {
+    console.log(`Using private key from: ${source}`);
+  }
+
+  const { walletClient, publicClient } = createViemClients({
+    privateKey: privateKey as Hex,
+    rpcUrl,
+    environment,
+  });
+
+  return createAdminModule({
+    verbose: flags.verbose,
+    walletClient,
+    publicClient,
+    environment,
   });
 }
