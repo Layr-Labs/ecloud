@@ -467,3 +467,47 @@ export interface SequentialDeployResult {
     setPublicLogs?: Hex;
   };
 }
+
+// Admin - Coupon types
+export interface AdminCoupon {
+  id: string;
+  amountCents: number;
+  active: boolean;
+  redeemedBy: string;
+  redeemedAt: string | null;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface CreateCouponResponse {
+  coupon: AdminCoupon;
+}
+
+export interface ListCouponsResponse {
+  coupons: AdminCoupon[];
+  total: number;
+}
+
+export interface GetCouponResponse {
+  coupon: AdminCoupon;
+}
+
+// Admin - Admin management types
+export interface AdminUser {
+  id: string;
+  address: string;
+  createdAt: string;
+}
+
+export interface AddAdminResponse {
+  admin: AdminUser;
+}
+
+export interface ListAdminsResponse {
+  admins: AdminUser[];
+}
+
+// User-facing coupon redemption
+export interface RedeemCouponResponse {
+  amountCents: number;
+}
