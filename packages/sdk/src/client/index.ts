@@ -67,6 +67,11 @@ export {
   type TopUpResult,
   type TopUpInfo,
 } from "./modules/billing";
+export {
+  createAdminModule,
+  type AdminModule,
+  type AdminModuleConfig,
+} from "./modules/admin";
 
 // Export environment config utilities
 export {
