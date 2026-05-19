@@ -40,15 +40,24 @@ describe("compute-source-env.sh.tmpl", () => {
     // Regression guard for the 2026-05-04 dev incident where an older
     // template shipped without these markers caused every deploy to
     // time out at waitForStartupReady and the platform to delete the
-    // VM. Keep all four present; the platform watches for ECLOUD_READY
-    // (success path) and ECLOUD_FAIL (any exit-1 setup failure),
-    // ECLOUD_AWAITING_USERDATA (prewarm-detach old VM), and
-    // ECLOUD_DETACHED (prewarm-detach drained old VM).
+    // VM. The script owns ECLOUD_READY (success path) and ECLOUD_FAIL
+    // (any exit-1 setup failure).
+    //
+    // The PD lifecycle markers (AWAITING_USERDATA, DETACHED) are
+    // emitted by the cos-tdx launcher (Layr-Labs/go-tpm-tools) and
+    // intentionally NOT by this script — the script lacks
+    // CAP_SYS_ADMIN to mount/umount and the launcher is the only
+    // place that work can succeed. A regression of either marker
+    // emit returning to this script indicates someone re-introduced
+    // the script-side LUKS approach that already failed in production
+    // once. We detect emission by looking at echo statements only,
+    // since the marker names appear (correctly) in header comments
+    // explaining the launcher's role.
     const rendered = render(data);
     expect(rendered).toContain("ECLOUD_READY runtime_bootstrapped");
     expect(rendered).toContain("ECLOUD_FAIL kms_bootstrap");
-    expect(rendered).toContain("ECLOUD_AWAITING_USERDATA");
-    expect(rendered).toContain("ECLOUD_DETACHED");
+    expect(rendered).not.toMatch(/^\s*echo\s+["']?ECLOUD_AWAITING_USERDATA/m);
+    expect(rendered).not.toMatch(/^\s*echo\s+["']?ECLOUD_DETACHED/m);
   });
 
   it("reads the KMS signing public key from the file the CLI lays into the image", () => {
@@ -61,14 +70,40 @@ describe("compute-source-env.sh.tmpl", () => {
     expect(rendered).toContain("cat /usr/local/bin/kms-signing-public-key.pem");
   });
 
-  it("installs the PD wait + drain-watcher machinery for prewarm-detach apps", () => {
+  it("installs the drain-watcher + SIGTERM forwarder for prewarm-detach apps", () => {
+    // After the Option A migration, the script no longer owns the PD
+    // lifecycle (mount/umount/cryptsetup) — the cos-tdx launcher does.
+    // What the script DOES own is forwarding SIGTERM to the user app
+    // for graceful shutdown, gated on ECLOUD_PD_EXPECTED so non-PD apps
+    // skip the metadata-poll fallback.
     const rendered = render(data);
-    expect(rendered).toContain("wait_for_userdata");
     expect(rendered).toContain("drain_handler");
     expect(rendered).toContain("drain_watcher");
     expect(rendered).toContain("/usr/local/bin/ecloud-drain-watcher");
     expect(rendered).toContain("ECLOUD_PD_EXPECTED");
     expect(rendered).toContain("ECLOUD_DRAIN_REQUESTED");
+  });
+
+  it("does NOT do PD mount/umount work itself (launcher owns that)", () => {
+    // Regression guard against re-introducing the script-side LUKS
+    // approach. The user container has no CAP_SYS_ADMIN by default, so
+    // any mount/umount/cryptsetup invocation here silently EPERMs in
+    // production and the user's data ends up on the boot-disk
+    // stateful partition (wiped on every reboot). See
+    // ecloud-platform docs/solutions/2026-05-15-prewarm-detach-pd-preservation-boot-race.md
+    // for the full incident. We match against non-comment lines so a
+    // future doc comment about the launcher's responsibilities (which
+    // legitimately names mount/umount/cryptsetup as launcher-side
+    // primitives) doesn't trip the guard.
+    const nonComment = render(data)
+      .split("\n")
+      .filter((line) => !/^\s*#/.test(line))
+      .join("\n");
+    expect(nonComment).not.toContain("wait_for_userdata");
+    expect(nonComment).not.toMatch(/(?:^|[;&|\s])mount\s+/m);
+    expect(nonComment).not.toMatch(/(?:^|[;&|\s])umount\s+/m);
+    expect(nonComment).not.toContain("mkfs.ext4");
+    expect(nonComment).not.toContain("cryptsetup");
   });
 
   it("backfills the dormant TLS site's cert paths so caddy validate passes", () => {

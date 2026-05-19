@@ -10,24 +10,25 @@
 #   /usr/local/bin/kms-signing-public-key.pem at layer-build time by the CLI.
 #
 # ecloud-platform divergence from compute-tee:
-#   This script emits ECLOUD_READY / ECLOUD_FAIL / ECLOUD_AWAITING_USERDATA /
-#   ECLOUD_DETACHED markers to stdout at key lifecycle points. The GCP
-#   provisioner's serial-console watcher in ecloud-platform
-#   (pkg/services/infraService/providers/gcp/compute.go) parses those
-#   markers to gate "VM ready" and to coordinate the prewarm-detach
-#   upgrade flow. Without the markers, the platform's waitForStartupReady
-#   times out at ~10 minutes per deploy, rollback fires, and the VM is
-#   deleted — seen in dev on 2026-05-04 with an older copy of this
-#   template that lacked the markers.
+#   This script emits ECLOUD_READY / ECLOUD_FAIL markers to stdout at key
+#   lifecycle points. The GCP provisioner's serial-console watcher in
+#   ecloud-platform (pkg/services/infraService/providers/gcp/compute.go)
+#   parses those markers to gate "VM ready". Without the markers, the
+#   platform's waitForStartupReady times out at ~10 minutes per deploy,
+#   rollback fires, and the VM is deleted — seen in dev on 2026-05-04
+#   with an older copy of this template that lacked the markers.
 #
-#   Prewarm-detach contract:
-#     - If ECLOUD_PD_EXPECTED=1 and /mnt/disks/userdata is not present at boot,
-#       emit ECLOUD_AWAITING_USERDATA and wait until the disk is attached.
-#     - On SIGTERM (drain-requested), forward to child, wait for exit, sync
-#       + unmount /mnt/disks/userdata, emit ECLOUD_DETACHED, exit.
-#     - ECLOUD_READY is emitted once runtime is bootstrapped (same as before).
-#     - ECLOUD_FAIL is emitted on any unrecoverable setup error.
-#   Keep the markers on any line that resolves a lifecycle outcome.
+#   Prewarm-detach (PD-backed apps):
+#     The PD lifecycle markers ECLOUD_AWAITING_USERDATA and ECLOUD_DETACHED
+#     are emitted by the cos-tdx LAUNCHER (Layr-Labs/go-tpm-tools), not this
+#     script. When the launcher is configured with tee-await-late-attach=true,
+#     it emits ECLOUD_AWAITING_USERDATA on serial, waits for the orchestrator's
+#     AttachPD, completes LUKS+mount, AND ONLY THEN starts this user container.
+#     On user-container exit the launcher unmounts and emits ECLOUD_DETACHED.
+#     The script's job for PD apps is just to forward SIGTERM to the user app
+#     (graceful drain) — LUKS, mount, and unmount are not the script's
+#     concern, and the user container does not have CAP_SYS_ADMIN to do them
+#     anyway.
 #
 #   This file is kept in lockstep with
 #   ecloud-platform/pkg/services/buildService/assets/compute-source-env.sh.tmpl
@@ -248,96 +249,27 @@ setup_tls
 export KMS_SERVER_URL="{{kmsServerURL}}"
 export KMS_PUBLIC_KEY="$(cat /usr/local/bin/kms-signing-public-key.pem)"
 
-# ── Prewarm-detach: wait for PD if expected ──
-# Orchestrator sets ECLOUD_PD_EXPECTED=1 on apps using StorageBackend=pd.
-# When the prewarm path is used, the new VM boots WITHOUT the disk; we
-# signal awaiting-userdata and poll until the disk is attached.
-USERDATA_MOUNT="/mnt/disks/userdata"
-USERDATA_DEV="/dev/disk/by-id/google-persistent_storage_1"
+# ── Prewarm-detach note ──
+# The PD lifecycle (mount, LUKS, unmount, detach) is owned by the cos-tdx
+# launcher, not this script. When the launcher is configured with
+# tee-await-late-attach=true, it emits ECLOUD_AWAITING_USERDATA on serial,
+# waits for the orchestrator's AttachPD, completes LUKS+mount, AND ONLY THEN
+# starts this user container. The bind-mount source at /mnt/disks/userdata
+# is already populated by the time we run. On user-container exit the
+# launcher unmounts and emits ECLOUD_DETACHED. The user container does not
+# have CAP_SYS_ADMIN, so umount and cryptsetup would fail with EPERM here
+# anyway — moving the work to the launcher (which runs with full caps) is
+# the only place it can actually succeed.
 
-wait_for_userdata() {
-    if [ "${ECLOUD_PD_EXPECTED:-0}" != "1" ]; then
-        return 0
-    fi
-    if mountpoint -q "$USERDATA_MOUNT" 2>/dev/null; then
-        echo "compute-source-env.sh: userdata already mounted at $USERDATA_MOUNT"
-        return 0
-    fi
-    # Refuse to proceed if the tools we need for safe first-attach
-    # detection are missing. Without blkid we cannot tell an empty new
-    # disk from an already-formatted one — running mkfs.ext4 on the
-    # latter would destroy data.
-    if ! command -v blkid >/dev/null 2>&1; then
-        echo "ECLOUD_FAIL pd_tools_missing"
-        exit 1
-    fi
-    echo "ECLOUD_AWAITING_USERDATA"
-    echo "compute-source-env.sh: waiting for PD at $USERDATA_DEV..."
-    # Poll for up to 10 minutes (120 * 5s). The orchestrator's overall
-    # attach timeout is shorter; the ceiling here just bounds the wait
-    # for manual / diagnostic scenarios.
-    local i=0
-    local mount_failures=0
-    while [ "$i" -lt 120 ]; do
-        if [ -e "$USERDATA_DEV" ]; then
-            mkdir -p "$USERDATA_MOUNT"
-            if mount -o noatime "$USERDATA_DEV" "$USERDATA_MOUNT" 2>/dev/null; then
-                echo "compute-source-env.sh: PD mounted at $USERDATA_MOUNT"
-                return 0
-            fi
-            # Disk present but mount failed. Check whether it has a
-            # recognized filesystem. `blkid -s TYPE -o value` prints the
-            # FS type (empty if none). We only mkfs when there is
-            # demonstrably NO filesystem — never on the basis of blkid
-            # returning non-zero alone, which could mean "blkid missing"
-            # or "device busy".
-            local fstype
-            fstype=$(blkid -s TYPE -o value "$USERDATA_DEV" 2>/dev/null)
-            if [ -z "$fstype" ]; then
-                echo "compute-source-env.sh: formatting $USERDATA_DEV (first attach)"
-                mkfs.ext4 -F -L eclouddata "$USERDATA_DEV" >/dev/null 2>&1 || {
-                    echo "ECLOUD_FAIL pd_mkfs_failed"
-                    exit 1
-                }
-                mount -o noatime "$USERDATA_DEV" "$USERDATA_MOUNT" || {
-                    echo "ECLOUD_FAIL pd_mount_after_format_failed"
-                    exit 1
-                }
-                return 0
-            fi
-            # Disk has a filesystem but mount still failed. Give it a
-            # few retries to cover transient cases (device busy, udev
-            # still settling), but don't pretend this is an attach
-            # timeout if it persists.
-            mount_failures=$((mount_failures + 1))
-            if [ "$mount_failures" -ge 6 ]; then
-                echo "ECLOUD_FAIL pd_mount_failed"
-                exit 1
-            fi
-        else
-            # Device disappeared (e.g. udev re-enumeration between
-            # attach and mount). Reset the consecutive-failure counter
-            # so only true back-to-back mount failures trip
-            # pd_mount_failed; a device blip should not steal retries.
-            mount_failures=0
-        fi
-        i=$((i + 1))
-        sleep 5
-    done
-    echo "ECLOUD_FAIL pd_attach_timeout"
-    exit 1
-}
-
-wait_for_userdata
-
-# ── Prewarm-detach: install SIGTERM handler for graceful drain ──
+# ── Drain SIGTERM handler ──
 # Orchestrator signals drain by setting the instance metadata key
-# ECLOUD_DRAIN_REQUESTED=1, which a host-level agent translates into
+# ECLOUD_DRAIN_REQUESTED=1, which a host-level watcher translates into
 # SIGTERM on PID 1. On SIGTERM we:
 #   1. Forward to the child (wakes the user's app for graceful exit)
 #   2. Wait for child exit
-#   3. Sync + unmount the PD
-#   4. Emit ECLOUD_DETACHED so the orchestrator can proceed to detach
+# The launcher then runs its post-container cleanup (umount + cryptsetup
+# close + ECLOUD_DETACHED emit) once this script's exit unblocks
+# launcher.Run(); the script doesn't unmount or emit ECLOUD_DETACHED itself.
 CHILD_PID=""
 _DRAIN_IN_PROGRESS=0
 
@@ -366,31 +298,16 @@ drain_handler() {
             echo "compute-source-env.sh: child did not exit in 30s, sending SIGKILL"
             kill -KILL -"$CHILD_PID" 2>/dev/null || kill -KILL "$CHILD_PID" 2>/dev/null || true
             # Reap the process so its in-flight I/O is flushed to the
-            # filesystem before we sync + unmount. SIGKILL schedules
-            # death; wait guarantees it's complete.
+            # filesystem before the launcher's cleanup unmounts the PD.
+            # SIGKILL schedules death; wait guarantees it's complete.
             wait "$CHILD_PID" 2>/dev/null || true
         fi
     fi
-    if [ "${ECLOUD_PD_EXPECTED:-0}" = "1" ] && mountpoint -q "$USERDATA_MOUNT" 2>/dev/null; then
-        sync
-        if umount "$USERDATA_MOUNT" 2>/dev/null; then
-            echo "compute-source-env.sh: unmounted $USERDATA_MOUNT cleanly"
-        else
-            # Force lazy unmount as last resort — orchestrator still needs
-            # the DETACHED signal to proceed.
-            umount -l "$USERDATA_MOUNT" 2>/dev/null || true
-            echo "compute-source-env.sh: WARNING - used lazy unmount on $USERDATA_MOUNT"
-        fi
-        # ECLOUD_DETACHED is strictly a PD-lifecycle signal. Only emit
-        # it when we actually had a PD mount in play, so serial-log
-        # parsers and alerting for non-PD apps don't see spurious
-        # lifecycle markers on routine container SIGTERM.
-        echo "ECLOUD_DETACHED"
-    fi
     # Always exit 0: drain is a managed shutdown and the orchestrator
-    # waits on ECLOUD_DETACHED, not the container exit code. Forwarding
-    # the child's exit status here would make a crash-during-drain look
-    # like a drain failure to whatever reads the container exit code.
+    # waits on the launcher's ECLOUD_DETACHED, not this container's exit
+    # code. Forwarding the child's exit status here would make a crash-
+    # during-drain look like a drain failure to whatever reads the
+    # container exit code.
     exit 0
 }
 trap drain_handler TERM
@@ -445,12 +362,16 @@ drain_watcher() {
 
 if [ "${ECLOUD_PD_EXPECTED:-0}" = "1" ]; then
     # Assumption: the orchestrator only flips ECLOUD_DRAIN_REQUESTED=1
-    # after observing ECLOUD_AWAITING_USERDATA (old VM) or
-    # ECLOUD_READY (new VM), so CHILD_PID is always set by the time
-    # drain_handler fires. If drain somehow arrived in the tiny window
-    # between this watcher spawn and CHILD_PID assignment below,
-    # drain_handler would skip the child-kill branch and still emit
-    # ECLOUD_DETACHED — harmless because there's nothing to drain yet.
+    # after observing ECLOUD_READY (new VM) or the launcher's
+    # ECLOUD_AWAITING_USERDATA emit (old VM in prewarm-detach), so
+    # CHILD_PID is always set by the time drain_handler fires. If drain
+    # somehow arrived in the tiny window between this watcher spawn and
+    # CHILD_PID assignment below, drain_handler would skip the child-
+    # kill branch — harmless because there's nothing to drain yet, and
+    # the launcher's post-exit cleanup still runs.
+    # Non-PD apps do not start a drain watcher: there's no PD lifecycle
+    # to coordinate, so the orchestrator's drain is a routine container
+    # SIGTERM that doesn't need a metadata-poll fallback.
     if [ -x /usr/local/bin/ecloud-drain-watcher ]; then
         /usr/local/bin/ecloud-drain-watcher &
     else
