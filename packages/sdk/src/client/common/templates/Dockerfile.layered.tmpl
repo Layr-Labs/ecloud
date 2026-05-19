@@ -11,6 +11,11 @@ USER root
 {{/if}}
 
 # Copy core TEE components
+# CA bundle for kms-client / tls-keygen to validate HTTPS calls to
+# eigencloud.xyz endpoints. Bundled at a non-standard path and consumed
+# only via SSL_CERT_FILE in compute-source-env.sh, so the user's
+# /etc/ssl/ is never touched.
+COPY --from=alpine:3.20.10 /etc/ssl/certs/ca-certificates.crt /usr/local/share/eigenx-ca-certs.crt
 COPY compute-source-env.sh /usr/local/bin/
 COPY kms-client /usr/local/bin/
 COPY kms-signing-public-key.pem /usr/local/bin/

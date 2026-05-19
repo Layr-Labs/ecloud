@@ -3,7 +3,7 @@ echo "compute-source-env.sh: Running setup script..."
 
 # Fetch and source environment variables from KMS
 echo "Fetching secrets from KMS..."
-if /usr/local/bin/kms-client \
+if SSL_CERT_FILE=/usr/local/share/eigenx-ca-certs.crt /usr/local/bin/kms-client \
   --kms-server-url "{{kmsServerURL}}" \
   --kms-signing-key-file /usr/local/bin/kms-signing-public-key.pem \
   --userapi-url "{{userAPIURL}}" \
