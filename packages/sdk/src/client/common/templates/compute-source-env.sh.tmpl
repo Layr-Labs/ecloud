@@ -348,11 +348,13 @@ drain_watcher() {
         v=$(_fetch_drain_flag || true)
         if [ "$v" = "1" ]; then
             echo "compute-source-env.sh: drain_watcher saw ECLOUD_DRAIN_REQUESTED=1, signaling PID 1"
-            # The CS launcher runs this script directly as PID 1, so
-            # kill -TERM 1 delivers SIGTERM to the shell that installed
-            # the drain_handler trap. If the launch mechanism ever
-            # wraps this script in another process, this assumption
-            # breaks and drain will silently no-op — audit here.
+            # This script runs as PID 1 within the user container's PID
+            # namespace (the cos-tdx launcher is PID 1 on the host, but
+            # that's a different namespace), so kill -TERM 1 delivers
+            # SIGTERM to the shell that installed the drain_handler trap.
+            # If the launch mechanism ever wraps this script in another
+            # process inside the container, this assumption breaks and
+            # drain will silently no-op — audit here.
             kill -TERM 1 2>/dev/null || true
             return 0
         fi
