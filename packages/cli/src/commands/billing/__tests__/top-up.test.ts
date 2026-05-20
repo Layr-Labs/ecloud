@@ -178,7 +178,7 @@ describe("ecloud billing top-up", () => {
     });
   });
 
-  it("billing API poll timeout: shows timeout message", async () => {
+  it("billing API poll timeout: throws timeout error", async () => {
     setupOnChainState();
     mockBilling.topUp.mockResolvedValue({ txHash: TX_HASH, walletAddress: WALLET_ADDRESS });
     mockBilling.getStatus.mockResolvedValue({
@@ -189,11 +189,7 @@ describe("ecloud billing top-up", () => {
     const cmd = createCommand({ amount: "50", method: "usdc" });
     const promise = cmd.run();
     await vi.advanceTimersByTimeAsync(200_000);
-    await promise;
-    const fullOutput = logOutput.join("\n");
-
-    expect(fullOutput).toContain("Credits haven't appeared yet");
-    expect(fullOutput).toContain("ecloud billing status");
+    await expect(promise).rejects.toThrow("Timed out waiting for credits to appear");
   });
 
   it("uses --amount flag when provided (skips prompt)", async () => {
@@ -213,7 +209,7 @@ describe("ecloud billing top-up", () => {
     expect(input).not.toHaveBeenCalled();
   });
 
-  it("does not fail if status check errors", async () => {
+  it("does not fail if status check errors during polling", async () => {
     setupOnChainState();
     mockBilling.topUp.mockResolvedValue({ txHash: TX_HASH, walletAddress: WALLET_ADDRESS });
     mockBilling.getStatus.mockRejectedValue(new Error("API unavailable"));
@@ -221,12 +217,11 @@ describe("ecloud billing top-up", () => {
     const cmd = createCommand({ amount: "50", method: "usdc" });
     const promise = cmd.run();
     await vi.advanceTimersByTimeAsync(200_000);
-    await promise;
+    await expect(promise).rejects.toThrow("Timed out waiting for credits to appear");
     const fullOutput = logOutput.join("\n");
 
     expect(fullOutput).toContain("Purchasing");
     expect(fullOutput).toContain("Transaction confirmed");
-    expect(fullOutput).toContain("Credits haven't appeared yet");
   });
 
   it("usdc: prompts for chain selection when Base is available", async () => {
@@ -374,8 +369,8 @@ describe("ecloud billing top-up", () => {
 
     const cmd = createCommand({ amount: "25", method: "card" });
     const promise = cmd.run();
-    await vi.advanceTimersByTimeAsync(200_000);
-    await promise;
+    await vi.advanceTimersByTimeAsync(310_000);
+    await expect(promise).rejects.toThrow("Timed out waiting for credits to appear");
     const fullOutput = logOutput.join("\n");
 
     expect(mockBilling.purchaseCredits).toHaveBeenCalledWith(2500, undefined);
@@ -395,8 +390,8 @@ describe("ecloud billing top-up", () => {
 
     const cmd = createCommand({ amount: "50", method: "card" });
     const promise = cmd.run();
-    await vi.advanceTimersByTimeAsync(200_000);
-    await promise;
+    await vi.advanceTimersByTimeAsync(310_000);
+    await expect(promise).rejects.toThrow("Timed out waiting for credits to appear");
     const fullOutput = logOutput.join("\n");
 
     expect(select).not.toHaveBeenCalled();
