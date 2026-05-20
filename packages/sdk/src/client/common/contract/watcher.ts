@@ -122,20 +122,83 @@ export interface WatchUntilUpgradeCompleteOptions {
   publicClient: PublicClient;
   environmentConfig: EnvironmentConfig;
   appId: Address;
+  /**
+   * Maximum time (in seconds) to wait for the upgrade to complete before
+   * throwing a {@link WatchTimeoutError}. If unspecified, defaults to
+   * the value of the `ECLOUD_WATCH_TIMEOUT_SECONDS` env var, falling back to
+   * {@link WATCH_DEFAULT_TIMEOUT_SECONDS}.
+   */
+  timeoutSeconds?: number;
 }
 
 const APP_STATUS_STOPPED = "Stopped";
 
+/** Default upgrade watch timeout: 10 minutes. */
+export const WATCH_DEFAULT_TIMEOUT_SECONDS = 10 * 60;
+
+/**
+ * Error thrown when {@link watchUntilUpgradeComplete} exceeds its deadline
+ * without observing a terminal status (Stopped or Running) for the app.
+ *
+ * Callers (e.g. the CLI) can catch this and surface a recovery hint pointing
+ * the user at `ecloud compute app info <appId>`.
+ */
+export class WatchTimeoutError extends Error {
+  public readonly appId: Address;
+  public readonly lastStatus: string | undefined;
+  public readonly elapsedSeconds: number;
+  public readonly timeoutSeconds: number;
+
+  constructor(params: {
+    appId: Address;
+    lastStatus: string | undefined;
+    elapsedSeconds: number;
+    timeoutSeconds: number;
+  }) {
+    super(
+      `Timed out after ${params.elapsedSeconds}s waiting for upgrade to complete (last status: ${
+        params.lastStatus ?? "unknown"
+      })`,
+    );
+    this.name = "WatchTimeoutError";
+    this.appId = params.appId;
+    this.lastStatus = params.lastStatus;
+    this.elapsedSeconds = params.elapsedSeconds;
+    this.timeoutSeconds = params.timeoutSeconds;
+  }
+}
+
+/**
+ * Resolve the upgrade watch timeout from explicit option, env var, or default.
+ */
+function resolveWatchTimeoutSeconds(explicit?: number): number {
+  if (typeof explicit === "number" && Number.isFinite(explicit) && explicit > 0) {
+    return explicit;
+  }
+  const fromEnv = process.env.ECLOUD_WATCH_TIMEOUT_SECONDS;
+  if (fromEnv) {
+    const parsed = Number.parseInt(fromEnv, 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return WATCH_DEFAULT_TIMEOUT_SECONDS;
+}
+
 /**
  * Watch app until upgrade completes
  * For upgrades, we watch until the app reaches Stopped status (upgrade complete)
- * or Running status (if it was running before upgrade)
+ * or Running status (if it was running before upgrade).
+ *
+ * Throws {@link WatchTimeoutError} if the timeout elapses before a
+ * terminal status is observed.
  */
 export async function watchUntilUpgradeComplete(
   options: WatchUntilUpgradeCompleteOptions,
   logger: Logger,
 ): Promise<void> {
   const { walletClient, publicClient, environmentConfig, appId } = options;
+  const timeoutSeconds = resolveWatchTimeoutSeconds(options.timeoutSeconds);
 
   // Create UserAPI client
   const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient);
@@ -193,7 +256,21 @@ export async function watchUntilUpgradeComplete(
   };
 
   // Main watch loop
+  const startTime = Date.now();
+  const deadline = startTime + timeoutSeconds * 1000;
+  let lastLoggedStatus: string | undefined;
+  let lastObservedStatus: string | undefined;
   while (true) {
+    if (Date.now() >= deadline) {
+      const elapsedSeconds = Math.round((Date.now() - startTime) / 1000);
+      throw new WatchTimeoutError({
+        appId,
+        lastStatus: lastObservedStatus,
+        elapsedSeconds,
+        timeoutSeconds,
+      });
+    }
+
     try {
       // Fetch app info
       const info = await userApiClient.getInfos([appId], 1);
@@ -205,6 +282,14 @@ export async function watchUntilUpgradeComplete(
       const appInfo = info[0];
       const currentStatus = appInfo.status;
       const currentIP = appInfo.ip || "";
+      lastObservedStatus = currentStatus;
+
+      // Log status changes and elapsed time on a new line per transition
+      const elapsed = Math.round((Date.now() - startTime) / 1000);
+      if (currentStatus !== lastLoggedStatus) {
+        logger.info(`Status: ${currentStatus} (${elapsed}s)`);
+        lastLoggedStatus = currentStatus;
+      }
 
       // Check stop condition
       if (stopCondition(currentStatus, currentIP)) {
@@ -214,6 +299,14 @@ export async function watchUntilUpgradeComplete(
       // Wait before next poll
       await sleep(WATCH_POLL_INTERVAL_SECONDS * 1000);
     } catch (error: any) {
+      // Re-throw timeout errors and terminal failures from stopCondition.
+      if (error instanceof WatchTimeoutError) {
+        throw error;
+      }
+      // Heuristic: stopCondition throws plain Error for "Failed" state — let it propagate.
+      if (typeof error?.message === "string" && error.message.includes("Failed")) {
+        throw error;
+      }
       logger.warn(`Failed to fetch app info: ${error.message}`);
       await sleep(WATCH_POLL_INTERVAL_SECONDS * 1000);
     }
