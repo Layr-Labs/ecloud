@@ -48,7 +48,9 @@ export {
   executeUpgrade,
   watchUpgrade,
   type PrepareUpgradeResult,
+  type WatchUpgradeOptions,
 } from "./modules/compute/app/upgrade";
+export { WatchTimeoutError, WATCH_DEFAULT_TIMEOUT_SECONDS } from "./common/contract/watcher";
 
 // Export compute module for standalone use
 export {
