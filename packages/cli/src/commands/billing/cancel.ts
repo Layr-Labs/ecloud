@@ -10,8 +10,7 @@ export default class BillingCancel extends Command {
   static description = "Cancel subscription";
 
   static flags = {
-    "private-key": commonFlags["private-key"],
-    verbose: commonFlags.verbose,
+    ...commonFlags,
     product: Flags.string({
       required: false,
       description: "Product ID",
