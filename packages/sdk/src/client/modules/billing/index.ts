@@ -26,6 +26,7 @@ import type {
   ProductSubscriptionResponse,
   PaymentMethodsResponse,
   CreditPurchaseResponse,
+  RedeemCouponResponse,
 } from "../../common/types";
 
 export type BillingChain = "ethereum" | "base";
@@ -64,6 +65,7 @@ export interface BillingModule {
   purchaseCredits: (amountCents: number, paymentMethodId?: string) => Promise<CreditPurchaseResponse>;
   /** Check if Base chain is configured for this environment */
   hasBaseSupport: () => boolean;
+  redeemCoupon: (code: string) => Promise<RedeemCouponResponse>;
 }
 
 export interface BillingModuleConfig {
@@ -347,6 +349,10 @@ export function createBillingModule(config: BillingModuleConfig): BillingModule 
 
     hasBaseSupport(): boolean {
       return !!baseUsdcCreditsAddress && !!baseRPCURL;
+    },
+
+    async redeemCoupon(code: string) {
+      return billingApi.redeemCoupon(code);
     },
   };
 

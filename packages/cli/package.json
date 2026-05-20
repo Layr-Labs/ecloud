@@ -80,6 +80,15 @@
       "compute:env": {
         "hidden": true,
         "description": "Manage deployment environment [alias: env]"
+      },
+      "admin": {
+        "description": "Admin operations (requires admin privileges)"
+      },
+      "admin:coupons": {
+        "description": "Manage coupons"
+      },
+      "admin:admins": {
+        "description": "Manage admin users"
       }
     }
   },
