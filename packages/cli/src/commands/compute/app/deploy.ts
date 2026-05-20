@@ -233,13 +233,20 @@ export default class AppDeploy extends Command {
       };
 
       if (flags.verifiable) {
+        if (flags.dockerfile) {
+          this.error(
+            "--verifiable cannot be combined with --dockerfile. Choose one: verifiable build (--repo/--commit or --image-ref) or local Dockerfile build.",
+          );
+        }
         // Explicit verifiable mode via flag: infer source based on provided flags.
         if (flags.repo || flags.commit) {
           verifiableMode = "git";
-          if (!flags.repo)
+          if (!flags.repo) {
             this.error("--repo is required when using --verifiable (git source mode)");
-          if (!flags.commit)
+          }
+          if (!flags.commit) {
             this.error("--commit is required when using --verifiable (git source mode)");
+          }
           try {
             assertCommitSha40(flags.commit);
           } catch (e: any) {

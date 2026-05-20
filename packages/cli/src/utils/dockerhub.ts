@@ -15,7 +15,9 @@ export function parseEigencloudContainersImageRef(imageRef: string): DockerHubIm
   const trimmed = imageRef.trim();
   const match = /^docker\.io\/([^/]+)\/([^:@]+):([^@\s]+)$/i.exec(trimmed);
   if (!match) {
-    throw new Error("Image ref must match docker.io/eigenlayer/eigencloud-containers:<tag>");
+    throw new Error(
+      `Image ref "${imageRef}" is not a valid prebuilt verifiable image. Expected format: docker.io/${DOCKERHUB_OWNER}/${DOCKERHUB_REPO}:<tag>`,
+    );
   }
 
   const owner = match[1]!.toLowerCase();
