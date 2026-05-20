@@ -39,6 +39,7 @@ export {
   executeDeploy,
   watchDeployment,
   type PrepareDeployResult,
+  type WatchDeploymentOptions,
 } from "./modules/compute/app/deploy";
 export {
   SDKUpgradeOptions,
@@ -111,6 +112,9 @@ export {
   type GasEstimate,
   type EstimateGasOptions,
 } from "./common/contract/caller";
+
+// Export watcher errors so callers can react to typed terminal failures.
+export { WatchTimeoutError } from "./common/contract/watcher";
 
 // Export batch gas estimation and delegation check
 export {

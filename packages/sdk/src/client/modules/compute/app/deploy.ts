@@ -711,6 +711,10 @@ export async function executeDeploy(options: ExecuteDeployOptions): Promise<Depl
  * Call this after executeDeploy to wait for the app to be provisioned.
  * Can be called separately to allow for intermediate operations (e.g., profile upload).
  */
+export interface WatchDeploymentOptions {
+  timeoutSeconds?: number;
+}
+
 export async function watchDeployment(
   appId: string,
   walletClient: WalletClient,
@@ -718,6 +722,7 @@ export async function watchDeployment(
   environmentConfig: EnvironmentConfig,
   logger: Logger = defaultLogger,
   skipTelemetry?: boolean,
+  opts?: WatchDeploymentOptions,
 ): Promise<string | undefined> {
   return withSDKTelemetry(
     {
@@ -735,6 +740,7 @@ export async function watchDeployment(
           publicClient,
           environmentConfig,
           appId: appId as Address,
+          timeoutSeconds: opts?.timeoutSeconds,
         },
         logger,
       );

@@ -1,5 +1,10 @@
 import { Command, Flags } from "@oclif/core";
-import { getEnvironmentConfig, UserApiClient, isMainnet } from "@layr-labs/ecloud-sdk";
+import {
+  getEnvironmentConfig,
+  UserApiClient,
+  isMainnet,
+  WatchTimeoutError,
+} from "@layr-labs/ecloud-sdk";
 import { withTelemetry } from "../../../telemetry";
 import { commonFlags, applyTxOverrides } from "../../../flags";
 import { createComputeClient } from "../../../client";
@@ -151,6 +156,11 @@ export default class AppDeploy extends Command {
       description: "Skip all confirmation prompts",
       default: false,
       env: "ECLOUD_FORCE",
+    }),
+    "watch-timeout": Flags.integer({
+      description:
+        "Maximum seconds to wait for the app to start before returning a recovery hint (default: 600)",
+      env: "ECLOUD_WATCH_TIMEOUT_SECONDS",
     }),
   };
 
@@ -570,7 +580,41 @@ export default class AppDeploy extends Command {
       }
 
       // 12. Watch until app is running
-      const ipAddress = await compute.app.watchDeployment(res.appId);
+      let ipAddress: string | undefined;
+      try {
+        ipAddress = await compute.app.watchDeployment(res.appId, {
+          timeoutSeconds: flags["watch-timeout"],
+        });
+      } catch (watchErr: any) {
+        if (watchErr instanceof WatchTimeoutError) {
+          this.log(
+            `\n${chalk.yellow("⚠")} ${chalk.yellow(
+              `Deployment did not reach Running within ${watchErr.elapsedSeconds}s (last status: ${watchErr.lastStatus ?? "unknown"}).`,
+            )}`,
+          );
+          this.log(
+            chalk.gray(
+              `The deploy transaction succeeded, but the orchestrator hasn't reported the app as Running yet.`,
+            ),
+          );
+          this.log(chalk.gray(`  appId:  ${res.appId}`));
+          if (res.txHash) {
+            this.log(chalk.gray(`  txHash: ${res.txHash}`));
+          }
+          this.log(
+            chalk.gray(
+              `Check progress later with: ${chalk.cyan(`ecloud compute app info ${res.appId}`)}`,
+            ),
+          );
+          this.log(
+            chalk.gray(
+              `Override the watch timeout with the ${chalk.cyan("ECLOUD_WATCH_TIMEOUT_SECONDS")} environment variable.`,
+            ),
+          );
+          this.exit(1);
+        }
+        throw watchErr;
+      }
 
       try {
         const cwd = process.env.INIT_CWD || process.cwd();
