@@ -3,7 +3,7 @@ echo "compute-source-env.sh: Running setup script..."
 
 # Fetch and source environment variables from KMS
 echo "Fetching secrets from KMS..."
-if /usr/local/bin/kms-client \
+if SSL_CERT_FILE=/usr/local/share/eigenx-ca-certs.crt /usr/local/bin/kms-client \
   --kms-server-url "{{kmsServerURL}}" \
   --kms-signing-key-file /usr/local/bin/kms-signing-public-key.pem \
   --userapi-url "{{userAPIURL}}" \
@@ -61,7 +61,8 @@ setup_tls() {
     
     echo "compute-source-env.sh: Obtaining TLS certificate using $challenge challenge..."
     # Pass the API URL for certificate persistence
-    if ! MNEMONIC="$mnemonic" DOMAIN="$domain" API_URL="{{userAPIURL}}" /usr/local/bin/tls-keygen \
+    if ! SSL_CERT_FILE=/usr/local/share/eigenx-ca-certs.crt \
+       MNEMONIC="$mnemonic" DOMAIN="$domain" API_URL="{{userAPIURL}}" /usr/local/bin/tls-keygen \
         -challenge "$challenge" \
         $staging_flag; then
         echo "compute-source-env.sh: ERROR - Failed to obtain TLS certificate"
