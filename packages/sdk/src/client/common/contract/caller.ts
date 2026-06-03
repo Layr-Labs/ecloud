@@ -34,8 +34,30 @@ import {
 import { Release, ContainerPolicy, EMPTY_CONTAINER_POLICY } from "../types";
 import { getChainFromID } from "../utils/helpers";
 
-import AppControllerABI from "../abis/AppController.json";
+// The on-chain AppController `Release` struct differs by contract version:
+//   v1.4.x (sepolia, mainnet-alpha): 3-field Release
+//   v1.5.x (sepolia-dev):            4-field Release (+ containerPolicy, KMS-006)
+// The two ABIs also diverge on createApp/upgradeApp selectors and getApps
+// AppConfig shape, so we select the whole ABI by environment version.
+import AppControllerABIv1_5 from "../abis/AppController.json";
+import AppControllerABIv1_4 from "../abis/AppController.v1_4.json";
 import PermissionControllerABI from "../abis/PermissionController.json";
+
+/**
+ * Select the AppController ABI matching the environment's deployed contract
+ * version. Defaults to the latest (v1.5) when a config omits the field, so
+ * new environments opt into older behavior explicitly.
+ */
+function appControllerAbiFor(environmentConfig: EnvironmentConfig) {
+  return environmentConfig.releaseAbiVersion === "v1.4"
+    ? AppControllerABIv1_4
+    : AppControllerABIv1_5;
+}
+
+/** Whether this environment's Release struct carries the v1.5+ containerPolicy field. */
+function supportsContainerPolicy(environmentConfig: EnvironmentConfig): boolean {
+  return environmentConfig.releaseAbiVersion !== "v1.4";
+}
 
 /**
  * Build the viem-encodable `containerPolicy` tuple for the AppController
@@ -50,6 +72,28 @@ function containerPolicyForViem(policy: ContainerPolicy = EMPTY_CONTAINER_POLICY
     envOverride: policy.envOverride.map((e) => ({ key: e.key, value: e.value })),
     restartPolicy: policy.restartPolicy,
   };
+}
+
+/**
+ * Build the viem-encodable `release` tuple for createApp/upgradeApp, including
+ * the v1.5+ `containerPolicy` field only when the target contract expects it.
+ */
+function releaseForViem(release: Release, environmentConfig: EnvironmentConfig) {
+  const base = {
+    rmsRelease: {
+      artifacts: release.rmsRelease.artifacts.map((artifact) => ({
+        digest: `0x${bytesToHex(artifact.digest).slice(2).padStart(64, "0")}` as Hex,
+        registry: artifact.registry,
+      })),
+      upgradeByTime: release.rmsRelease.upgradeByTime,
+    },
+    publicEnv: bytesToHex(release.publicEnv) as Hex,
+    encryptedEnv: bytesToHex(release.encryptedEnv) as Hex,
+  };
+  if (!supportsContainerPolicy(environmentConfig)) {
+    return base;
+  }
+  return { ...base, containerPolicy: containerPolicyForViem(release.containerPolicy) };
 }
 
 /**
@@ -202,7 +246,7 @@ export async function calculateAppID(options: CalculateAppIDOptions): Promise<Ad
 
   const appID = await publicClient.readContract({
     address: environmentConfig.appControllerAddress as Address,
-    abi: AppControllerABI,
+    abi: appControllerAbiFor(environmentConfig),
     functionName: "calculateAppId",
     args: [ownerAddress, saltHex],
   });
@@ -258,25 +302,15 @@ export async function prepareDeployBatch(
   const paddedSaltHex = saltHexString.padStart(64, "0");
   const saltHex = `0x${paddedSaltHex}` as Hex;
 
-  // Convert Release Uint8Array values to hex strings for viem
-  const releaseForViem = {
-    rmsRelease: {
-      artifacts: release.rmsRelease.artifacts.map((artifact) => ({
-        digest: `0x${bytesToHex(artifact.digest).slice(2).padStart(64, "0")}` as Hex,
-        registry: artifact.registry,
-      })),
-      upgradeByTime: release.rmsRelease.upgradeByTime,
-    },
-    publicEnv: bytesToHex(release.publicEnv) as Hex,
-    encryptedEnv: bytesToHex(release.encryptedEnv) as Hex,
-    containerPolicy: containerPolicyForViem(release.containerPolicy),
-  };
+  // Convert Release Uint8Array values to hex strings for viem (version-aware:
+  // includes containerPolicy only on v1.5+ contracts).
+  const release_ = releaseForViem(release, environmentConfig);
 
   const functionName = options.billTo === "app" ? "createAppWithIsolatedBilling" : "createApp";
   const createData = encodeFunctionData({
-    abi: AppControllerABI,
+    abi: appControllerAbiFor(environmentConfig),
     functionName,
-    args: [saltHex, releaseForViem],
+    args: [saltHex, release_],
   });
 
   // 3. Pack accept admin call
@@ -754,25 +788,13 @@ export async function prepareUpgradeBatch(
     needsPermissionChange,
   } = options;
 
-  // 1. Pack upgrade app call
-  // Convert Release Uint8Array values to hex strings for viem
-  const releaseForViem = {
-    rmsRelease: {
-      artifacts: release.rmsRelease.artifacts.map((artifact) => ({
-        digest: `0x${bytesToHex(artifact.digest).slice(2).padStart(64, "0")}` as Hex,
-        registry: artifact.registry,
-      })),
-      upgradeByTime: release.rmsRelease.upgradeByTime,
-    },
-    publicEnv: bytesToHex(release.publicEnv) as Hex,
-    encryptedEnv: bytesToHex(release.encryptedEnv) as Hex,
-    containerPolicy: containerPolicyForViem(release.containerPolicy),
-  };
+  // 1. Pack upgrade app call (version-aware Release encoding).
+  const release_ = releaseForViem(release, environmentConfig);
 
   const upgradeData = encodeFunctionData({
-    abi: AppControllerABI,
+    abi: appControllerAbiFor(environmentConfig),
     functionName: "upgradeApp",
-    args: [appID, releaseForViem],
+    args: [appID, release_],
   });
 
   // 2. Start with upgrade execution
@@ -964,7 +986,7 @@ export async function sendAndWaitForTransaction(
       if (callError.data) {
         try {
           const decoded = decodeErrorResult({
-            abi: AppControllerABI,
+            abi: appControllerAbiFor(environmentConfig),
             data: callError.data,
           });
           const formattedError = formatAppControllerError(decoded);
@@ -1034,7 +1056,7 @@ export async function getActiveAppCount(
 ): Promise<number> {
   const count = await publicClient.readContract({
     address: environmentConfig.appControllerAddress,
-    abi: AppControllerABI,
+    abi: appControllerAbiFor(environmentConfig),
     functionName: "getActiveAppCount",
     args: [user],
   });
@@ -1052,7 +1074,7 @@ export async function getMaxActiveAppsPerUser(
 ): Promise<number> {
   const quota = await publicClient.readContract({
     address: environmentConfig.appControllerAddress,
-    abi: AppControllerABI,
+    abi: appControllerAbiFor(environmentConfig),
     functionName: "getMaxActiveAppsPerUser",
     args: [user],
   });
@@ -1077,7 +1099,7 @@ export async function getAppsByCreator(
 ): Promise<{ apps: Address[]; appConfigs: AppConfig[] }> {
   const result = (await publicClient.readContract({
     address: environmentConfig.appControllerAddress,
-    abi: AppControllerABI,
+    abi: appControllerAbiFor(environmentConfig),
     functionName: "getAppsByCreator",
     args: [creator, offset, limit],
   })) as [Address[], AppConfig[]];
@@ -1101,7 +1123,7 @@ export async function getAppsByDeveloper(
 ): Promise<{ apps: Address[]; appConfigs: AppConfig[] }> {
   const result = (await publicClient.readContract({
     address: environmentConfig.appControllerAddress,
-    abi: AppControllerABI,
+    abi: appControllerAbiFor(environmentConfig),
     functionName: "getAppsByDeveloper",
     args: [developer, offset, limit],
   })) as [Address[], AppConfig[]];
@@ -1123,7 +1145,7 @@ export async function getBillingType(
 ): Promise<number> {
   const result = await publicClient.readContract({
     address: environmentConfig.appControllerAddress,
-    abi: AppControllerABI,
+    abi: appControllerAbiFor(environmentConfig),
     functionName: "getBillingType",
     args: [app],
   });
@@ -1142,7 +1164,7 @@ export async function getAppsByBillingAccount(
 ): Promise<{ apps: Address[]; appConfigs: AppConfig[] }> {
   const result = (await publicClient.readContract({
     address: environmentConfig.appControllerAddress,
-    abi: AppControllerABI,
+    abi: appControllerAbiFor(environmentConfig),
     functionName: "getAppsByBillingAccount",
     args: [account, offset, limit],
   })) as [Address[], AppConfig[]];
@@ -1201,7 +1223,7 @@ export async function getAppLatestReleaseBlockNumbers(
       publicClient
         .readContract({
           address: environmentConfig.appControllerAddress,
-          abi: AppControllerABI,
+          abi: appControllerAbiFor(environmentConfig),
           functionName: "getAppLatestReleaseBlockNumber",
           args: [appID],
         })
@@ -1270,7 +1292,7 @@ export async function suspend(
   const { walletClient, publicClient, environmentConfig, account, apps } = options;
 
   const suspendData = encodeFunctionData({
-    abi: AppControllerABI,
+    abi: appControllerAbiFor(environmentConfig),
     functionName: "suspend",
     args: [account, apps],
   });

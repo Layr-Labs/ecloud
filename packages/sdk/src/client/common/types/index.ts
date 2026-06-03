@@ -232,11 +232,21 @@ export interface BillingEnvironmentConfig {
   billingApiServerURL: string;
 }
 
+/**
+ * On-chain AppController ABI version for an environment.
+ * - "v1.4": 3-field Release struct (sepolia, mainnet-alpha)
+ * - "v1.5": 4-field Release struct with containerPolicy (sepolia-dev)
+ * Omitted defaults to the latest ("v1.5") in the contract caller.
+ */
+export type AppControllerAbiVersion = "v1.4" | "v1.5";
+
 export interface EnvironmentConfig {
   name: string;
   build: "dev" | "prod";
   chainID: bigint;
   appControllerAddress: Address;
+  /** Deployed AppController ABI version; selects Release encoding. Defaults to v1.5 when omitted. */
+  releaseAbiVersion?: AppControllerAbiVersion;
   permissionControllerAddress: string;
   erc7702DelegatorAddress: string;
   kmsServerURL: string;
