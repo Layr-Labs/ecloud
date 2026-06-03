@@ -214,57 +214,8 @@ export interface WatchUntilUpgradeCompleteOptions {
 
 const APP_STATUS_STOPPED = "Stopped";
 
-/** Default upgrade watch timeout: 10 minutes. */
-export const WATCH_DEFAULT_TIMEOUT_SECONDS = 10 * 60;
-
-/**
- * Error thrown when {@link watchUntilUpgradeComplete} exceeds its deadline
- * without observing a terminal status (Stopped or Running) for the app.
- *
- * Callers (e.g. the CLI) can catch this and surface a recovery hint pointing
- * the user at `ecloud compute app info <appId>`.
- */
-export class WatchTimeoutError extends Error {
-  public readonly appId: Address;
-  public readonly lastStatus: string | undefined;
-  public readonly elapsedSeconds: number;
-  public readonly timeoutSeconds: number;
-
-  constructor(params: {
-    appId: Address;
-    lastStatus: string | undefined;
-    elapsedSeconds: number;
-    timeoutSeconds: number;
-  }) {
-    super(
-      `Timed out after ${params.elapsedSeconds}s waiting for upgrade to complete (last status: ${
-        params.lastStatus ?? "unknown"
-      })`,
-    );
-    this.name = "WatchTimeoutError";
-    this.appId = params.appId;
-    this.lastStatus = params.lastStatus;
-    this.elapsedSeconds = params.elapsedSeconds;
-    this.timeoutSeconds = params.timeoutSeconds;
-  }
-}
-
-/**
- * Resolve the upgrade watch timeout from explicit option, env var, or default.
- */
-function resolveWatchTimeoutSeconds(explicit?: number): number {
-  if (typeof explicit === "number" && Number.isFinite(explicit) && explicit > 0) {
-    return explicit;
-  }
-  const fromEnv = process.env.ECLOUD_WATCH_TIMEOUT_SECONDS;
-  if (fromEnv) {
-    const parsed = Number.parseInt(fromEnv, 10);
-    if (Number.isFinite(parsed) && parsed > 0) {
-      return parsed;
-    }
-  }
-  return WATCH_DEFAULT_TIMEOUT_SECONDS;
-}
+// WATCH_DEFAULT_TIMEOUT_SECONDS, WatchTimeoutError, and resolveWatchTimeoutSeconds
+// are shared with watchUntilRunning and declared once near the top of this file.
 
 /**
  * Watch app until upgrade completes
