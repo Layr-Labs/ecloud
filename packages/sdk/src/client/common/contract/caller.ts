@@ -31,11 +31,26 @@ import {
   DeployProgressCallback,
   SequentialDeployResult,
 } from "../types";
-import { Release } from "../types";
+import { Release, ContainerPolicy, EMPTY_CONTAINER_POLICY } from "../types";
 import { getChainFromID } from "../utils/helpers";
 
 import AppControllerABI from "../abis/AppController.json";
 import PermissionControllerABI from "../abis/PermissionController.json";
+
+/**
+ * Build the viem-encodable `containerPolicy` tuple for the AppController
+ * `Release` struct (v1.5.0+). Falls back to an empty policy when the caller
+ * does not supply one, which preserves the image's own entrypoint/env.
+ */
+function containerPolicyForViem(policy: ContainerPolicy = EMPTY_CONTAINER_POLICY) {
+  return {
+    args: policy.args,
+    cmdOverride: policy.cmdOverride,
+    env: policy.env.map((e) => ({ key: e.key, value: e.value })),
+    envOverride: policy.envOverride.map((e) => ({ key: e.key, value: e.value })),
+    restartPolicy: policy.restartPolicy,
+  };
+}
 
 /**
  * Gas estimation result
@@ -254,6 +269,7 @@ export async function prepareDeployBatch(
     },
     publicEnv: bytesToHex(release.publicEnv) as Hex,
     encryptedEnv: bytesToHex(release.encryptedEnv) as Hex,
+    containerPolicy: containerPolicyForViem(release.containerPolicy),
   };
 
   const functionName = options.billTo === "app" ? "createAppWithIsolatedBilling" : "createApp";
@@ -750,6 +766,7 @@ export async function prepareUpgradeBatch(
     },
     publicEnv: bytesToHex(release.publicEnv) as Hex,
     encryptedEnv: bytesToHex(release.encryptedEnv) as Hex,
+    containerPolicy: containerPolicyForViem(release.containerPolicy),
   };
 
   const upgradeData = encodeFunctionData({
