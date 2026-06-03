@@ -22,7 +22,11 @@ You are deploying to EigenCloud TEE (Trusted Execution Environment) infrastructu
 
 2. **Always use hex app IDs (0x...), never display names.** Name lookup is profile-based and silently fails on some commands (confirmed: `app info` by name returns `not found` while the same app works fine by ID).
 
-3. **The CLI returns exit 1 for all errors.** There are no granular exit codes. Parse stdout/stderr content to determine what went wrong.
+3. **Exit codes.** Most commands return exit `1` for any error (parse stdout/stderr to see what went wrong). **`app deploy` and `app upgrade` are the exception** — they emit distinct codes so you can branch without parsing text:
+   - `2` — invalid/missing input; failed **before** any build. Fix flags and re-run.
+   - `3` — build/push failed; **no on-chain transaction was attempted**. No image was produced.
+   - `4` — build/push succeeded but the **on-chain transaction failed**. The image is already built and pushed; re-running deploy/upgrade reuses it (you are not paying for another ~7-min build).
+   - `1` — generic/unclassified error.
 
 4. **Env vars are encrypted client-side** before transmission. They are only decrypted inside the TEE. Never visible in logs or API responses.
 
