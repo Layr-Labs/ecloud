@@ -20,6 +20,8 @@ import {
   promptVerifiableSourceType,
   promptVerifiableGitSourceInputs,
   promptVerifiablePrebuiltImageRef,
+  isNonInteractive,
+  collectMissingRequiredInputs,
 } from "../../../utils/prompts";
 import { getClientId } from "../../../utils/version";
 import { setLinkedAppForDirectory, invalidateProfileCache } from "../../../utils/globalConfig";
@@ -40,7 +42,7 @@ export default class AppUpgrade extends Command {
 
   static args = {
     "app-id": Args.string({
-      description: "App ID or name to upgrade",
+      description: "App ID or name to upgrade (env: ECLOUD_APP_ID)",
       required: false,
     }),
   };
@@ -131,12 +133,42 @@ export default class AppUpgrade extends Command {
     force: Flags.boolean({
       description: "Skip all confirmation prompts",
       default: false,
+      env: "ECLOUD_FORCE",
     }),
   };
 
   async run() {
     return withTelemetry(this, async () => {
       const { args, flags } = await this.parse(AppUpgrade);
+
+      // Resolve the app to upgrade from the positional arg or ECLOUD_APP_ID env
+      // (oclif Args don't support env bindings directly).
+      const appIdInput = args["app-id"] ?? process.env.ECLOUD_APP_ID;
+
+      // Non-interactive: report every missing required input at once instead of
+      // failing one prompt at a time (RND-589).
+      if (isNonInteractive(flags)) {
+        const missing = collectMissingRequiredInputs(
+          {
+            imageRef: flags["image-ref"],
+            dockerfile: flags.dockerfile,
+            verifiable: flags.verifiable,
+            repo: flags.repo,
+            commit: flags.commit,
+          },
+          "app-id",
+        );
+        if (!appIdInput) {
+          missing.push("app-id (positional arg or ECLOUD_APP_ID)");
+        }
+        if (missing.length > 0) {
+          this.error(
+            `Missing required input(s) for non-interactive upgrade:\n  - ${missing.join("\n  - ")}`,
+            { exit: 1 },
+          );
+        }
+      }
+
       const compute = await createComputeClient(flags);
 
       // Get validated values from flags (mutated by createComputeClient)
@@ -147,7 +179,7 @@ export default class AppUpgrade extends Command {
 
       // 1. Get app ID interactively if not provided
       const appID = await getOrPromptAppID({
-        appID: args["app-id"],
+        appID: appIdInput,
         environment,
         privateKey,
         rpcUrl,
@@ -348,6 +380,7 @@ export default class AppUpgrade extends Command {
         flags["instance-type"],
         currentInstanceType,
         availableTypes,
+        isNonInteractive(flags),
       );
 
       // 7. Get log visibility interactively
