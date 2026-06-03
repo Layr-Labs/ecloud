@@ -28,7 +28,7 @@ You are deploying to EigenCloud TEE (Trusted Execution Environment) infrastructu
 
 5. **Derived keys (EVM + Solana wallets) are deterministic per app ID.** They persist across stop/start/upgrade. They are permanently lost if you terminate and redeploy — new app ID means new keys.
 
-6. **`--json` is only available on:** `app releases`, `build submit`, `build status`, `build info`, `build list`, `build verify`. It is NOT available on: `app list`, `app info`, `app deploy`, `billing status`. Do not pass `--json` to commands that don't support it.
+6. **`--json` is only available on:** `app status`, `app releases`, `build submit`, `build status`, `build info`, `build list`, `build verify`. It is NOT available on: `app list`, `app info`, `app deploy`, `billing status`. Do not pass `--json` to commands that don't support it.
 
 7. **No `--dry-run` exists** anywhere in the CLI. No `--yes` on deploy/upgrade (they don't prompt interactively). `--force` only exists on: `app terminate`, `billing cancel`, `auth logout`.
 
@@ -51,6 +51,7 @@ Run all five checks. Fix any that fail before proceeding.
 ```bash
 ecloud --version
 ```
+
 Pass: outputs `@layr-labs/ecloud-cli/<version>`.
 Fail: `npm install -g @layr-labs/ecloud-cli`
 
@@ -59,8 +60,10 @@ Fail: `npm install -g @layr-labs/ecloud-cli`
 ```bash
 ecloud auth whoami
 ```
+
 Pass: output contains `Address: 0x` and `Source: stored credentials`.
 Fail:
+
 - New user → `ecloud auth generate --store` (generates key, stores in OS keyring)
 - Has existing key → `ecloud auth login` (interactive prompt for private key)
 - CI/automation → set `ECLOUD_PRIVATE_KEY` env var instead of keyring
@@ -70,7 +73,9 @@ Fail:
 ```bash
 ecloud compute environment show
 ```
+
 Two environments exist:
+
 - `sepolia` — **Testnet (default).** Uses Sepolia ETH for gas. Deploy here first to test. Billing subscription flow is the same but uses test payment methods. All on-chain records are on Sepolia. Dashboard: `verify-sepolia.eigencloud.xyz`.
 - `mainnet-alpha` — **Production.** Uses real ETH for gas, real USDC for payments. Apps are publicly visible on the mainnet verify dashboard: `verify.eigencloud.xyz`. Use when the app is ready for real users and real funds.
 
@@ -84,8 +89,10 @@ Fix: `ecloud compute env set sepolia --yes` (or `mainnet-alpha`).
 ```bash
 ecloud billing status
 ```
+
 Pass: output contains `Status: ✓ Active`.
 Fail:
+
 1. `ecloud billing subscribe` — creates the subscription
 2. `ecloud billing top-up --amount 50` — purchases USDC credits
 
@@ -94,6 +101,7 @@ Fail:
 ```bash
 docker version --format '{{.Client.Version}}'
 ```
+
 Pass: outputs a version string.
 Fail: install Docker Desktop or Docker Engine.
 
@@ -108,23 +116,29 @@ uname -m
 ```
 
 **If `arm64` (Apple Silicon — most common dev machine):**
+
 ```bash
 docker buildx build --platform linux/amd64 -t <registry>/<image>:<tag> --push .
 ```
+
 This cross-compiles AND pushes in one step. The `--push` flag is required because buildx cross-compiled images can't be loaded into the local daemon.
 
 **If `x86_64` (native):**
+
 ```bash
 docker build -t <registry>/<image>:<tag> . && docker push <registry>/<image>:<tag>
 ```
 
 **After push, verify architecture:**
+
 ```bash
 docker manifest inspect <registry>/<image>:<tag> 2>&1 | grep architecture
 ```
+
 Must contain `amd64`. If it shows `arm64`, the image will crash in the TEE.
 
 **Image requirements:**
+
 - Must be in a **public** registry (Docker Hub, GHCR, etc.) — the TEE pulls at deploy time
 - Must be OCI-compliant
 - App should bind to `0.0.0.0` on its listening port (not `127.0.0.1`)
@@ -135,14 +149,14 @@ Must contain `amd64`. If it shows `arm64`, the image will crash in the TEE.
 
 ### Instance types
 
-| Instance Type | TEE | Approx $/hr |
-|--------------|-----|-------------|
-| `g1-micro-1v` | vTPM | ~$0.03 |
-| `g1-standard-2s` | — | ~$0.04 |
-| `g1-standard-2t` | Intel TDX | ~$0.07 |
-| `g1-standard-4s` | — | ~$0.12 |
-| `g1-standard-4t` | Intel TDX | ~$0.33 |
-| `g1-standard-8t` | Intel TDX | ~$0.66 |
+| Instance Type    | TEE       | Approx $/hr |
+| ---------------- | --------- | ----------- |
+| `g1-micro-1v`    | vTPM      | ~$0.03      |
+| `g1-standard-2s` | —         | ~$0.04      |
+| `g1-standard-2t` | Intel TDX | ~$0.07      |
+| `g1-standard-4s` | —         | ~$0.12      |
+| `g1-standard-4t` | Intel TDX | ~$0.33      |
+| `g1-standard-8t` | Intel TDX | ~$0.66      |
 
 Suffix convention (inferred, not officially documented): `t` = Intel TDX, `s` = likely AMD SEV, `v` = vTPM. Only TDX is confirmed in official EigenCloud docs. Prices are approximate — sourced from billing line items and may change.
 
@@ -192,12 +206,15 @@ ecloud compute build submit \
 This blocks and streams build logs by default. Use `--no-follow` to exit immediately after submission.
 
 If `--no-follow` was used, poll for completion:
+
 ```bash
 ecloud compute build status <build-id> --json
 ```
+
 On build failure: `ecloud compute build logs <build-id> --tail 50`
 
 Then deploy with the verifiable flag:
+
 ```bash
 ecloud compute app deploy \
   --name <app-name> \
@@ -211,41 +228,57 @@ ecloud compute app deploy \
 ```
 
 Additional flags for complex builds:
+
 - Multi-stage with dependencies: `--build-dependencies sha256:...`
 - TLS via Caddy: `--build-caddyfile Caddyfile`
 
 ### Deploy output parsing
 
-| stdout/stderr contains | Meaning | Next step |
-|------------------------|---------|-----------|
-| `0x` + 40 hex chars + dashboard URL | Success — deploy initiated | Save app ID → Gate 3 |
-| `subscription not active` | No billing subscription | `ecloud billing subscribe` → retry |
-| `insufficient credits` | USDC balance too low | `ecloud billing top-up --amount <N>` → retry |
-| Image pull error | Image not public, wrong arch, or bad ref | Verify with `docker manifest inspect` → retry |
-| `already exists` | App name collision | Change `--name` or use `upgrade` on existing app |
+| stdout/stderr contains              | Meaning                                  | Next step                                        |
+| ----------------------------------- | ---------------------------------------- | ------------------------------------------------ |
+| `0x` + 40 hex chars + dashboard URL | Success — deploy initiated               | Save app ID → Gate 3                             |
+| `subscription not active`           | No billing subscription                  | `ecloud billing subscribe` → retry               |
+| `insufficient credits`              | USDC balance too low                     | `ecloud billing top-up --amount <N>` → retry     |
+| Image pull error                    | Image not public, wrong arch, or bad ref | Verify with `docker manifest inspect` → retry    |
+| `already exists`                    | App name collision                       | Change `--name` or use `upgrade` on existing app |
 
 ---
 
 ## Gate 3: Verify deployment
 
-Deploy returns before the app is fully running. You must poll.
+Deploy returns before the app is fully running. Wait for it to settle.
 
-### Poll for running status
+### Wait for running status
+
+**Use `app status --wait` — do NOT tight-loop `app info`.** A bare
+`ecloud compute app info <app-id>` is a one-shot fetch with no pacing; calling
+it in a shell loop (or a hardcoded `sleep`) hammers the API and trips server
+rate limits. `status --wait` blocks using the CLI's internal watch loop, which
+paces requests and backs off on `429/502/503/504`.
 
 ```bash
-ecloud compute app info <app-id>
+# Blocks until the app reaches a terminal status or the timeout elapses.
+ecloud compute app status <app-id> --wait
+
+# Bound the wait (default 600s) and/or get machine-readable output:
+ECLOUD_WATCH_TIMEOUT_SECONDS=180 ecloud compute app status <app-id> --wait
+ecloud compute app status <app-id> --json   # one-shot: {"appId","status"}
 ```
 
-Parse these fields from output:
+`--json` emits `{"appId":"0x...","status":"Running"}`. Status is one of:
+`Running`, `Deploying`, `Stopped`, `Terminated`, `Failed`, `Unknown`.
 
-- **`Status:`** — one of: `Running`, `Deploying`, `Stopped`, `Terminated`, `Error`
+- If `status --wait` returns `Running` → proceed to health check.
+- If it times out (prints a recovery hint) → check `ecloud compute app info <app-id>`
+  once for details and `ecloud compute app logs <app-id>`.
+- If `Failed` → check logs: `ecloud compute app logs <app-id>`
+
+Use `app info <app-id>` (one-shot, not in a loop) only when you need richer
+details — IP, EVM/Solana addresses, release info:
+
 - **`IP:`** — public IP address (direct, no load balancer)
 - **`EVM Address:`** — TEE-derived EVM wallet (deterministic per app ID)
 - **`Solana Address:`** — TEE-derived Solana wallet (deterministic per app ID)
-
-If `Deploying` → wait 15 seconds, poll again. Typical time to `Running`: 1-3 minutes.
-If `Running` → proceed to health check.
-If `Error` → check logs: `ecloud compute app logs <app-id>`
 
 ### Health check
 
@@ -255,11 +288,11 @@ The app's listening port is exposed directly on the public IP. Check whichever p
 curl -s -o /dev/null -w "%{http_code}" http://<IP>:<APP_PORT>/
 ```
 
-| Response | Meaning |
-|----------|---------|
-| `200` | App is healthy and serving |
-| `404` | App is running but has no route at `/` — check your app's routes |
-| `000` | Connection refused — app not ready yet, wrong port, or app crashed on startup |
+| Response | Meaning                                                                       |
+| -------- | ----------------------------------------------------------------------------- |
+| `200`    | App is healthy and serving                                                    |
+| `404`    | App is running but has no route at `/` — check your app's routes              |
+| `000`    | Connection refused — app not ready yet, wrong port, or app crashed on startup |
 
 ### Verify provenance (verifiable builds only)
 
@@ -289,6 +322,7 @@ ecloud compute app profile set <app-id> \
 **Constraints:** Profile name cannot contain spaces. Use hyphens or camelCase (e.g., `CitiBike-MPP` not `Citi Bike MPP`).
 
 Dashboard URLs:
+
 - Sepolia: `https://verify-sepolia.eigencloud.xyz/app/<app-id>`
 - Mainnet: `https://verify.eigencloud.xyz/app/<app-id>`
 
@@ -305,6 +339,7 @@ ecloud compute app upgrade <app-id> \
 ```
 
 The repo must be public. After upgrade, verify provenance:
+
 ```bash
 ecloud compute app releases <app-id> --full
 ecloud compute build verify <image-digest-or-commit> --json
@@ -322,6 +357,7 @@ ecloud compute app upgrade <app-id> \
 ```
 
 For verifiable upgrade:
+
 ```bash
 ecloud compute app upgrade <app-id> \
   --verifiable \
@@ -330,7 +366,7 @@ ecloud compute app upgrade <app-id> \
   --verbose
 ```
 
-After upgrade, re-run Gate 3 (poll `app info` until `Running`, then health check).
+After upgrade, re-run Gate 3 (`app status <app-id> --wait` until `Running`, then health check).
 
 App ID and derived keys persist across upgrades.
 
@@ -341,12 +377,15 @@ App ID and derived keys persist across upgrades.
 No native rollback command exists. Manual procedure:
 
 **1. Find previous release:**
+
 ```bash
 ecloud compute app releases <app-id> --json
 ```
+
 The `releases` array is ordered by creation time. Previous release = second-to-last entry. Extract `registryUrl` and `imageDigest`.
 
 **2. Upgrade to previous image:**
+
 ```bash
 ecloud compute app upgrade <app-id> \
   --image-ref <registryUrl>@<imageDigest> \
@@ -356,10 +395,12 @@ ecloud compute app upgrade <app-id> \
 **3. Verify:** re-run Gate 3.
 
 **If upgrade fails (app stuck or crashed):**
+
 ```bash
 ecloud compute app terminate <app-id> --force
 ecloud compute app deploy --name <name> --image-ref <old-image> --instance-type <type> --verbose
 ```
+
 This creates a new app ID. Derived keys will be different. Only do this as a last resort.
 
 ---
@@ -381,21 +422,21 @@ ecloud compute app info <app-id> --address-count 5  # show more derived addresse
 
 ## Error recovery
 
-| Error | Cause | Fix |
-|-------|-------|-----|
-| `App name 'X' not found` | Name lookup is profile-based, unreliable | Use hex app ID (0x...) |
-| `subscription not active` | No billing subscription | `ecloud billing subscribe` |
-| `insufficient credits` | USDC balance depleted | `ecloud billing top-up --amount <N>` |
-| Image pull failure | Image not public or wrong architecture | `docker manifest inspect <ref>` — verify `linux/amd64` |
-| App crashes immediately after deploy | arm64 image deployed to TDX instance | Rebuild with `docker buildx build --platform linux/amd64` |
-| `No builds found` on verify | Image was pushed directly, not via verifiable build | Redeploy with `--verifiable --repo <url> --commit <sha>` |
-| Status stuck on `Deploying` | Large image or infrastructure delay | `ecloud compute app logs <app-id>` for diagnostics |
-| Auth errors | Key not in keyring or expired | `ecloud auth whoami` to diagnose → `ecloud auth login` to fix |
-| Wrong environment | Deployed to sepolia instead of mainnet (or vice versa) | `ecloud compute env show` → `ecloud compute env set <env> --yes` |
-| Logs return 425 error | Normal during provisioning (1-2+ min after deploy) | Wait and retry, or use `--watch` to stream when available |
-| App shows "(unnamed)" on dashboard | `--name` only sets CLI name, not dashboard profile | `ecloud compute app profile set <app-id> --name "Name"` |
-| Profile name rejected | Spaces not allowed in profile names | Use hyphens or camelCase |
-| Mainnet app unreachable despite "Running" status | Mainnet networking can take 5+ min after deploy (longer than sepolia) | Keep polling — sepolia ~30s, mainnet can be several minutes |
+| Error                                            | Cause                                                                 | Fix                                                              |
+| ------------------------------------------------ | --------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `App name 'X' not found`                         | Name lookup is profile-based, unreliable                              | Use hex app ID (0x...)                                           |
+| `subscription not active`                        | No billing subscription                                               | `ecloud billing subscribe`                                       |
+| `insufficient credits`                           | USDC balance depleted                                                 | `ecloud billing top-up --amount <N>`                             |
+| Image pull failure                               | Image not public or wrong architecture                                | `docker manifest inspect <ref>` — verify `linux/amd64`           |
+| App crashes immediately after deploy             | arm64 image deployed to TDX instance                                  | Rebuild with `docker buildx build --platform linux/amd64`        |
+| `No builds found` on verify                      | Image was pushed directly, not via verifiable build                   | Redeploy with `--verifiable --repo <url> --commit <sha>`         |
+| Status stuck on `Deploying`                      | Large image or infrastructure delay                                   | `ecloud compute app logs <app-id>` for diagnostics               |
+| Auth errors                                      | Key not in keyring or expired                                         | `ecloud auth whoami` to diagnose → `ecloud auth login` to fix    |
+| Wrong environment                                | Deployed to sepolia instead of mainnet (or vice versa)                | `ecloud compute env show` → `ecloud compute env set <env> --yes` |
+| Logs return 425 error                            | Normal during provisioning (1-2+ min after deploy)                    | Wait and retry, or use `--watch` to stream when available        |
+| App shows "(unnamed)" on dashboard               | `--name` only sets CLI name, not dashboard profile                    | `ecloud compute app profile set <app-id> --name "Name"`          |
+| Profile name rejected                            | Spaces not allowed in profile names                                   | Use hyphens or camelCase                                         |
+| Mainnet app unreachable despite "Running" status | Mainnet networking can take 5+ min after deploy (longer than sepolia) | Keep polling — sepolia ~30s, mainnet can be several minutes      |
 
 ---
 
