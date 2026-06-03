@@ -1,0 +1,78 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+const APP = "0x01d3e5851c5F361b4E4988fd3cCc503a6D7b5c09";
+
+const getStatuses = vi.fn();
+vi.mock("@layr-labs/ecloud-sdk", () => ({
+  getEnvironmentConfig: vi.fn(() => ({ defaultRPCURL: "https://rpc.test" })),
+  UserApiClient: class {
+    getStatuses = getStatuses;
+  },
+  WatchTimeoutError: class WatchTimeoutError extends Error {},
+}));
+vi.mock("../../../../flags", () => ({
+  commonFlags: {},
+  validateCommonFlags: vi.fn(async (f: Record<string, unknown>) => ({
+    ...f,
+    environment: "sepolia-dev",
+    "private-key": "0xkey",
+  })),
+}));
+vi.mock("../../../../utils/prompts", () => ({
+  getOrPromptAppID: vi.fn(async () => APP),
+}));
+vi.mock("../../../../utils/version", () => ({ getClientId: vi.fn(() => "test") }));
+vi.mock("../../../../utils/viemClients", () => ({
+  createViemClients: vi.fn(() => ({ publicClient: {}, walletClient: {} })),
+}));
+const watchDeployment = vi.fn();
+vi.mock("../../../../client", () => ({
+  createComputeClient: vi.fn(async () => ({ app: { watchDeployment } })),
+}));
+
+describe("compute app status (RND-592)", () => {
+  let logOutput: string[];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    logOutput = [];
+  });
+
+  async function runCommand(flags: Record<string, unknown>) {
+    const { default: AppStatus } = await import("../status");
+    const cmd = new AppStatus([], {} as any);
+    cmd.parse = vi.fn().mockResolvedValue({ args: { "app-id": APP }, flags });
+    cmd.log = vi.fn((...a: string[]) => logOutput.push(a.join(" ")));
+    cmd.warn = vi.fn() as any;
+    await cmd.run();
+    return logOutput;
+  }
+
+  it("prints the one-shot status from getStatuses", async () => {
+    getStatuses.mockResolvedValue([{ address: APP, status: "Running" }]);
+    const out = await runCommand({ wait: false, json: false });
+    expect(getStatuses).toHaveBeenCalledWith([APP]);
+    expect(watchDeployment).not.toHaveBeenCalled();
+    expect(out.join("\n")).toContain("Running");
+  });
+
+  it("emits machine-readable JSON with --json", async () => {
+    getStatuses.mockResolvedValue([{ address: APP, status: "Terminated" }]);
+    const out = await runCommand({ wait: false, json: true });
+    expect(JSON.parse(out[0])).toEqual({ appId: APP, status: "Terminated" });
+  });
+
+  it("falls back to Unknown when the API returns nothing", async () => {
+    getStatuses.mockResolvedValue([]);
+    const out = await runCommand({ wait: false, json: true });
+    expect(JSON.parse(out[0])).toEqual({ appId: APP, status: "Unknown" });
+  });
+
+  it("--wait blocks via watchDeployment, then does a final status read", async () => {
+    watchDeployment.mockResolvedValue(undefined);
+    getStatuses.mockResolvedValue([{ address: APP, status: "Running" }]);
+    const out = await runCommand({ wait: true, json: true, "watch-timeout": 30 });
+    expect(watchDeployment).toHaveBeenCalledWith(APP, { timeoutSeconds: 30 });
+    expect(JSON.parse(out[0])).toEqual({ appId: APP, status: "Running" });
+  });
+});
