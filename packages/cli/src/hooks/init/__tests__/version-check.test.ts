@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 
 vi.mock("@inquirer/prompts", () => ({
   confirm: vi.fn(),
@@ -45,12 +45,24 @@ function mockFetch(distTags: Record<string, string> | null, ok = true) {
 }
 
 describe("version-check init hook", () => {
+  const origTTY = process.stdin.isTTY;
+  const origCI = process.env.CI;
+
   beforeEach(() => {
     vi.clearAllMocks();
     (getCliVersion as Mock).mockReturnValue("1.0.0");
     (getBuildType as Mock).mockReturnValue("prod");
     (loadGlobalConfig as Mock).mockReturnValue({});
     (saveGlobalConfig as Mock).mockImplementation(() => {});
+    // Default to an interactive terminal so the update-prompt path runs.
+    process.stdin.isTTY = true;
+    delete process.env.CI;
+  });
+
+  afterEach(() => {
+    process.stdin.isTTY = origTTY;
+    if (origCI === undefined) delete process.env.CI;
+    else process.env.CI = origCI;
   });
 
   it("skips check for upgrade command", async () => {
@@ -96,6 +108,30 @@ describe("version-check init hook", () => {
     expect(ctx.log).toHaveBeenCalled();
     expect(confirm).toHaveBeenCalled();
     expect(upgradePackage).not.toHaveBeenCalled();
+  });
+
+  // RND-589: in non-interactive mode the hook must not block on the update
+  // prompt (it ran before the command and read as a failure in CI/agents).
+  it("does not prompt in non-interactive mode (no TTY)", async () => {
+    process.stdin.isTTY = false;
+    mockFetch({ latest: "2.0.0" });
+    const ctx = createMockContext();
+
+    await hook.call(ctx as any, { id: "auth:login" } as any);
+
+    expect(confirm).not.toHaveBeenCalled();
+    expect(upgradePackage).not.toHaveBeenCalled();
+  });
+
+  it("does not prompt when CI=true even on a TTY", async () => {
+    process.stdin.isTTY = true;
+    process.env.CI = "true";
+    mockFetch({ latest: "2.0.0" });
+    const ctx = createMockContext();
+
+    await hook.call(ctx as any, { id: "auth:login" } as any);
+
+    expect(confirm).not.toHaveBeenCalled();
   });
 
   it("upgrades when user confirms", async () => {
