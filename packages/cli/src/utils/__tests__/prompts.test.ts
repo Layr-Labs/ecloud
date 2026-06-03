@@ -80,18 +80,18 @@ describe("prompts non-interactive regressions", () => {
       await expect(promptUseVerifiableBuild(true)).resolves.toBe(false);
     });
 
-    it("throws the 'Use --force' guidance when force is false in non-TTY mode", async () => {
+    // Post RND-568/569 merge: confirmWithDefault returns the default in non-TTY
+    // mode instead of throwing, so a verifiable-build confirm resolves to false
+    // (regular build) rather than erroring. RND-589-aligned: optional confirms
+    // never block a non-interactive run.
+    it("resolves to false (regular build) when force is false in non-TTY mode", async () => {
       process.stdin.isTTY = false;
-      await expect(promptUseVerifiableBuild(false)).rejects.toThrow(
-        /Cannot confirm "Build from verifiable source\?" in non-interactive mode\. Use --force/,
-      );
+      await expect(promptUseVerifiableBuild(false)).resolves.toBe(false);
     });
 
-    it("defaults force to false so existing callers still see the non-interactive error", async () => {
+    it("defaults force to false and still resolves to false in non-TTY mode", async () => {
       process.stdin.isTTY = false;
-      await expect(promptUseVerifiableBuild()).rejects.toThrow(
-        /Cannot confirm "Build from verifiable source\?" in non-interactive mode/,
-      );
+      await expect(promptUseVerifiableBuild()).resolves.toBe(false);
     });
   });
 });
