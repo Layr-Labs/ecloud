@@ -40,6 +40,7 @@ import {
 } from "../../../utils/dockerhub";
 import { isTlsEnabledFromEnvFile } from "../../../utils/tls";
 import { mergeInlineEnvVars } from "../../../utils/env";
+import { EXIT_CODES, errorMessage } from "../../../utils/exitCodes";
 import type { SubmitBuildRequest } from "@layr-labs/ecloud-sdk";
 
 export default class AppUpgrade extends Command {
@@ -174,7 +175,7 @@ export default class AppUpgrade extends Command {
         if (missing.length > 0) {
           this.error(
             `Missing required input(s) for non-interactive upgrade:\n  - ${missing.join("\n  - ")}`,
-            { exit: 1 },
+            { exit: EXIT_CODES.INVALID_INPUT },
           );
         }
       }
@@ -415,24 +416,33 @@ export default class AppUpgrade extends Command {
       // the normal prepareUpgrade path so that layerRemoteImageIfNeeded can
       // add the ecloud runtime layer (startup script, KMS client, Caddy) if
       // the image doesn't already have it.
-      const { prepared, gasEstimate } =
-        verifiableMode === "git"
-          ? await compute.app.prepareUpgradeFromVerifiableBuild(appID, {
-              imageRef,
-              imageDigest: verifiableImageDigest!,
-              envFile: envFilePath,
-              instanceType,
-              logVisibility,
-              resourceUsageMonitoring,
-            })
-          : await compute.app.prepareUpgrade(appID, {
-              dockerfile: dockerfilePath,
-              imageRef,
-              envFile: envFilePath,
-              instanceType,
-              logVisibility,
-              resourceUsageMonitoring,
-            });
+      // Build/push stage — failures here mean no image was produced and no
+      // on-chain tx was attempted (RND-591).
+      let prepared, gasEstimate;
+      try {
+        ({ prepared, gasEstimate } =
+          verifiableMode === "git"
+            ? await compute.app.prepareUpgradeFromVerifiableBuild(appID, {
+                imageRef,
+                imageDigest: verifiableImageDigest!,
+                envFile: envFilePath,
+                instanceType,
+                logVisibility,
+                resourceUsageMonitoring,
+              })
+            : await compute.app.prepareUpgrade(appID, {
+                dockerfile: dockerfilePath,
+                imageRef,
+                envFile: envFilePath,
+                instanceType,
+                logVisibility,
+                resourceUsageMonitoring,
+              }));
+      } catch (err) {
+        this.error(`Build/push failed (no upgrade was attempted): ${errorMessage(err)}`, {
+          exit: EXIT_CODES.BUILD_FAILED,
+        });
+      }
 
       // 10. Apply gas overrides if provided, show estimate, and prompt for confirmation on mainnet
       const finalTx = await applyTxOverrides(gasEstimate, flags, { publicClient, address });
@@ -456,8 +466,19 @@ export default class AppUpgrade extends Command {
         }
       }
 
-      // 11. Execute the upgrade
-      const res = await compute.app.executeUpgrade(prepared, finalTx);
+      // 11. Execute the upgrade (on-chain stage). Image already built+pushed;
+      // a failure here is distinct from a build failure and a re-run reuses the
+      // pushed image (RND-591).
+      let res;
+      try {
+        res = await compute.app.executeUpgrade(prepared, finalTx);
+      } catch (err) {
+        this.error(
+          `On-chain upgrade failed after the image was built and pushed: ${errorMessage(err)}\n` +
+            `The image is already pushed — re-running upgrade will reuse it.`,
+          { exit: EXIT_CODES.ONCHAIN_FAILED },
+        );
+      }
 
       // 12. Watch until upgrade completes
       try {

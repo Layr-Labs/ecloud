@@ -43,6 +43,7 @@ import {
 } from "../../../utils/dockerhub";
 import { isTlsEnabledFromEnvFile } from "../../../utils/tls";
 import { mergeInlineEnvVars } from "../../../utils/env";
+import { EXIT_CODES, errorMessage } from "../../../utils/exitCodes";
 import type { SubmitBuildRequest } from "@layr-labs/ecloud-sdk";
 
 export default class AppDeploy extends Command {
@@ -185,7 +186,7 @@ export default class AppDeploy extends Command {
         if (missing.length > 0) {
           this.error(
             `Missing required input(s) for non-interactive deploy:\n  - ${missing.join("\n  - ")}`,
-            { exit: 1 },
+            { exit: EXIT_CODES.INVALID_INPUT },
           );
         }
       }
@@ -470,28 +471,38 @@ export default class AppDeploy extends Command {
       // the normal prepareDeploy path so that layerRemoteImageIfNeeded can
       // add the ecloud runtime layer (startup script, KMS client, Caddy) if
       // the image doesn't already have it.
-      const { prepared, gasEstimate } =
-        verifiableMode === "git"
-          ? await compute.app.prepareDeployFromVerifiableBuild({
-              name: appName,
-              imageRef,
-              imageDigest: verifiableImageDigest!,
-              envFile: envFilePath,
-              instanceType,
-              logVisibility,
-              resourceUsageMonitoring,
-              billTo: "developer",
-            })
-          : await compute.app.prepareDeploy({
-              name: appName,
-              dockerfile: dockerfilePath,
-              imageRef,
-              envFile: envFilePath,
-              instanceType,
-              logVisibility,
-              resourceUsageMonitoring,
-              billTo: "developer",
-            });
+      // Build/push stage — failures here mean no image was produced and no
+      // on-chain tx was attempted. Distinct exit code so callers don't confuse
+      // it with an on-chain failure (RND-591).
+      let prepared, gasEstimate;
+      try {
+        ({ prepared, gasEstimate } =
+          verifiableMode === "git"
+            ? await compute.app.prepareDeployFromVerifiableBuild({
+                name: appName,
+                imageRef,
+                imageDigest: verifiableImageDigest!,
+                envFile: envFilePath,
+                instanceType,
+                logVisibility,
+                resourceUsageMonitoring,
+                billTo: "developer",
+              })
+            : await compute.app.prepareDeploy({
+                name: appName,
+                dockerfile: dockerfilePath,
+                imageRef,
+                envFile: envFilePath,
+                instanceType,
+                logVisibility,
+                resourceUsageMonitoring,
+                billTo: "developer",
+              }));
+      } catch (err) {
+        this.error(`Build/push failed (no deployment was attempted): ${errorMessage(err)}`, {
+          exit: EXIT_CODES.BUILD_FAILED,
+        });
+      }
 
       // 9. Apply gas overrides if provided, show estimate, and prompt for confirmation on mainnet
       const finalTx = await applyTxOverrides(gasEstimate, flags, { publicClient, address });
@@ -515,8 +526,19 @@ export default class AppDeploy extends Command {
         }
       }
 
-      // 10. Execute the deployment
-      const res = await compute.app.executeDeploy(prepared, finalTx);
+      // 10. Execute the deployment (on-chain stage). The image is already
+      // built+pushed at this point; a failure here is distinct from a build
+      // failure and a re-run will reuse the pushed image (RND-591).
+      let res;
+      try {
+        res = await compute.app.executeDeploy(prepared, finalTx);
+      } catch (err) {
+        this.error(
+          `On-chain deployment failed after the image was built and pushed: ${errorMessage(err)}\n` +
+            `The image is already pushed — re-running deploy will reuse it.`,
+          { exit: EXIT_CODES.ONCHAIN_FAILED },
+        );
+      }
 
       // 11. Collect app profile while deployment is in progress (optional)
       if (!flags["skip-profile"]) {
