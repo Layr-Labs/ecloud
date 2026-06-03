@@ -2,7 +2,6 @@
  * Environment configuration for different networks
  */
 
-import { Address } from "viem";
 import { BillingEnvironmentConfig, EnvironmentConfig } from "../types";
 
 // Chain IDs
@@ -41,6 +40,7 @@ const ENVIRONMENTS: Record<string, Omit<EnvironmentConfig, "chainID">> = {
     name: "sepolia",
     build: "dev",
     appControllerAddress: "0xa86DC1C47cb2518327fB4f9A1627F51966c83B92",
+    releaseAbiVersion: "v1.5", // AppController upgraded to v1.5.x (containerPolicy)
     permissionControllerAddress: ChainAddresses[SEPOLIA_CHAIN_ID].PermissionController,
     erc7702DelegatorAddress: CommonAddresses.ERC7702Delegator,
     kmsServerURL: "http://10.128.0.57:8080",
@@ -54,6 +54,7 @@ const ENVIRONMENTS: Record<string, Omit<EnvironmentConfig, "chainID">> = {
     name: "sepolia",
     build: "prod",
     appControllerAddress: "0x0dd810a6ffba6a9820a10d97b659f07d8d23d4E2",
+    releaseAbiVersion: "v1.4", // prod still on AppController v1.4.0 (3-field Release)
     permissionControllerAddress: ChainAddresses[SEPOLIA_CHAIN_ID].PermissionController,
     erc7702DelegatorAddress: CommonAddresses.ERC7702Delegator,
     kmsServerURL: "http://10.128.15.203:8080",
@@ -68,6 +69,7 @@ const ENVIRONMENTS: Record<string, Omit<EnvironmentConfig, "chainID">> = {
     name: "mainnet-alpha",
     build: "prod",
     appControllerAddress: "0xc38d35Fc995e75342A21CBd6D770305b142Fbe67",
+    releaseAbiVersion: "v1.4", // prod still on AppController v1.4.0 (3-field Release)
     permissionControllerAddress: ChainAddresses[MAINNET_CHAIN_ID].PermissionController,
     erc7702DelegatorAddress: CommonAddresses.ERC7702Delegator,
     kmsServerURL: "http://10.128.0.2:8080",
