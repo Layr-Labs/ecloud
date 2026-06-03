@@ -22,6 +22,8 @@ import {
   promptVerifiableGitSourceInputs,
   promptVerifiablePrebuiltImageRef,
   imagePathToBlob,
+  isNonInteractive,
+  collectMissingRequiredInputs,
 } from "../../../utils/prompts";
 import { invalidateProfileCache, setLinkedAppForDirectory } from "../../../utils/globalConfig";
 import { getClientId } from "../../../utils/version";
@@ -148,12 +150,36 @@ export default class AppDeploy extends Command {
     force: Flags.boolean({
       description: "Skip all confirmation prompts",
       default: false,
+      env: "ECLOUD_FORCE",
     }),
   };
 
   async run() {
     return withTelemetry(this, async () => {
       const { flags } = await this.parse(AppDeploy);
+
+      // Non-interactive: report every missing required input at once instead of
+      // failing one prompt at a time (RND-589).
+      if (isNonInteractive(flags)) {
+        const missing = collectMissingRequiredInputs(
+          {
+            imageRef: flags["image-ref"],
+            dockerfile: flags.dockerfile,
+            verifiable: flags.verifiable,
+            repo: flags.repo,
+            commit: flags.commit,
+            name: flags.name,
+          },
+          "name",
+        );
+        if (missing.length > 0) {
+          this.error(
+            `Missing required input(s) for non-interactive deploy:\n  - ${missing.join("\n  - ")}`,
+            { exit: 1 },
+          );
+        }
+      }
+
       const compute = await createComputeClient(flags);
 
       // Get validated values from flags (mutated by createComputeClient)
@@ -406,8 +432,9 @@ export default class AppDeploy extends Command {
       );
       const instanceType = await getInstanceTypeInteractive(
         flags["instance-type"],
-        "", // No default for new deployments
+        "", // No pinned default for new deployments; non-interactive falls back to g1-standard-2s
         availableTypes,
+        isNonInteractive(flags),
       );
 
       // 6. Get log visibility interactively
