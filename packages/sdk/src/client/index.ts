@@ -115,9 +115,6 @@ export {
   type EstimateGasOptions,
 } from "./common/contract/caller";
 
-// Export watcher errors so callers can react to typed terminal failures.
-export { WatchTimeoutError } from "./common/contract/watcher";
-
 // Export batch gas estimation and delegation check
 export {
   estimateBatchGas,
