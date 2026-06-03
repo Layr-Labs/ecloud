@@ -137,19 +137,6 @@
   },
   {
     "type": "function",
-    "name": "confirmUpgrade",
-    "inputs": [
-      {
-        "name": "app",
-        "type": "address",
-        "internalType": "contractIApp"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
     "name": "createApp",
     "inputs": [
       {
@@ -200,62 +187,6 @@
             "name": "encryptedEnv",
             "type": "bytes",
             "internalType": "bytes"
-          },
-          {
-            "name": "containerPolicy",
-            "type": "tuple",
-            "internalType": "structIAppController.ContainerPolicy",
-            "components": [
-              {
-                "name": "args",
-                "type": "string[]",
-                "internalType": "string[]"
-              },
-              {
-                "name": "cmdOverride",
-                "type": "string[]",
-                "internalType": "string[]"
-              },
-              {
-                "name": "env",
-                "type": "tuple[]",
-                "internalType": "structIAppController.EnvVar[]",
-                "components": [
-                  {
-                    "name": "key",
-                    "type": "string",
-                    "internalType": "string"
-                  },
-                  {
-                    "name": "value",
-                    "type": "string",
-                    "internalType": "string"
-                  }
-                ]
-              },
-              {
-                "name": "envOverride",
-                "type": "tuple[]",
-                "internalType": "structIAppController.EnvVar[]",
-                "components": [
-                  {
-                    "name": "key",
-                    "type": "string",
-                    "internalType": "string"
-                  },
-                  {
-                    "name": "value",
-                    "type": "string",
-                    "internalType": "string"
-                  }
-                ]
-              },
-              {
-                "name": "restartPolicy",
-                "type": "string",
-                "internalType": "string"
-              }
-            ]
           }
         ]
       }
@@ -321,102 +252,8 @@
             "name": "encryptedEnv",
             "type": "bytes",
             "internalType": "bytes"
-          },
-          {
-            "name": "containerPolicy",
-            "type": "tuple",
-            "internalType": "structIAppController.ContainerPolicy",
-            "components": [
-              {
-                "name": "args",
-                "type": "string[]",
-                "internalType": "string[]"
-              },
-              {
-                "name": "cmdOverride",
-                "type": "string[]",
-                "internalType": "string[]"
-              },
-              {
-                "name": "env",
-                "type": "tuple[]",
-                "internalType": "structIAppController.EnvVar[]",
-                "components": [
-                  {
-                    "name": "key",
-                    "type": "string",
-                    "internalType": "string"
-                  },
-                  {
-                    "name": "value",
-                    "type": "string",
-                    "internalType": "string"
-                  }
-                ]
-              },
-              {
-                "name": "envOverride",
-                "type": "tuple[]",
-                "internalType": "structIAppController.EnvVar[]",
-                "components": [
-                  {
-                    "name": "key",
-                    "type": "string",
-                    "internalType": "string"
-                  },
-                  {
-                    "name": "value",
-                    "type": "string",
-                    "internalType": "string"
-                  }
-                ]
-              },
-              {
-                "name": "restartPolicy",
-                "type": "string",
-                "internalType": "string"
-              }
-            ]
           }
         ]
-      }
-    ],
-    "outputs": [
-      {
-        "name": "app",
-        "type": "address",
-        "internalType": "contractIApp"
-      }
-    ],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "createEmptyApp",
-    "inputs": [
-      {
-        "name": "salt",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "app",
-        "type": "address",
-        "internalType": "contractIApp"
-      }
-    ],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "createEmptyAppWithIsolatedBilling",
-    "inputs": [
-      {
-        "name": "salt",
-        "type": "bytes32",
-        "internalType": "bytes32"
       }
     ],
     "outputs": [
@@ -462,6 +299,25 @@
   },
   {
     "type": "function",
+    "name": "getBillingType",
+    "inputs": [
+      {
+        "name": "app",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "getAppCreator",
     "inputs": [
       {
@@ -501,25 +357,6 @@
   {
     "type": "function",
     "name": "getAppOperatorSetId",
-    "inputs": [
-      {
-        "name": "app",
-        "type": "address",
-        "internalType": "contractIApp"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint32",
-        "internalType": "uint32"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "getAppPendingReleaseBlockNumber",
     "inputs": [
       {
         "name": "app",
@@ -597,11 +434,6 @@
             "internalType": "uint32"
           },
           {
-            "name": "pendingReleaseBlockNumber",
-            "type": "uint32",
-            "internalType": "uint32"
-          },
-          {
             "name": "status",
             "type": "uint8",
             "internalType": "enumIAppController.AppStatus"
@@ -654,11 +486,6 @@
           },
           {
             "name": "latestReleaseBlockNumber",
-            "type": "uint32",
-            "internalType": "uint32"
-          },
-          {
-            "name": "pendingReleaseBlockNumber",
             "type": "uint32",
             "internalType": "uint32"
           },
@@ -719,11 +546,6 @@
             "internalType": "uint32"
           },
           {
-            "name": "pendingReleaseBlockNumber",
-            "type": "uint32",
-            "internalType": "uint32"
-          },
-          {
             "name": "status",
             "type": "uint8",
             "internalType": "enumIAppController.AppStatus"
@@ -780,54 +602,11 @@
             "internalType": "uint32"
           },
           {
-            "name": "pendingReleaseBlockNumber",
-            "type": "uint32",
-            "internalType": "uint32"
-          },
-          {
             "name": "status",
             "type": "uint8",
             "internalType": "enumIAppController.AppStatus"
           }
         ]
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "getBillingAccount",
-    "inputs": [
-      {
-        "name": "app",
-        "type": "address",
-        "internalType": "contractIApp"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "getBillingType",
-    "inputs": [
-      {
-        "name": "app",
-        "type": "address",
-        "internalType": "contractIApp"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint8",
-        "internalType": "enumIAppController.BillingType"
       }
     ],
     "stateMutability": "view"
@@ -1087,62 +866,6 @@
             "name": "encryptedEnv",
             "type": "bytes",
             "internalType": "bytes"
-          },
-          {
-            "name": "containerPolicy",
-            "type": "tuple",
-            "internalType": "structIAppController.ContainerPolicy",
-            "components": [
-              {
-                "name": "args",
-                "type": "string[]",
-                "internalType": "string[]"
-              },
-              {
-                "name": "cmdOverride",
-                "type": "string[]",
-                "internalType": "string[]"
-              },
-              {
-                "name": "env",
-                "type": "tuple[]",
-                "internalType": "structIAppController.EnvVar[]",
-                "components": [
-                  {
-                    "name": "key",
-                    "type": "string",
-                    "internalType": "string"
-                  },
-                  {
-                    "name": "value",
-                    "type": "string",
-                    "internalType": "string"
-                  }
-                ]
-              },
-              {
-                "name": "envOverride",
-                "type": "tuple[]",
-                "internalType": "structIAppController.EnvVar[]",
-                "components": [
-                  {
-                    "name": "key",
-                    "type": "string",
-                    "internalType": "string"
-                  },
-                  {
-                    "name": "value",
-                    "type": "string",
-                    "internalType": "string"
-                  }
-                ]
-              },
-              {
-                "name": "restartPolicy",
-                "type": "string",
-                "internalType": "string"
-              }
-            ]
           }
         ]
       }
@@ -1338,62 +1061,6 @@
             "name": "encryptedEnv",
             "type": "bytes",
             "internalType": "bytes"
-          },
-          {
-            "name": "containerPolicy",
-            "type": "tuple",
-            "internalType": "structIAppController.ContainerPolicy",
-            "components": [
-              {
-                "name": "args",
-                "type": "string[]",
-                "internalType": "string[]"
-              },
-              {
-                "name": "cmdOverride",
-                "type": "string[]",
-                "internalType": "string[]"
-              },
-              {
-                "name": "env",
-                "type": "tuple[]",
-                "internalType": "structIAppController.EnvVar[]",
-                "components": [
-                  {
-                    "name": "key",
-                    "type": "string",
-                    "internalType": "string"
-                  },
-                  {
-                    "name": "value",
-                    "type": "string",
-                    "internalType": "string"
-                  }
-                ]
-              },
-              {
-                "name": "envOverride",
-                "type": "tuple[]",
-                "internalType": "structIAppController.EnvVar[]",
-                "components": [
-                  {
-                    "name": "key",
-                    "type": "string",
-                    "internalType": "string"
-                  },
-                  {
-                    "name": "value",
-                    "type": "string",
-                    "internalType": "string"
-                  }
-                ]
-              },
-              {
-                "name": "restartPolicy",
-                "type": "string",
-                "internalType": "string"
-              }
-            ]
           }
         ]
       }
@@ -1438,25 +1105,6 @@
       },
       {
         "name": "limit",
-        "type": "uint32",
-        "indexed": false,
-        "internalType": "uint32"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "UpgradeConfirmed",
-    "inputs": [
-      {
-        "name": "app",
-        "type": "address",
-        "indexed": true,
-        "internalType": "contractIApp"
-      },
-      {
-        "name": "pendingReleaseBlockNumber",
         "type": "uint32",
         "indexed": false,
         "internalType": "uint32"
@@ -1517,11 +1165,6 @@
   {
     "type": "error",
     "name": "MoreThanOneArtifact",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "NoPendingUpgrade",
     "inputs": []
   },
   {

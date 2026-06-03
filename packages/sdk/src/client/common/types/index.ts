@@ -232,11 +232,21 @@ export interface BillingEnvironmentConfig {
   billingApiServerURL: string;
 }
 
+/**
+ * On-chain AppController ABI version for an environment.
+ * - "v1.4": 3-field Release struct (sepolia, mainnet-alpha)
+ * - "v1.5": 4-field Release struct with containerPolicy (sepolia-dev)
+ * Omitted defaults to the latest ("v1.5") in the contract caller.
+ */
+export type AppControllerAbiVersion = "v1.4" | "v1.5";
+
 export interface EnvironmentConfig {
   name: string;
   build: "dev" | "prod";
   chainID: bigint;
   appControllerAddress: Address;
+  /** Deployed AppController ABI version; selects Release encoding. Defaults to v1.5 when omitted. */
+  releaseAbiVersion?: AppControllerAbiVersion;
   permissionControllerAddress: string;
   erc7702DelegatorAddress: string;
   kmsServerURL: string;
@@ -248,6 +258,36 @@ export interface EnvironmentConfig {
   baseRPCURL?: string;
 }
 
+export interface EnvVar {
+  key: string;
+  value: string;
+}
+
+/**
+ * Container runtime policy attached to a release (AppController v1.5.0+).
+ *
+ * Added to the on-chain `Release` struct in eigenx-contracts (KMS-006). All
+ * fields are optional knobs over the container's entrypoint/runtime; an empty
+ * policy (see EMPTY_CONTAINER_POLICY) preserves the image's own
+ * CMD/ENTRYPOINT/env.
+ */
+export interface ContainerPolicy {
+  args: string[];
+  cmdOverride: string[];
+  env: EnvVar[];
+  envOverride: EnvVar[];
+  restartPolicy: string;
+}
+
+/** An empty ContainerPolicy — defers entirely to the image defaults. */
+export const EMPTY_CONTAINER_POLICY: ContainerPolicy = {
+  args: [],
+  cmdOverride: [],
+  env: [],
+  envOverride: [],
+  restartPolicy: "",
+};
+
 export interface Release {
   rmsRelease: {
     artifacts: Array<{
@@ -258,6 +298,10 @@ export interface Release {
   };
   publicEnv: Uint8Array; // JSON bytes
   encryptedEnv: Uint8Array; // Encrypted string bytes
+  // Container runtime policy (AppController v1.5.0+ `Release.containerPolicy`).
+  // Optional in the SDK type for backwards-compatible construction; the encoder
+  // substitutes EMPTY_CONTAINER_POLICY when callers omit it.
+  containerPolicy?: ContainerPolicy;
 }
 
 export interface ParsedEnvironment {
