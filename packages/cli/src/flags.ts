@@ -110,7 +110,9 @@ export async function applyTxOverrides(
     } else {
       const parsed = Number(nonceStr);
       if (!Number.isInteger(parsed) || parsed < 0) {
-        throw new Error(`Invalid nonce: "${nonceStr}". Must be a non-negative integer or "latest".`);
+        throw new Error(
+          `Invalid nonce: "${nonceStr}". Must be a non-negative integer or "latest".`,
+        );
       }
       nonce = parsed;
     }

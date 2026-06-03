@@ -12,7 +12,12 @@ const NPM_REGISTRY_URL = "https://registry.npmjs.org/@layr-labs/ecloud-cli";
 const VERSION_CHECK_TIMEOUT_MS = 3000;
 const VERSION_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
-function parseVersion(v: string): { major: number; minor: number; patch: number; prerelease: string | null } {
+function parseVersion(v: string): {
+  major: number;
+  minor: number;
+  patch: number;
+  prerelease: string | null;
+} {
   const clean = v.replace(/^v/, "");
   const [core, ...rest] = clean.split("-");
   const [major = 0, minor = 0, patch = 0] = core.split(".").map(Number);

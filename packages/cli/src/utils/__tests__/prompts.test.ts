@@ -277,9 +277,7 @@ describe("isNonInteractive (RND-589 detection)", () => {
 
 describe("collectMissingRequiredInputs (RND-589 all-at-once)", () => {
   it("returns [] when image source + name present", () => {
-    expect(
-      collectMissingRequiredInputs({ imageRef: "r", name: "n" }, "name"),
-    ).toEqual([]);
+    expect(collectMissingRequiredInputs({ imageRef: "r", name: "n" }, "name")).toEqual([]);
   });
   it("lists both missing image source and name", () => {
     const m = collectMissingRequiredInputs({ verifiable: false }, "name");
