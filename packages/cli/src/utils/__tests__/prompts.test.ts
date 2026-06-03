@@ -204,18 +204,42 @@ describe("non-interactive flag defaulting (RND-564)", () => {
       { sku: "g1-standard-4t", friendly_name: "Standard 4t", description: "4 vCPU, TDX" },
     ];
 
-    it("still errors in non-TTY mode when no instance type is provided (no safe default)", async () => {
-      process.stdin.isTTY = false;
-      await expect(getInstanceTypeInteractive(undefined, "", types)).rejects.toThrow(
-        /Cannot prompt in non-interactive mode.*--instance-type/,
-      );
-    });
-
     it("returns an explicitly provided, valid instance type in non-TTY mode", async () => {
       process.stdin.isTTY = false;
       await expect(getInstanceTypeInteractive("g1-standard-2s", "", types)).resolves.toBe(
         "g1-standard-2s",
       );
+    });
+
+    // RND-589: deploy with no instance type defaults to g1-standard-2s in non-interactive mode.
+    it("defaults to g1-standard-2s in non-interactive deploy when available", async () => {
+      process.stdin.isTTY = false;
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      await expect(getInstanceTypeInteractive(undefined, "", types, true)).resolves.toBe(
+        "g1-standard-2s",
+      );
+      expect(warn).toHaveBeenCalledWith(expect.stringMatching(/--instance-type.*g1-standard-2s/));
+    });
+
+    // RND-589: upgrade reuses the currently pinned type (defaultSKU) instead of prompting.
+    it("reuses defaultSKU (pinned type) in non-interactive upgrade", async () => {
+      process.stdin.isTTY = false;
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      await expect(
+        getInstanceTypeInteractive(undefined, "g1-standard-4t", types, true),
+      ).resolves.toBe("g1-standard-4t");
+    });
+
+    it("errors in non-interactive when the default SKU is not offered", async () => {
+      process.stdin.isTTY = false;
+      await expect(
+        getInstanceTypeInteractive(
+          undefined,
+          "",
+          [{ sku: "g1-micro-1v", friendly_name: "m", description: "" }],
+          true,
+        ),
+      ).rejects.toThrow(/instance-type/);
     });
   });
 });
