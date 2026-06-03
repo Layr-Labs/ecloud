@@ -110,6 +110,15 @@ const hook: Hook<"init"> = async function (options) {
     ),
   );
 
+  // Non-interactive (CI / no TTY): never block the command on an update prompt.
+  // The hook runs before the command parses flags, so it cannot see
+  // --non-interactive; CI and isTTY cover the agent/CI failure mode (RND-589).
+  if (process.env.CI === "true" || !process.stdin.isTTY) {
+    globalConfig.last_version_check = now;
+    saveGlobalConfig(globalConfig);
+    return;
+  }
+
   const shouldUpdate = await confirm({
     message: "Would you like to update now?",
     default: true,
