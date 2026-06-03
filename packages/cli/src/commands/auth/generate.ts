@@ -1,19 +1,27 @@
 /**
  * Auth Generate Command
  *
- * Generate a new private key and optionally store it in OS keyring
+ * Generate a new private key and optionally store it in OS keyring.
+ * This only manages the signing key — use `auth identity new` to create identities.
  */
 
 import { Command, Flags } from "@oclif/core";
 import { confirm } from "@inquirer/prompts";
-import { generateNewPrivateKey, storePrivateKey, keyExists } from "@layr-labs/ecloud-sdk";
+import {
+  generateNewPrivateKey,
+  storePrivateKey,
+  keyExists,
+  getPrivateKeyWithSource,
+  getAddressFromPrivateKey,
+} from "@layr-labs/ecloud-sdk";
 import { showPrivateKey, displayWarning } from "../../utils/security";
 import { withTelemetry } from "../../telemetry";
+import { replaceAllIdentities, setActiveIdentity } from "../../utils/globalConfig";
 
 export default class AuthGenerate extends Command {
-  static description = "Generate a new private key";
+  static description = "Generate a new private key and store in OS keyring";
 
-  static aliases = ["auth:gen", "auth:new"];
+  static aliases = ["auth:gen"];
 
   static examples = [
     "<%= config.bin %> <%= command.id %>",
@@ -22,7 +30,7 @@ export default class AuthGenerate extends Command {
 
   static flags = {
     store: Flags.boolean({
-      description: "Automatically store in OS keyring",
+      description: "Automatically store in OS keyring (skip prompt)",
       default: false,
     }),
   };
@@ -31,11 +39,36 @@ export default class AuthGenerate extends Command {
     return withTelemetry(this, async () => {
       const { flags } = await this.parse(AuthGenerate);
 
-      // Generate new key
-      this.log("Generating new private key...\n");
+      let shouldStore = flags.store;
+      if (!shouldStore) {
+        shouldStore = await confirm({ message: "Store this key in your OS keyring?", default: true });
+      }
+
+      // Check for existing key BEFORE generating a new one
+      if (shouldStore) {
+        const exists = await keyExists();
+        if (exists) {
+          const existing = await getPrivateKeyWithSource({ privateKey: undefined });
+          if (existing) {
+            const existingAddress = getAddressFromPrivateKey(existing.key);
+            displayWarning([
+              "A signing key already exists.",
+              `Address: ${existingAddress}`,
+              "",
+              "Replacing it will clear all current identities.",
+            ]);
+          }
+          const confirmReplace = await confirm({ message: "Replace existing key?", default: false });
+          if (!confirmReplace) {
+            this.log("\nCancelled.");
+            return;
+          }
+        }
+      }
+
+      // Generate the new key
       const { privateKey, address } = generateNewPrivateKey();
 
-      // Display key securely
       const content = `
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 A new private key was generated for you.
@@ -56,54 +89,23 @@ Press 'q' to exit and continue...
 `;
 
       const displayed = await showPrivateKey(content);
-
       if (!displayed) {
         this.log("Key generation cancelled.");
         return;
       }
 
-      // Ask about storing
-      let shouldStore = flags.store;
-
-      if (!shouldStore && displayed) {
-        shouldStore = await confirm({
-          message: "Store this key in your OS keyring?",
-          default: true,
-        });
-      }
-
       if (shouldStore) {
-        // Check if key already exists
-        const exists = await keyExists();
-
-        if (exists) {
-          displayWarning([
-            `WARNING: A private key for ecloud already exists!`,
-            "If you continue, the existing key will be PERMANENTLY REPLACED.",
-            "This cannot be undone!",
-            "",
-            "The previous key will be lost forever if you haven't backed it up.",
-          ]);
-
-          const confirmReplace = await confirm({
-            message: `Replace existing key for ecloud?`,
-            default: false,
-          });
-
-          if (!confirmReplace) {
-            this.log(
-              "\nKey not stored. If you did not save your new key when it was displayed, it is now lost and cannot be recovered.",
-            );
-            return;
-          }
-        }
-
-        // Store the key
         try {
           await storePrivateKey(privateKey);
+          // New signing key — wipe all identities (they belonged to the previous key)
+          replaceAllIdentities([{ type: "eoa", address }]);
+          for (const env of ["sepolia", "sepolia-dev", "mainnet-alpha"]) {
+            setActiveIdentity(env, address);
+          }
           this.log(`\n✓ Private key stored in OS keyring`);
           this.log(`✓ Address: ${address}`);
           this.log("\nYou can now use ecloud commands without --private-key flag.");
+          this.log("Run 'ecloud auth identity new' to create a Safe or Timelock identity.");
         } catch (err: any) {
           this.error(`Failed to store key: ${err.message}`);
         }

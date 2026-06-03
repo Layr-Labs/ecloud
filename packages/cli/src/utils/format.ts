@@ -176,6 +176,30 @@ export function formatAppDisplay(options: FormatAppDisplayOptions): FormattedApp
 }
 
 /**
+ * Convert a timelock minimum delay (seconds as bigint) to a human-readable string.
+ * Uses the largest even unit without remainder, falling back to seconds.
+ * Examples: 3600n → "1h", 86400n → "1d", 90000n → "25h", 60n → "1m", 45n → "45s"
+ */
+export function formatDelay(seconds: bigint): string {
+  const s = Number(seconds);
+  if (s % 86400 === 0 && s >= 86400) return `${s / 86400}d`;
+  if (s % 3600 === 0 && s >= 3600) return `${s / 3600}h`;
+  if (s % 60 === 0 && s >= 60) return `${s / 60}m`;
+  return `${s}s`;
+}
+
+export function formatCountdown(seconds: bigint): string {
+  const s = Number(seconds);
+  if (s <= 0) return "now";
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const rem = s % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${rem}s`;
+  return `${rem}s`;
+}
+
+/**
  * Print formatted app display with given indent
  * @param display - Formatted app display data
  * @param log - Log function (e.g., this.log from Command)

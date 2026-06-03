@@ -34,6 +34,13 @@ import {
   isDelegated,
   getBillingType,
   getAppsByBillingAccount,
+  getAppTimelocked,
+  transferAppOwnership,
+  grantTeamRole as grantTeamRoleCaller,
+  revokeTeamRole as revokeTeamRoleCaller,
+  getTeamRoleMembers as getTeamRoleMembersCaller,
+  getAppOwner,
+  TeamRole,
   type GasEstimate,
   type AppConfig,
 } from "../../../common/contract/caller";
@@ -63,6 +70,9 @@ const CONTROLLER_ABI = parseAbi([
   "function startApp(address appId)",
   "function stopApp(address appId)",
   "function terminateApp(address appId)",
+  "function transferOwnership(address appId, address newOwner)",
+  "function grantTeamRole(address team, uint8 role, address account)",
+  "function revokeTeamRole(address team, uint8 role, address account)",
 ]);
 
 /**
@@ -95,6 +105,39 @@ export function encodeTerminateAppData(appId: AppId): Hex {
     abi: CONTROLLER_ABI,
     functionName: "terminateApp",
     args: [appId],
+  });
+}
+
+/**
+ * Encode transferOwnership call data for gas estimation / identity routing
+ */
+export function encodeTransferOwnershipData(appId: AppId, newOwner: Address): Hex {
+  return encodeFunctionData({
+    abi: CONTROLLER_ABI,
+    functionName: "transferOwnership",
+    args: [appId, newOwner],
+  });
+}
+
+/**
+ * Encode grantTeamRole call data for gas estimation / identity routing
+ */
+export function encodeGrantTeamRoleData(team: Address, role: TeamRole, account: Address): Hex {
+  return encodeFunctionData({
+    abi: CONTROLLER_ABI,
+    functionName: "grantTeamRole",
+    args: [team, role, account],
+  });
+}
+
+/**
+ * Encode revokeTeamRole call data for identity routing
+ */
+export function encodeRevokeTeamRoleData(team: Address, role: TeamRole, account: Address): Hex {
+  return encodeFunctionData({
+    abi: CONTROLLER_ABI,
+    functionName: "revokeTeamRole",
+    args: [team, role, account],
   });
 }
 
@@ -167,6 +210,15 @@ export interface AppModule {
   // Delegation
   isDelegated: () => Promise<boolean>;
   undelegate: () => Promise<{ tx: Hex | false }>;
+
+  // Governance
+  isTimelocked: (appId: AppId) => Promise<boolean>;
+  transferOwnership: (appId: AppId, newOwner: Address, opts?: { gas?: GasEstimate }) => Promise<{ tx: Hex }>;
+
+  // Team role management
+  grantTeamRole: (appId: AppId, role: TeamRole, account: Address, opts?: { gas?: GasEstimate }) => Promise<{ tx: Hex }>;
+  revokeTeamRole: (appId: AppId, role: TeamRole, account: Address, opts?: { gas?: GasEstimate }) => Promise<{ tx: Hex }>;
+  getTeamRoleMembers: (appId: AppId, role: TeamRole) => Promise<Address[]>;
 }
 
 export interface AppModuleConfig {
@@ -567,6 +619,91 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
           return { tx };
         },
       );
+    },
+
+    async isTimelocked(appId) {
+      return getAppTimelocked(publicClient, environment, appId as Address);
+    },
+
+    async transferOwnership(appId, newOwner, opts) {
+      return withSDKTelemetry(
+        {
+          functionName: "transferOwnership",
+          skipTelemetry,
+          properties: { environment: ctx.environment },
+        },
+        async () => {
+          const tx = await transferAppOwnership(
+            {
+              walletClient,
+              publicClient,
+              environmentConfig: environment,
+              appID: appId as Address,
+              newOwner: newOwner as Address,
+              gas: opts?.gas,
+            },
+            logger,
+          );
+          return { tx };
+        },
+      );
+    },
+
+    async grantTeamRole(appId, role, account, opts) {
+      return withSDKTelemetry(
+        {
+          functionName: "grantTeamRole",
+          skipTelemetry,
+          properties: { environment: ctx.environment },
+        },
+        async () => {
+          const team = await getAppOwner(publicClient, environment, appId as Address);
+          const tx = await grantTeamRoleCaller(
+            {
+              walletClient,
+              publicClient,
+              environmentConfig: environment,
+              team,
+              role,
+              account: account as Address,
+              gas: opts?.gas,
+            },
+            logger,
+          );
+          return { tx };
+        },
+      );
+    },
+
+    async revokeTeamRole(appId, role, account, opts) {
+      return withSDKTelemetry(
+        {
+          functionName: "revokeTeamRole",
+          skipTelemetry,
+          properties: { environment: ctx.environment },
+        },
+        async () => {
+          const team = await getAppOwner(publicClient, environment, appId as Address);
+          const tx = await revokeTeamRoleCaller(
+            {
+              walletClient,
+              publicClient,
+              environmentConfig: environment,
+              team,
+              role,
+              account: account as Address,
+              gas: opts?.gas,
+            },
+            logger,
+          );
+          return { tx };
+        },
+      );
+    },
+
+    async getTeamRoleMembers(appId, role) {
+      const team = await getAppOwner(publicClient, environment, appId as Address);
+      return getTeamRoleMembersCaller(publicClient, environment, team, role);
     },
   };
 }

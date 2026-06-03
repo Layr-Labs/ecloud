@@ -4,13 +4,17 @@ import {
   getAppLatestReleaseBlockNumbers,
   getBlockTimestamps,
   UserApiClient,
+  getPendingTimelockOps,
+  type PendingTimelockOp,
 } from "@layr-labs/ecloud-sdk";
 import { commonFlags, validateCommonFlags } from "../../../flags";
 import { getOrPromptAppID } from "../../../utils/prompts";
-import { formatAppDisplay, printAppDisplay } from "../../../utils/format";
+import { formatAppDisplay, printAppDisplay, formatCountdown } from "../../../utils/format";
 import { getClientId } from "../../../utils/version";
 import { getDashboardUrl } from "../../../utils/dashboard";
 import { createViemClients } from "../../../utils/viemClients";
+import { getIdentities } from "../../../utils/globalConfig";
+import { identityForActiveContext } from "../../../utils/apiIdentity";
 import { Address, type PublicClient } from "viem";
 import chalk from "chalk";
 
@@ -66,6 +70,7 @@ export default class AppInfo extends Command {
     });
     const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, {
       clientId: getClientId(),
+      identities: identityForActiveContext(environment),
     });
 
     if (flags.watch) {
@@ -174,6 +179,33 @@ export default class AppInfo extends Command {
     // Show dashboard link
     const dashboardUrl = getDashboardUrl(environmentConfig.name, appID);
     this.log(`  Dashboard:      ${chalk.blue.underline(dashboardUrl)}`);
+
+    // Show pending Timelock ops for this app
+    const identities = getIdentities();
+    const timelockIdentities = identities.filter((id) => id.type === "timelock");
+    for (const tlId of timelockIdentities) {
+      try {
+        const ops = await getPendingTimelockOps(publicClient, tlId.address as Address);
+        const appOps = ops.filter((op) => {
+          const match = op.description.match(/\((0x[0-9a-fA-F]{40})\)/);
+          return match && match[1].toLowerCase() === appID.toLowerCase();
+        });
+        if (appOps.length > 0) {
+          this.log("");
+          this.log(`  ${chalk.bold("Pending operations:")}`);
+          for (const op of appOps) {
+            const now = BigInt(Math.floor(Date.now() / 1000));
+            const status = op.ready
+              ? chalk.green("ready to execute")
+              : `executable in ${formatCountdown(op.executableAt - now)}`;
+            this.log(`    ⏳ ${op.description}  [${status}]`);
+            this.log(`       id: ${op.id}`);
+          }
+        }
+      } catch {
+        // skip
+      }
+    }
 
     console.log();
   }

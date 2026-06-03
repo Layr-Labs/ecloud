@@ -53,6 +53,21 @@ export const commonFlags = {
   }),
 };
 
+export const timelockFlags = {
+  execute: Flags.string({
+    description: "Execute a ready Timelock operation by its op ID",
+    required: false,
+  }),
+  cancel: Flags.string({
+    description: "Cancel a pending Timelock operation by its op ID",
+    required: false,
+  }),
+  delay: Flags.string({
+    description: "Override Timelock delay (e.g., 10m, 1h, 2d). Must be >= minDelay. Defaults to minDelay.",
+    required: false,
+  }),
+};
+
 /**
  * Apply user-provided gas and nonce overrides to an estimated GasEstimate.
  * If the user passed --max-fee-per-gas or --max-priority-fee, those values

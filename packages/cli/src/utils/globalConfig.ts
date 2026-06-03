@@ -23,6 +23,21 @@ export interface ProfileCacheEntry {
   profiles: { [appId: string]: string }; // appId -> profile name
 }
 
+export interface StoredIdentity {
+  type: "eoa" | "safe" | "timelock";
+  address: string;
+  /** Present for safe/timelock — the chain they were deployed on */
+  environment?: string;
+  /** Timelock minimum delay in human-readable form, e.g. "24h" */
+  delay?: string;
+  /** For Timelock(Safe): the underlying Safe address */
+  safeAddress?: string;
+  /** For Safe: signing threshold, e.g. 2 */
+  threshold?: number;
+  /** For Safe: owner addresses */
+  owners?: string[];
+}
+
 export interface GlobalConfig {
   first_run?: boolean;
   telemetry_enabled?: boolean;
@@ -37,6 +52,12 @@ export interface GlobalConfig {
     [environment: string]: {
       [directoryPath: string]: string;
     };
+  };
+  /** All known identities (EOA, Safe, Timelock) */
+  identities?: StoredIdentity[];
+  /** Active identity address per environment. EOA address means EOA flow. */
+  active_identity?: {
+    [environment: string]: string;
   };
 }
 
@@ -370,4 +391,115 @@ export function saveUserUUID(userUUID: string): void {
     config.user_uuid = userUUID;
     saveGlobalConfig(config);
   }
+}
+
+// ==================== Identity Functions ====================
+
+/**
+ * Get all stored identities
+ */
+export function getIdentities(): StoredIdentity[] {
+  const config = loadGlobalConfig();
+  return config.identities || [];
+}
+
+/**
+ * Add an identity to the list (no-op if address already exists)
+ */
+export function addIdentity(identity: StoredIdentity): void {
+  const config = loadGlobalConfig();
+  if (!config.identities) config.identities = [];
+  const exists = config.identities.some(
+    (id) => id.address.toLowerCase() === identity.address.toLowerCase(),
+  );
+  if (!exists) {
+    config.identities.push(identity);
+  }
+  saveGlobalConfig(config);
+}
+
+/**
+ * Get the active identity address for an environment, or null if none set
+ */
+export function getActiveIdentityAddress(environment: string): string | null {
+  const config = loadGlobalConfig();
+  return config.active_identity?.[environment] ?? null;
+}
+
+/**
+ * Get the full active identity object for an environment, or null
+ */
+export function getActiveIdentity(environment: string): StoredIdentity | null {
+  const address = getActiveIdentityAddress(environment);
+  if (!address) return null;
+  const config = loadGlobalConfig();
+  return (
+    config.identities?.find((id) => id.address.toLowerCase() === address.toLowerCase()) ?? null
+  );
+}
+
+/**
+ * Set the active identity for an environment
+ */
+export function setActiveIdentity(environment: string, address: string): void {
+  const config = loadGlobalConfig();
+  if (!config.active_identity) config.active_identity = {};
+  config.active_identity[environment] = address;
+  saveGlobalConfig(config);
+}
+
+/**
+ * Replace all stored identities with a new list (used when switching signing key)
+ */
+export function replaceAllIdentities(identities: StoredIdentity[]): void {
+  const config = loadGlobalConfig();
+  config.identities = identities;
+  saveGlobalConfig(config);
+}
+
+/**
+ * Remove a single identity by address
+ */
+export function removeIdentity(address: string): void {
+  const config = loadGlobalConfig();
+  config.identities = (config.identities || []).filter(
+    (id) => id.address.toLowerCase() !== address.toLowerCase(),
+  );
+  saveGlobalConfig(config);
+}
+
+/**
+ * Clear the active identity for an environment (logout)
+ */
+export function clearActiveIdentity(environment: string): void {
+  const config = loadGlobalConfig();
+  if (config.active_identity) {
+    delete config.active_identity[environment];
+    saveGlobalConfig(config);
+  }
+}
+
+/**
+ * Format a stored identity for display
+ */
+export function formatIdentity(id: StoredIdentity, verbose = false): string {
+  const short = verbose ? id.address : id.address.slice(0, 6) + "..." + id.address.slice(-4);
+  if (id.type === "eoa") return `${short}  (EOA)`;
+  if (id.type === "safe") {
+    let safeInfo = "Safe";
+    if (id.threshold != null && id.owners != null) {
+      const ownerSummary = id.owners.length <= 3
+        ? id.owners.map((o) => verbose ? o : `${o.slice(0, 6)}…${o.slice(-4)}`).join(", ")
+        : `${id.owners.slice(0, 2).map((o) => verbose ? o : `${o.slice(0, 6)}…${o.slice(-4)}`).join(", ")} +${id.owners.length - 2} more`;
+      safeInfo = `Safe ${id.threshold}/${id.owners.length} · ${ownerSummary}`;
+    }
+    return `${short}  (${safeInfo}${id.environment ? ` · ${id.environment}` : ""})`;
+  }
+  if (id.type === "timelock") {
+    const via = id.safeAddress
+      ? `via Safe ${verbose ? id.safeAddress : id.safeAddress.slice(0, 6) + "..." + id.safeAddress.slice(-4)}`
+      : "via EOA";
+    return `${short}  (Timelock ${id.delay ?? ""} · ${via}${id.environment ? ` · ${id.environment}` : ""})`;
+  }
+  return short;
 }

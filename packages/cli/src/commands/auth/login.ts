@@ -1,196 +1,252 @@
 /**
  * Auth Login Command
  *
- * Store an existing private key in OS keyring
+ * Import an existing private key into OS keyring.
+ * Automatically discovers associated Timelocks and Safes on-chain.
  */
 
-import { Command, Flags } from "@oclif/core";
+import { Command } from "@oclif/core";
 import { confirm, select } from "@inquirer/prompts";
 import {
   storePrivateKey,
   keyExists,
   validatePrivateKey,
   getAddressFromPrivateKey,
+  getPrivateKeyWithSource,
   getLegacyKeys,
   getLegacyPrivateKey,
   deleteLegacyPrivateKey,
+  getEnvironmentConfig,
+  getTimelocksByDeployer,
+  getSafesByDeployer,
   type LegacyKey,
 } from "@layr-labs/ecloud-sdk";
 import { getHiddenInput, displayWarning } from "../../utils/security";
 import { withTelemetry } from "../../telemetry";
+import { commonFlags } from "../../flags";
+import { fetchSafeInfo, fetchTimelockDelay } from "../../utils/contractAbis";
+import {
+  getIdentities,
+  addIdentity,
+  replaceAllIdentities,
+  setActiveIdentity,
+} from "../../utils/globalConfig";
+import { createPublicClientOnly } from "../../utils/viemClients";
+import type { Address } from "viem";
 
 export default class AuthLogin extends Command {
-  static description = "Store your private key in OS keyring";
+  static description = "Import an existing private key into OS keyring";
 
-  static examples = [
-    "<%= config.bin %> auth login",
-    "<%= config.bin %> auth login --private-key 0x...",
-    "<%= config.bin %> auth login --private-key 0x... --force",
-  ];
+  static examples = ["<%= config.bin %> <%= command.id %>"];
 
   static flags = {
-    "private-key": Flags.string({
-      description: "Private key to store (skips interactive prompt)",
-      env: "ECLOUD_PRIVATE_KEY",
-    }),
-    force: Flags.boolean({
-      description: "Skip all confirmation prompts",
-      default: false,
-    }),
+    environment: commonFlags.environment,
+    "rpc-url": commonFlags["rpc-url"],
   };
 
   async run(): Promise<void> {
     return withTelemetry(this, async () => {
       const { flags } = await this.parse(AuthLogin);
-      const isNonInteractive = !!flags["private-key"];
+      const environment = flags.environment as string;
 
-      // Check if key already exists
+      // Check for existing key
       const exists = await keyExists();
-
       if (exists) {
-        if (isNonInteractive) {
-          if (!flags.force) {
-            this.error(
-              "A private key already exists. Use --force to replace it.",
-            );
-          }
-        } else {
+        const existing = await getPrivateKeyWithSource({ privateKey: undefined });
+        if (existing) {
+          const existingAddress = getAddressFromPrivateKey(existing.key);
           displayWarning([
-            "WARNING: A private key for ecloud already exists!",
-            "Replacing it will cause PERMANENT DATA LOSS if not backed up.",
-            "The previous key will be lost forever.",
+            "A signing key already exists.",
+            `Address: ${existingAddress}`,
+            "",
+            "Replacing it will clear all current identities.",
           ]);
-
-          const confirmReplace = await confirm({
-            message: "Replace existing key?",
-            default: false,
-          });
-
-          if (!confirmReplace) {
-            this.log("\nLogin cancelled.");
-            return;
-          }
+        }
+        const confirmReplace = await confirm({ message: "Replace current signing key?", default: false });
+        if (!confirmReplace) {
+          this.log("\nCancelled.");
+          return;
         }
       }
 
+      // Check for legacy keys from eigenx-cli
+      const legacyKeys = await getLegacyKeys();
       let privateKey: string | null = null;
       let selectedKey: LegacyKey | null = null;
 
-      if (isNonInteractive) {
-        // Use flag value directly
-        privateKey = flags["private-key"]!;
-      } else {
-        // Check for legacy keys from eigenx-cli
-        const legacyKeys = await getLegacyKeys();
+      if (legacyKeys.length > 0) {
+        this.log("\nFound legacy keys from eigenx-cli:");
+        this.log("");
 
-        if (legacyKeys.length > 0) {
-          this.log("\nFound legacy keys from eigenx-cli:");
+        for (const key of legacyKeys) {
+          this.log(`  Address: ${key.address}`);
+          this.log(`  Environment: ${key.environment}`);
+          this.log(`  Source: ${key.source}`);
           this.log("");
+        }
 
-          // Display legacy keys
-          for (const key of legacyKeys) {
-            this.log(`  Address: ${key.address}`);
-            this.log(`  Environment: ${key.environment}`);
-            this.log(`  Source: ${key.source}`);
-            this.log("");
-          }
+        const importLegacy = await confirm({
+          message: "Would you like to import one of these legacy keys?",
+          default: false,
+        });
 
-          const importLegacy = await confirm({
-            message: "Would you like to import one of these legacy keys?",
-            default: false,
+        if (importLegacy) {
+          const choices = legacyKeys.map((key) => ({
+            name: `${key.address} (${key.environment} - ${key.source})`,
+            value: key,
+          }));
+
+          selectedKey = await select<LegacyKey>({
+            message: "Select a key to import:",
+            choices,
           });
 
-          if (importLegacy) {
-            // Create choices for selection
-            const choices = legacyKeys.map((key) => ({
-              name: `${key.address} (${key.environment} - ${key.source})`,
-              value: key,
-            }));
+          privateKey = await getLegacyPrivateKey(selectedKey.environment, selectedKey.source);
 
-            selectedKey = await select<LegacyKey>({
-              message: "Select a key to import:",
-              choices,
-            });
-
-            // Retrieve the actual private key
-            privateKey = await getLegacyPrivateKey(selectedKey.environment, selectedKey.source);
-
-            if (!privateKey) {
-              this.error(`Failed to retrieve legacy key for ${selectedKey.environment}`);
-            }
-
-            this.log(`\nImporting key from ${selectedKey.source}:${selectedKey.environment}`);
+          if (!privateKey) {
+            this.error(`Failed to retrieve legacy key for ${selectedKey.environment}`);
           }
-        }
 
-        // If no legacy key was selected, prompt for private key input
-        if (!privateKey) {
-          privateKey = await getHiddenInput("Enter your private key:");
-          privateKey = privateKey.trim();
+          this.log(`\nImporting key from ${selectedKey.source}:${selectedKey.environment}`);
         }
+      }
+
+      // If no legacy key was selected, prompt for private key input
+      if (!privateKey) {
+        privateKey = await getHiddenInput("Enter your private key:");
+        privateKey = privateKey.trim();
       }
 
       if (!validatePrivateKey(privateKey)) {
         this.error("Invalid private key format. Please check and try again.");
       }
 
-      // Derive address for confirmation
       const address = getAddressFromPrivateKey(privateKey);
-
       this.log(`\nAddress: ${address}`);
 
-      if (!isNonInteractive) {
-        const confirmStore = await confirm({
-          message: "Store this key in OS keyring?",
-          default: true,
-        });
+      const confirmStore = await confirm({
+        message: "Store this key in OS keyring?",
+        default: true,
+      });
 
-        if (!confirmStore) {
-          this.log("\nLogin cancelled.");
-          return;
-        }
+      if (!confirmStore) {
+        this.log("\nLogin cancelled.");
+        return;
       }
 
-      // Store in keyring
       try {
         await storePrivateKey(privateKey);
         this.log("\n✓ Private key stored in OS keyring");
         this.log(`✓ Address: ${address}`);
-        this.log("\nNote: This key will be used for all environments (mainnet, sepolia, etc.)");
-        this.log("You can now use ecloud commands without --private-key flag.");
 
-        // Ask if user wants to delete the legacy key (only if save was successful)
+        // New signing key — wipe old identities, set EOA as default
+        replaceAllIdentities([{ type: "eoa", address }]);
+        setActiveIdentity(environment, address);
+
+        // Discover all Safes and Timelocks deployed by this EOA via SafeTimelockFactory.
+        // Discovery order:
+        //   1. Safes deployed by EOA
+        //   2. Timelocks deployed by EOA directly (EOA → Timelock)
+        //   3. Timelocks deployed by each Safe (Safe → Timelock)
+        this.log(`\nScanning chain for associated identities...`);
+        try {
+          const publicClient = createPublicClientOnly({ environment, rpcUrl: flags["rpc-url"] });
+          const environmentConfig = getEnvironmentConfig(environment);
+
+          // Step 1 + 2: fetch Safes and direct Timelocks in parallel
+          const [safes, directTimelocks] = await Promise.all([
+            getSafesByDeployer(publicClient, environmentConfig, address as Address),
+            getTimelocksByDeployer(publicClient, environmentConfig, address as Address),
+          ]);
+
+          // Step 3: for each Safe, fetch Timelocks it deployed
+          const safeTimelockArrays = await Promise.all(
+            safes.map((safe) => getTimelocksByDeployer(publicClient, environmentConfig, safe as Address)),
+          );
+          const safeTimelocks = safeTimelockArrays.flat();
+
+          if (safes.length === 0 && directTimelocks.length === 0) {
+            this.log(`No factory-deployed identities found for this EOA on ${environment}`);
+          }
+
+          for (const safe of safes) {
+            const alreadyKnown = getIdentities().some(
+              (id) => id.address.toLowerCase() === safe.toLowerCase(),
+            );
+            if (alreadyKnown) {
+              this.log(`Safe ${safe}  (already in identities)`);
+            } else {
+              this.log(`Found Safe: ${safe}`);
+              const addIt = await confirm({ message: `Add this Safe to your identities?`, default: true });
+              if (addIt) {
+                const { threshold, owners } = await fetchSafeInfo(publicClient, safe as Address);
+                addIdentity({ type: "safe", address: safe, environment, threshold, owners });
+                this.log(`✓ Safe added to identities`);
+              }
+            }
+          }
+
+          // Timelocks: direct (EOA → Timelock) first, then Safe-deployed (Safe → Timelock)
+          for (const timelock of directTimelocks) {
+            const alreadyKnown = getIdentities().some(
+              (id) => id.address.toLowerCase() === timelock.toLowerCase(),
+            );
+            if (alreadyKnown) {
+              this.log(`Timelock ${timelock}  (already in identities)`);
+            } else {
+              this.log(`Found Timelock: ${timelock}`);
+              const addIt = await confirm({ message: `Add this Timelock to your identities?`, default: true });
+              if (addIt) {
+                const delay = await fetchTimelockDelay(publicClient, timelock as Address);
+                addIdentity({ type: "timelock", address: timelock, delay, environment });
+                this.log(`✓ Timelock added to identities (delay: ${delay})`);
+              }
+            }
+          }
+
+          for (const timelock of safeTimelocks) {
+            const safe = safes.find((s) =>
+              safeTimelockArrays[safes.indexOf(s)]?.some((t) => t.toLowerCase() === timelock.toLowerCase()),
+            );
+            const alreadyKnown = getIdentities().some(
+              (id) => id.address.toLowerCase() === timelock.toLowerCase(),
+            );
+            if (alreadyKnown) {
+              this.log(`Timelock ${timelock}  (already in identities)`);
+            } else {
+              this.log(`Found Timelock: ${timelock}${safe ? ` (deployed by Safe ${safe})` : ""}`);
+              const addIt = await confirm({ message: `Add this Timelock to your identities?`, default: true });
+              if (addIt) {
+                const delay = await fetchTimelockDelay(publicClient, timelock as Address);
+                addIdentity({ type: "timelock", address: timelock, delay, safeAddress: safe, environment });
+                this.log(`✓ Timelock added to identities (delay: ${delay})`);
+              }
+            }
+          }
+        } catch {
+          this.log(`(Identity scan skipped — chain not reachable)`);
+        }
+
+        // Clean up legacy key if imported
         if (selectedKey) {
           this.log("");
-
-          const shouldDelete = flags.force || await confirm({
+          const confirmDelete = await confirm({
             message: `Delete the legacy key from ${selectedKey.source}:${selectedKey.environment}?`,
             default: false,
           });
 
-          if (shouldDelete) {
-            const deleted = await deleteLegacyPrivateKey(
-              selectedKey.environment,
-              selectedKey.source,
-            );
-
+          if (confirmDelete) {
+            const deleted = await deleteLegacyPrivateKey(selectedKey.environment, selectedKey.source);
             if (deleted) {
-              this.log(
-                `\n✓ Legacy key deleted from ${selectedKey.source}:${selectedKey.environment}`,
-              );
-              this.log("\nNote: The key is now only stored in ecloud. You can still use it with");
-              this.log("eigenx-cli by providing --private-key flag or EIGENX_PRIVATE_KEY env var.");
+              this.log(`\n✓ Legacy key deleted from ${selectedKey.source}:${selectedKey.environment}`);
             } else {
-              this.log(
-                `\n⚠️  Failed to delete legacy key from ${selectedKey.source}:${selectedKey.environment}`,
-              );
-              this.log("The key may have already been removed.");
+              this.log(`\n⚠️  Failed to delete legacy key`);
             }
-          } else {
-            this.log(`\nLegacy key kept in ${selectedKey.source}:${selectedKey.environment}`);
-            this.log("You can delete it later using 'eigenx auth logout' if needed.");
           }
         }
+
+        this.log("\nRun 'ecloud auth identity new' to create a Safe or Timelock identity.");
+        this.log("Run 'ecloud auth identity select' to switch active identity.");
       } catch (err: any) {
         this.error(`Failed to store key: ${err.message}`);
       }

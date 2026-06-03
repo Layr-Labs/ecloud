@@ -19,7 +19,7 @@
  */
 
 import { executeBatch, checkERC7702Delegation } from "./eip7702";
-import { Address, Hex, encodeFunctionData, decodeErrorResult, bytesToHex } from "viem";
+import { Address, Hex, encodeFunctionData, decodeErrorResult, bytesToHex, decodeFunctionData } from "viem";
 import type { WalletClient, PublicClient } from "viem";
 
 import {
@@ -36,6 +36,8 @@ import { getChainFromID } from "../utils/helpers";
 
 import AppControllerABI from "../abis/AppController.json";
 import PermissionControllerABI from "../abis/PermissionController.json";
+import SafeTimelockFactoryABI from "../abis/SafeTimelockFactory.json";
+import TimelockControllerABI from "../abis/TimelockController.json";
 
 /**
  * Gas estimation result
@@ -236,7 +238,6 @@ export async function prepareDeployBatch(
 
   // Verify the app ID calculation matches what createApp will deploy
   logger.debug(`App ID calculated: ${appId}`);
-  logger.debug(`This address will be used for acceptAdmin call`);
 
   // 2. Pack create app call
   const saltHexString = bytesToHex(salt).slice(2);
@@ -263,15 +264,7 @@ export async function prepareDeployBatch(
     args: [saltHex, releaseForViem],
   });
 
-  // 3. Pack accept admin call
-  const acceptAdminData = encodeFunctionData({
-    abi: PermissionControllerABI,
-    functionName: "acceptAdmin",
-    args: [appId],
-  });
-
-  // 4. Assemble executions
-  // CRITICAL: Order matters! createApp must complete first
+  // 3. Assemble executions
   const executions: Array<{
     target: Address;
     value: bigint;
@@ -282,14 +275,9 @@ export async function prepareDeployBatch(
       value: 0n,
       callData: createData,
     },
-    {
-      target: environmentConfig.permissionControllerAddress as Address,
-      value: 0n,
-      callData: acceptAdminData,
-    },
   ];
 
-  // 5. Add public logs permission if requested
+  // 4. Add public logs permission if requested
   if (publicLogs) {
     const anyoneCanViewLogsData = encodeFunctionData({
       abi: PermissionControllerABI,
@@ -407,12 +395,11 @@ export interface ExecuteDeploySequentialOptions {
  * Execute deployment as sequential transactions (non-EIP-7702 fallback)
  *
  * Use this for browser wallets (JSON-RPC accounts) that don't support signAuthorization.
- * This requires 2-3 wallet signatures instead of 1, but works with all wallet types.
+ * This requires 1-2 wallet signatures instead of 1, but works with all wallet types.
  *
  * Steps:
  * 1. createApp - Creates the app on-chain
- * 2. acceptAdmin - Accepts admin role for the app
- * 3. setAppointee (optional) - Sets public logs permission
+ * 2. setAppointee (optional) - Sets public logs permission
  */
 export async function executeDeploySequential(
   options: ExecuteDeploySequentialOptions,
@@ -432,7 +419,8 @@ export async function executeDeploySequential(
   };
 
   // Step 1: Create App
-  logger.info("Step 1/3: Creating app...");
+  const totalSteps = publicLogs ? "2" : "1";
+  logger.info(`Step 1/${totalSteps}: Creating app...`);
   onProgress?.("createApp");
 
   const createAppExecution = data.executions[0];
@@ -454,37 +442,12 @@ export async function executeDeploySequential(
   txHashes.createApp = createAppHash;
   logger.info(`createApp confirmed in block ${createAppReceipt.blockNumber}`);
 
-  // Step 2: Accept Admin
-  logger.info("Step 2/3: Accepting admin role...");
-  onProgress?.("acceptAdmin", createAppHash);
+  // Step 2: Set Public Logs (if requested and present in executions)
+  if (publicLogs && data.executions.length > 1) {
+    logger.info(`Step 2/${totalSteps}: Setting public logs permission...`);
+    onProgress?.("setPublicLogs", createAppHash);
 
-  const acceptAdminExecution = data.executions[1];
-  const acceptAdminHash = await walletClient.sendTransaction({
-    account,
-    to: acceptAdminExecution.target,
-    data: acceptAdminExecution.callData,
-    value: acceptAdminExecution.value,
-    chain,
-  });
-
-  logger.info(`acceptAdmin transaction sent: ${acceptAdminHash}`);
-  const acceptAdminReceipt = await publicClient.waitForTransactionReceipt({
-    hash: acceptAdminHash,
-  });
-
-  if (acceptAdminReceipt.status === "reverted") {
-    throw new Error(`acceptAdmin transaction reverted: ${acceptAdminHash}`);
-  }
-
-  txHashes.acceptAdmin = acceptAdminHash;
-  logger.info(`acceptAdmin confirmed in block ${acceptAdminReceipt.blockNumber}`);
-
-  // Step 3: Set Public Logs (if requested and present in executions)
-  if (publicLogs && data.executions.length > 2) {
-    logger.info("Step 3/3: Setting public logs permission...");
-    onProgress?.("setPublicLogs", acceptAdminHash);
-
-    const setAppointeeExecution = data.executions[2];
+    const setAppointeeExecution = data.executions[1];
     const setAppointeeHash = await walletClient.sendTransaction({
       account,
       to: setAppointeeExecution.target,
@@ -506,7 +469,7 @@ export async function executeDeploySequential(
     logger.info(`setAppointee confirmed in block ${setAppointeeReceipt.blockNumber}`);
   }
 
-  onProgress?.("complete", txHashes.setPublicLogs || txHashes.acceptAdmin);
+  onProgress?.("complete", txHashes.setPublicLogs || txHashes.createApp);
 
   logger.info(`Deployment complete! App ID: ${data.appId}`);
 
@@ -607,7 +570,7 @@ export async function executeDeployBatched(
 
   // If public logs is false but executions include the permission call, filter it out
   // (This shouldn't happen if prepareDeployBatch was called correctly, but be safe)
-  const filteredCalls = publicLogs ? calls : calls.slice(0, 2);
+  const filteredCalls = publicLogs ? calls : calls.slice(0, 1);
 
   logger.info(`Deploying with EIP-5792 sendCalls (${filteredCalls.length} calls)...`);
   onProgress?.("createApp");
@@ -1233,6 +1196,177 @@ export async function getBlockTimestamps(
 }
 
 /**
+ * Get whether an app is timelocked (owner is a Timelock — sensitive ops go through Timelock.schedule → execute)
+ */
+export async function getAppTimelocked(
+  publicClient: PublicClient,
+  environmentConfig: EnvironmentConfig,
+  appID: Address,
+): Promise<boolean> {
+  const timelocked = await publicClient.readContract({
+    address: environmentConfig.appControllerAddress as Address,
+    abi: AppControllerABI,
+    functionName: "getAppTimelocked",
+    args: [appID],
+  });
+
+  return timelocked as boolean;
+}
+
+/**
+ * Options for transferring app ownership
+ */
+export interface TransferOwnershipOptions {
+  walletClient: WalletClient;
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+  appID: Address;
+  newOwner: Address;
+  gas?: GasEstimate;
+}
+
+/**
+ * Transfer ownership of an app to a new address.
+ * If newOwner is a Safe or Timelock deployed by SafeTimelockFactory, governance mode is enabled automatically.
+ */
+export async function transferAppOwnership(
+  options: TransferOwnershipOptions,
+  logger: Logger = noopLogger,
+): Promise<Hex> {
+  const { walletClient, publicClient, environmentConfig, appID, newOwner, gas } = options;
+
+  const data = encodeFunctionData({
+    abi: AppControllerABI,
+    functionName: "transferOwnership",
+    args: [appID, newOwner],
+  });
+
+  return sendAndWaitForTransaction(
+    {
+      walletClient,
+      publicClient,
+      environmentConfig,
+      to: environmentConfig.appControllerAddress as Address,
+      data,
+      pendingMessage: `Transferring ownership of app ${appID} to ${newOwner}...`,
+      txDescription: "TransferOwnership",
+      gas,
+    },
+    logger,
+  );
+}
+
+/**
+ * Team role enum matching the contract's TeamRole enum.
+ */
+export enum TeamRole {
+  ADMIN = 0,
+  PAUSER = 1,
+  DEVELOPER = 2,
+}
+
+export interface GrantTeamRoleOptions {
+  walletClient: WalletClient;
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+  team: Address;
+  role: TeamRole;
+  account: Address;
+  gas?: GasEstimate;
+}
+
+export async function grantTeamRole(
+  options: GrantTeamRoleOptions,
+  logger: Logger = noopLogger,
+): Promise<Hex> {
+  const { walletClient, publicClient, environmentConfig, team, role, account, gas } = options;
+
+  const data = encodeFunctionData({
+    abi: AppControllerABI,
+    functionName: "grantTeamRole",
+    args: [team, role, account],
+  });
+
+  return sendAndWaitForTransaction(
+    {
+      walletClient,
+      publicClient,
+      environmentConfig,
+      to: environmentConfig.appControllerAddress as Address,
+      data,
+      pendingMessage: `Granting ${TeamRole[role]} role to ${account}...`,
+      txDescription: "GrantTeamRole",
+      gas,
+    },
+    logger,
+  );
+}
+
+export interface RevokeTeamRoleOptions {
+  walletClient: WalletClient;
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+  team: Address;
+  role: TeamRole;
+  account: Address;
+  gas?: GasEstimate;
+}
+
+export async function revokeTeamRole(
+  options: RevokeTeamRoleOptions,
+  logger: Logger = noopLogger,
+): Promise<Hex> {
+  const { walletClient, publicClient, environmentConfig, team, role, account, gas } = options;
+
+  const data = encodeFunctionData({
+    abi: AppControllerABI,
+    functionName: "revokeTeamRole",
+    args: [team, role, account],
+  });
+
+  return sendAndWaitForTransaction(
+    {
+      walletClient,
+      publicClient,
+      environmentConfig,
+      to: environmentConfig.appControllerAddress as Address,
+      data,
+      pendingMessage: `Revoking ${TeamRole[role]} role from ${account}...`,
+      txDescription: "RevokeTeamRole",
+      gas,
+    },
+    logger,
+  );
+}
+
+export async function getTeamRoleMembers(
+  publicClient: PublicClient,
+  environmentConfig: EnvironmentConfig,
+  team: Address,
+  role: TeamRole,
+): Promise<Address[]> {
+  return (await publicClient.readContract({
+    address: environmentConfig.appControllerAddress as Address,
+    abi: AppControllerABI,
+    functionName: "getTeamRoleMembers",
+    args: [team, role],
+  })) as Address[];
+}
+
+export async function getAppOwner(
+  publicClient: PublicClient,
+  environmentConfig: EnvironmentConfig,
+  appID: Address,
+): Promise<Address> {
+  return (await publicClient.readContract({
+    address: environmentConfig.appControllerAddress as Address,
+    abi: AppControllerABI,
+    functionName: "getAppOwner",
+    args: [appID],
+  })) as Address;
+}
+
+/**
  * Suspend options
  */
 export interface SuspendOptions {
@@ -1361,4 +1495,420 @@ export async function undelegate(
   }
 
   return hash;
+}
+
+// ─── SafeTimelockFactory ────────────────────────────────────────────────────
+
+/**
+ * Read the SafeTimelockFactory proxy address from AppController
+ */
+export async function getSafeTimelockFactoryAddress(
+  publicClient: PublicClient,
+  environmentConfig: EnvironmentConfig,
+): Promise<Address> {
+  return publicClient.readContract({
+    address: environmentConfig.appControllerAddress as Address,
+    abi: AppControllerABI as any,
+    functionName: "safeTimelockFactory",
+    args: [],
+  }) as Promise<Address>;
+}
+
+/**
+ * Canonical salt used for Timelock deployments via SafeTimelockFactory.
+ *
+ * Fixed at zero so that a single private key deterministically derives its
+ * associated Timelock address — you can always reconstruct it from the EOA
+ * without storing any extra state. Safe addresses are discovered via the
+ * Safe Transaction Service API, not derived from this salt.
+ */
+export const CANONICAL_SALT: Hex = "0x0000000000000000000000000000000000000000000000000000000000000000";
+
+export interface DeploySafeOptions {
+  walletClient: WalletClient;
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+  owners: Address[];
+  threshold: number;
+}
+
+/**
+ * Deploy a Gnosis Safe via SafeTimelockFactory
+ */
+export async function deploySafe(
+  options: DeploySafeOptions,
+  logger: Logger = noopLogger,
+): Promise<{ tx: Hex | null; safe: Address; alreadyExisted?: boolean }> {
+  const { walletClient, publicClient, environmentConfig, owners, threshold } = options;
+  const salt = CANONICAL_SALT;
+
+  const factoryAddress = await getSafeTimelockFactoryAddress(publicClient, environmentConfig);
+  const account = walletClient.account!;
+  const chain = getChainFromID(environmentConfig.chainID);
+
+  // Predict the Safe address first. If bytecode already exists there, the Safe was
+  // deployed previously (same deployer + same salt = same Create2 address). Skip
+  // the deploy and return the existing address without sending a transaction.
+  const predictedSafe = await publicClient.readContract({
+    address: factoryAddress,
+    abi: SafeTimelockFactoryABI,
+    functionName: "calculateSafeAddress",
+    args: [account.address, { owners, threshold: BigInt(threshold) }, salt],
+  }) as Address;
+
+  const existingCode = await publicClient.getCode({ address: predictedSafe });
+  if (existingCode && existingCode !== "0x") {
+    logger.info(`Safe already exists at ${predictedSafe}, skipping deploy`);
+    return { tx: null, safe: predictedSafe, alreadyExisted: true };
+  }
+
+  const data = encodeFunctionData({
+    abi: SafeTimelockFactoryABI,
+    functionName: "deploySafe",
+    args: [{ owners, threshold: BigInt(threshold) }, salt],
+  });
+
+  logger.debug(`Deploying Safe via factory ${factoryAddress}`);
+
+  const hash = await walletClient.sendTransaction({ account, to: factoryAddress, data, chain });
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+
+  if (receipt.status === "reverted") {
+    throw new Error(`deploySafe transaction (${hash}) reverted`);
+  }
+
+  // Parse SafeDeployed event to get the deployed address
+  // Use the second indexed topic (safe address) from the log
+  const log = receipt.logs.find(
+    (l) => l.address.toLowerCase() === factoryAddress.toLowerCase(),
+  );
+  if (!log || log.topics.length < 2) {
+    throw new Error("SafeDeployed event not found in receipt");
+  }
+  const safe = ("0x" + log.topics[2]!.slice(26)) as Address;
+
+  logger.info(`Safe deployed at ${safe}`);
+  return { tx: hash, safe };
+}
+
+export interface DeployTimelockOptions {
+  walletClient: WalletClient;
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+  minDelay: bigint;
+  proposers: Address[];
+  executors: Address[];
+  /** Salt for CREATE2 deployment. Defaults to CANONICAL_SALT (bytes32(0)). */
+  salt?: Hex;
+}
+
+/**
+ * Deploy a TimelockController via SafeTimelockFactory
+ */
+export async function deployTimelock(
+  options: DeployTimelockOptions,
+  logger: Logger = noopLogger,
+): Promise<{ tx: Hex; timelock: Address }> {
+  const { walletClient, publicClient, environmentConfig, minDelay, proposers, executors } = options;
+  const salt = options.salt ?? CANONICAL_SALT;
+
+  const factoryAddress = await getSafeTimelockFactoryAddress(publicClient, environmentConfig);
+  const account = walletClient.account!;
+  const chain = getChainFromID(environmentConfig.chainID);
+
+  const data = encodeFunctionData({
+    abi: SafeTimelockFactoryABI,
+    functionName: "deployTimelock",
+    args: [{ minDelay, proposers, executors }, salt],
+  });
+
+  logger.debug(`Deploying Timelock via factory ${factoryAddress}`);
+
+  const hash = await walletClient.sendTransaction({ account, to: factoryAddress, data, chain });
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+
+  if (receipt.status === "reverted") {
+    throw new Error(`deployTimelock transaction (${hash}) reverted`);
+  }
+
+  // Parse TimelockDeployed event — second indexed topic is the timelock address
+  const log = receipt.logs.find(
+    (l) => l.address.toLowerCase() === factoryAddress.toLowerCase(),
+  );
+  if (!log || log.topics.length < 2) {
+    throw new Error("TimelockDeployed event not found in receipt");
+  }
+  const timelock = ("0x" + log.topics[2]!.slice(26)) as Address;
+
+  logger.info(`Timelock deployed at ${timelock}`);
+  return { tx: hash, timelock };
+}
+
+export interface DiscoveredTimelock {
+  address: Address;
+  minDelay: bigint;
+}
+
+/**
+ * Discover the canonical Timelock for an EOA address.
+ *
+ * Uses calculateTimelockAddress(eoa, bytes32(0)) to predict the deterministic
+ * address, then checks isTimelock() to see if it has been deployed.
+ * Returns null if no Timelock exists for this EOA.
+ */
+// ─── Timelocked operations via TimelockController ────────────────────────────
+//
+// All sensitive ops (upgradeApp, transferOwnership, terminateApp, grantTeamRole)
+// go through TimelockController.schedule() → execute() uniformly when the app
+// owner is a Timelock. The generic scheduleTimelockOp / executeTimelockOp
+// helpers below handle any AppController calldata.
+//
+// We use predecessor=0 and salt=0 so the operation hash is deterministic from
+// (target, calldata) alone.
+
+const ZERO_BYTES32 = "0x0000000000000000000000000000000000000000000000000000000000000000" as Hex;
+
+export interface ScheduleTimelockOpOptions {
+  walletClient: WalletClient;
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+  timelockAddress: Address;
+  calldata: Hex;
+  delaySeconds: bigint;
+  gas?: GasEstimate;
+}
+
+/**
+ * Queue an AppController call through a TimelockController.
+ * The wallet must hold the PROPOSER_ROLE on the given Timelock.
+ */
+export async function scheduleTimelockOp(
+  options: ScheduleTimelockOpOptions,
+  logger: Logger = noopLogger,
+): Promise<Hex> {
+  const { walletClient, publicClient, environmentConfig, timelockAddress, calldata, delaySeconds, gas } = options;
+
+  const data = encodeFunctionData({
+    abi: TimelockControllerABI,
+    functionName: "schedule",
+    args: [
+      environmentConfig.appControllerAddress as Address,
+      0n,
+      calldata,
+      ZERO_BYTES32,
+      ZERO_BYTES32,
+      delaySeconds,
+    ],
+  });
+
+  return sendAndWaitForTransaction(
+    {
+      walletClient,
+      publicClient,
+      environmentConfig,
+      to: timelockAddress,
+      data,
+      pendingMessage: `Queuing operation on Timelock ${timelockAddress}...`,
+      txDescription: "TimelockSchedule",
+      gas,
+    },
+    logger,
+  );
+}
+
+export interface ExecuteTimelockOpOptions {
+  walletClient: WalletClient;
+  publicClient: PublicClient;
+  environmentConfig: EnvironmentConfig;
+  timelockAddress: Address;
+  calldata: Hex;
+  gas?: GasEstimate;
+}
+
+/**
+ * Execute a previously queued AppController call through a TimelockController.
+ * The wallet must hold the EXECUTOR_ROLE (or the role must be open).
+ */
+export async function executeTimelockOp(
+  options: ExecuteTimelockOpOptions,
+  logger: Logger = noopLogger,
+): Promise<Hex> {
+  const { walletClient, publicClient, environmentConfig, timelockAddress, calldata, gas } = options;
+
+  const data = encodeFunctionData({
+    abi: TimelockControllerABI,
+    functionName: "execute",
+    args: [
+      environmentConfig.appControllerAddress as Address,
+      0n,
+      calldata,
+      ZERO_BYTES32,
+      ZERO_BYTES32,
+    ],
+  });
+
+  return sendAndWaitForTransaction(
+    {
+      walletClient,
+      publicClient,
+      environmentConfig,
+      to: timelockAddress,
+      data,
+      pendingMessage: `Executing queued operation on Timelock ${timelockAddress}...`,
+      txDescription: "TimelockExecute",
+      gas,
+    },
+    logger,
+  );
+}
+
+/**
+ * Return the timestamp at which a queued operation becomes executable.
+ * Returns 0 if the operation is not scheduled, 1 if it has already been executed.
+ */
+export async function getTimelockOpTimestamp(
+  publicClient: PublicClient,
+  timelockAddress: Address,
+  appControllerAddress: Address,
+  calldata: Hex,
+): Promise<bigint> {
+  const id = (await publicClient.readContract({
+    address: timelockAddress,
+    abi: TimelockControllerABI,
+    functionName: "hashOperation",
+    args: [appControllerAddress as Address, 0n, calldata, ZERO_BYTES32, ZERO_BYTES32],
+  })) as Hex;
+
+  return (await publicClient.readContract({
+    address: timelockAddress,
+    abi: TimelockControllerABI,
+    functionName: "getTimestamp",
+    args: [id],
+  })) as bigint;
+}
+
+export async function discoverTimelock(
+  publicClient: PublicClient,
+  environmentConfig: EnvironmentConfig,
+  proposerAddress: Address,
+): Promise<DiscoveredTimelock | null> {
+  const factoryAddress = await getSafeTimelockFactoryAddress(publicClient, environmentConfig);
+
+  const timelockAddress = await publicClient.readContract({
+    address: factoryAddress,
+    abi: SafeTimelockFactoryABI,
+    functionName: "calculateTimelockAddress",
+    args: [proposerAddress, CANONICAL_SALT],
+  }) as Address;
+
+  const exists = await publicClient.readContract({
+    address: factoryAddress,
+    abi: SafeTimelockFactoryABI,
+    functionName: "isTimelock",
+    args: [timelockAddress],
+  }) as boolean;
+
+  if (!exists) return null;
+
+  const minDelay = await publicClient.readContract({
+    address: timelockAddress,
+    abi: TimelockControllerABI,
+    functionName: "getMinDelay",
+    args: [],
+  }) as bigint;
+
+  return { address: timelockAddress, minDelay };
+}
+
+/** @deprecated Use discoverTimelock instead */
+export const discoverTimelockForEOA = discoverTimelock;
+
+/**
+ * Returns all Timelocks deployed by the given deployer via SafeTimelockFactory.
+ * Use this for identity recovery — no salt assumptions required.
+ */
+export async function getTimelocksByDeployer(
+  publicClient: PublicClient,
+  environmentConfig: EnvironmentConfig,
+  deployer: Address,
+): Promise<Address[]> {
+  const factoryAddress = await getSafeTimelockFactoryAddress(publicClient, environmentConfig);
+  return (await publicClient.readContract({
+    address: factoryAddress,
+    abi: SafeTimelockFactoryABI,
+    functionName: "getTimelocksByDeployer",
+    args: [deployer],
+  })) as Address[];
+}
+
+/**
+ * Returns all Safes deployed by the given deployer via SafeTimelockFactory.
+ * Use this for identity recovery — no external API required.
+ */
+export async function getSafesByDeployer(
+  publicClient: PublicClient,
+  environmentConfig: EnvironmentConfig,
+  deployer: Address,
+): Promise<Address[]> {
+  const factoryAddress = await getSafeTimelockFactoryAddress(publicClient, environmentConfig);
+  return (await publicClient.readContract({
+    address: factoryAddress,
+    abi: SafeTimelockFactoryABI,
+    functionName: "getSafesByDeployer",
+    args: [deployer],
+  })) as Address[];
+}
+
+export interface PendingTimelockOp {
+  id: Hex;
+  calldata: Hex;
+  description: string;
+  executableAt: bigint;
+  ready: boolean;
+}
+
+function describeCalldata(calldata: Hex): string {
+  try {
+    const decoded = decodeFunctionData({ abi: AppControllerABI, data: calldata });
+    const args = decoded.args;
+    if (!args || args.length === 0) return decoded.functionName;
+
+    const addressArgs = args.filter((a): a is string => typeof a === "string" && /^0x[0-9a-fA-F]{40}$/.test(a));
+    if (addressArgs.length > 0) {
+      return `${decoded.functionName}(${addressArgs.join(", ")})`;
+    }
+    return decoded.functionName;
+  } catch {
+    return "unknown";
+  }
+}
+
+export async function getPendingTimelockOps(
+  publicClient: PublicClient,
+  timelockAddress: Address,
+): Promise<PendingTimelockOp[]> {
+  // Uses getPendingOperations() from TimelockControllerImpl — single view call, no log scanning.
+  let ops: { id: Hex; target: Address; data: Hex; executableAt: bigint }[];
+  try {
+    ops = (await publicClient.readContract({
+      address: timelockAddress,
+      abi: TimelockControllerABI,
+      functionName: "getPendingOperations",
+      args: [],
+    })) as { id: Hex; target: Address; data: Hex; executableAt: bigint }[];
+  } catch {
+    // Timelock deployed before upgrade — getPendingOperations not available
+    return [];
+  }
+
+  if (ops.length === 0) return [];
+
+  const now = BigInt(Math.floor(Date.now() / 1000));
+  return ops.map((op) => ({
+    id: op.id,
+    calldata: op.data,
+    description: op.data && op.data !== "0x" ? describeCalldata(op.data) : "batch op",
+    executableAt: op.executableAt,
+    ready: now >= op.executableAt,
+  }));
 }

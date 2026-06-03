@@ -10,27 +10,32 @@
       {
         "name": "_permissionController",
         "type": "address",
-        "internalType": "contractIPermissionController"
+        "internalType": "contract IPermissionController"
       },
       {
         "name": "_releaseManager",
         "type": "address",
-        "internalType": "contractIReleaseManager"
+        "internalType": "contract IReleaseManager"
       },
       {
         "name": "_computeAVSRegistrar",
         "type": "address",
-        "internalType": "contractIComputeAVSRegistrar"
+        "internalType": "contract IComputeAVSRegistrar"
       },
       {
         "name": "_computeOperator",
         "type": "address",
-        "internalType": "contractIComputeOperator"
+        "internalType": "contract IComputeOperator"
       },
       {
         "name": "_appBeacon",
         "type": "address",
-        "internalType": "contractIBeacon"
+        "internalType": "contract IBeacon"
+      },
+      {
+        "name": "_safeTimelockFactory",
+        "type": "address",
+        "internalType": "contract ISafeTimelockFactory"
       }
     ],
     "stateMutability": "nonpayable"
@@ -50,13 +55,26 @@
   },
   {
     "type": "function",
+    "name": "DEFAULT_ADMIN_ROLE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "appBeacon",
     "inputs": [],
     "outputs": [
       {
         "name": "",
         "type": "address",
-        "internalType": "contractIBeacon"
+        "internalType": "contract IBeacon"
       }
     ],
     "stateMutability": "view"
@@ -104,7 +122,7 @@
       {
         "name": "",
         "type": "address",
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       }
     ],
     "stateMutability": "view"
@@ -117,7 +135,7 @@
       {
         "name": "",
         "type": "address",
-        "internalType": "contractIComputeAVSRegistrar"
+        "internalType": "contract IComputeAVSRegistrar"
       }
     ],
     "stateMutability": "view"
@@ -130,7 +148,7 @@
       {
         "name": "",
         "type": "address",
-        "internalType": "contractIComputeOperator"
+        "internalType": "contract IComputeOperator"
       }
     ],
     "stateMutability": "view"
@@ -147,17 +165,17 @@
       {
         "name": "release",
         "type": "tuple",
-        "internalType": "structIAppController.Release",
+        "internalType": "struct IAppController.Release",
         "components": [
           {
             "name": "rmsRelease",
             "type": "tuple",
-            "internalType": "structIReleaseManagerTypes.Release",
+            "internalType": "struct IReleaseManagerTypes.Release",
             "components": [
               {
                 "name": "artifacts",
                 "type": "tuple[]",
-                "internalType": "structIReleaseManagerTypes.Artifact[]",
+                "internalType": "struct IReleaseManagerTypes.Artifact[]",
                 "components": [
                   {
                     "name": "digest",
@@ -195,15 +213,20 @@
       {
         "name": "app",
         "type": "address",
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       }
     ],
     "stateMutability": "nonpayable"
   },
   {
     "type": "function",
-    "name": "createAppWithIsolatedBilling",
+    "name": "createAppForTeam",
     "inputs": [
+      {
+        "name": "team",
+        "type": "address",
+        "internalType": "address"
+      },
       {
         "name": "salt",
         "type": "bytes32",
@@ -212,17 +235,17 @@
       {
         "name": "release",
         "type": "tuple",
-        "internalType": "structIAppController.Release",
+        "internalType": "struct IAppController.Release",
         "components": [
           {
             "name": "rmsRelease",
             "type": "tuple",
-            "internalType": "structIReleaseManagerTypes.Release",
+            "internalType": "struct IReleaseManagerTypes.Release",
             "components": [
               {
                 "name": "artifacts",
                 "type": "tuple[]",
-                "internalType": "structIReleaseManagerTypes.Artifact[]",
+                "internalType": "struct IReleaseManagerTypes.Artifact[]",
                 "components": [
                   {
                     "name": "digest",
@@ -260,7 +283,7 @@
       {
         "name": "app",
         "type": "address",
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       }
     ],
     "stateMutability": "nonpayable"
@@ -299,50 +322,12 @@
   },
   {
     "type": "function",
-    "name": "getBillingType",
-    "inputs": [
-      {
-        "name": "app",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint8",
-        "internalType": "uint8"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "getAppCreator",
-    "inputs": [
-      {
-        "name": "app",
-        "type": "address",
-        "internalType": "contractIApp"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "getAppLatestReleaseBlockNumber",
     "inputs": [
       {
         "name": "app",
         "type": "address",
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       }
     ],
     "outputs": [
@@ -361,7 +346,7 @@
       {
         "name": "app",
         "type": "address",
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       }
     ],
     "outputs": [
@@ -375,19 +360,57 @@
   },
   {
     "type": "function",
+    "name": "getAppOwner",
+    "inputs": [
+      {
+        "name": "app",
+        "type": "address",
+        "internalType": "contract IApp"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "getAppStatus",
     "inputs": [
       {
         "name": "app",
         "type": "address",
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       }
     ],
     "outputs": [
       {
         "name": "",
         "type": "uint8",
-        "internalType": "enumIAppController.AppStatus"
+        "internalType": "enum IAppController.AppStatus"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getAppTimelocked",
+    "inputs": [
+      {
+        "name": "app",
+        "type": "address",
+        "internalType": "contract IApp"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
       }
     ],
     "stateMutability": "view"
@@ -411,15 +434,15 @@
       {
         "name": "apps",
         "type": "address[]",
-        "internalType": "contractIApp[]"
+        "internalType": "contract IApp[]"
       },
       {
         "name": "appConfigsMem",
         "type": "tuple[]",
-        "internalType": "structIAppController.AppConfig[]",
+        "internalType": "struct IAppController.AppConfig[]",
         "components": [
           {
-            "name": "creator",
+            "name": "owner",
             "type": "address",
             "internalType": "address"
           },
@@ -436,63 +459,12 @@
           {
             "name": "status",
             "type": "uint8",
-            "internalType": "enumIAppController.AppStatus"
-          }
-        ]
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "getAppsByBillingAccount",
-    "inputs": [
-      {
-        "name": "account",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "offset",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "limit",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "apps",
-        "type": "address[]",
-        "internalType": "contractIApp[]"
-      },
-      {
-        "name": "appConfigsMem",
-        "type": "tuple[]",
-        "internalType": "structIAppController.AppConfig[]",
-        "components": [
-          {
-            "name": "creator",
-            "type": "address",
-            "internalType": "address"
+            "internalType": "enum IAppController.AppStatus"
           },
           {
-            "name": "operatorSetId",
-            "type": "uint32",
-            "internalType": "uint32"
-          },
-          {
-            "name": "latestReleaseBlockNumber",
-            "type": "uint32",
-            "internalType": "uint32"
-          },
-          {
-            "name": "status",
-            "type": "uint8",
-            "internalType": "enumIAppController.AppStatus"
+            "name": "timelocked",
+            "type": "bool",
+            "internalType": "bool"
           }
         ]
       }
@@ -523,15 +495,15 @@
       {
         "name": "apps",
         "type": "address[]",
-        "internalType": "contractIApp[]"
+        "internalType": "contract IApp[]"
       },
       {
         "name": "appConfigsMem",
         "type": "tuple[]",
-        "internalType": "structIAppController.AppConfig[]",
+        "internalType": "struct IAppController.AppConfig[]",
         "components": [
           {
-            "name": "creator",
+            "name": "owner",
             "type": "address",
             "internalType": "address"
           },
@@ -548,7 +520,12 @@
           {
             "name": "status",
             "type": "uint8",
-            "internalType": "enumIAppController.AppStatus"
+            "internalType": "enum IAppController.AppStatus"
+          },
+          {
+            "name": "timelocked",
+            "type": "bool",
+            "internalType": "bool"
           }
         ]
       }
@@ -579,15 +556,15 @@
       {
         "name": "apps",
         "type": "address[]",
-        "internalType": "contractIApp[]"
+        "internalType": "contract IApp[]"
       },
       {
         "name": "appConfigsMem",
         "type": "tuple[]",
-        "internalType": "structIAppController.AppConfig[]",
+        "internalType": "struct IAppController.AppConfig[]",
         "components": [
           {
-            "name": "creator",
+            "name": "owner",
             "type": "address",
             "internalType": "address"
           },
@@ -604,7 +581,58 @@
           {
             "name": "status",
             "type": "uint8",
-            "internalType": "enumIAppController.AppStatus"
+            "internalType": "enum IAppController.AppStatus"
+          },
+          {
+            "name": "timelocked",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getAppsForAccount",
+    "inputs": [
+      {
+        "name": "account",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "offset",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "limit",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "appRoles",
+        "type": "tuple[]",
+        "internalType": "struct IAppController.AppRoles[]",
+        "components": [
+          {
+            "name": "app",
+            "type": "address",
+            "internalType": "contract IApp"
+          },
+          {
+            "name": "isOwner",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "roles",
+            "type": "uint8[]",
+            "internalType": "enum IAppController.TeamRole[]"
           }
         ]
       }
@@ -632,6 +660,145 @@
   },
   {
     "type": "function",
+    "name": "getRoleAdmin",
+    "inputs": [
+      {
+        "name": "role",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getRoleMember",
+    "inputs": [
+      {
+        "name": "role",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "index",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getRoleMemberCount",
+    "inputs": [
+      {
+        "name": "role",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getTeamRoleMember",
+    "inputs": [
+      {
+        "name": "team",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "role",
+        "type": "uint8",
+        "internalType": "enum IAppController.TeamRole"
+      },
+      {
+        "name": "index",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getTeamRoleMemberCount",
+    "inputs": [
+      {
+        "name": "team",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "role",
+        "type": "uint8",
+        "internalType": "enum IAppController.TeamRole"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getTeamRoleMembers",
+    "inputs": [
+      {
+        "name": "team",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "role",
+        "type": "uint8",
+        "internalType": "enum IAppController.TeamRole"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address[]",
+        "internalType": "address[]"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "globalActiveAppCount",
     "inputs": [],
     "outputs": [
@@ -639,6 +806,100 @@
         "name": "",
         "type": "uint32",
         "internalType": "uint32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "grantRole",
+    "inputs": [
+      {
+        "name": "role",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "account",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "grantTeamRole",
+    "inputs": [
+      {
+        "name": "team",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "role",
+        "type": "uint8",
+        "internalType": "enum IAppController.TeamRole"
+      },
+      {
+        "name": "account",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "hasRole",
+    "inputs": [
+      {
+        "name": "role",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "account",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "hasTeamRole",
+    "inputs": [
+      {
+        "name": "team",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "role",
+        "type": "uint8",
+        "internalType": "enum IAppController.TeamRole"
+      },
+      {
+        "name": "account",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
       }
     ],
     "stateMutability": "view"
@@ -671,13 +932,26 @@
   },
   {
     "type": "function",
+    "name": "migrateAdmins",
+    "inputs": [
+      {
+        "name": "apps",
+        "type": "address[]",
+        "internalType": "contract IApp[]"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "permissionController",
     "inputs": [],
     "outputs": [
       {
         "name": "",
         "type": "address",
-        "internalType": "contractIPermissionController"
+        "internalType": "contract IPermissionController"
       }
     ],
     "stateMutability": "view"
@@ -690,7 +964,97 @@
       {
         "name": "",
         "type": "address",
-        "internalType": "contractIReleaseManager"
+        "internalType": "contract IReleaseManager"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "renounceRole",
+    "inputs": [
+      {
+        "name": "role",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "account",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "renounceTeamRole",
+    "inputs": [
+      {
+        "name": "team",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "role",
+        "type": "uint8",
+        "internalType": "enum IAppController.TeamRole"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "revokeRole",
+    "inputs": [
+      {
+        "name": "role",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "account",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "revokeTeamRole",
+    "inputs": [
+      {
+        "name": "team",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "role",
+        "type": "uint8",
+        "internalType": "enum IAppController.TeamRole"
+      },
+      {
+        "name": "account",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "safeTimelockFactory",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ISafeTimelockFactory"
       }
     ],
     "stateMutability": "view"
@@ -733,7 +1097,7 @@
       {
         "name": "app",
         "type": "address",
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       }
     ],
     "outputs": [],
@@ -746,11 +1110,30 @@
       {
         "name": "app",
         "type": "address",
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       }
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "supportsInterface",
+    "inputs": [
+      {
+        "name": "interfaceId",
+        "type": "bytes4",
+        "internalType": "bytes4"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -764,7 +1147,7 @@
       {
         "name": "apps",
         "type": "address[]",
-        "internalType": "contractIApp[]"
+        "internalType": "contract IApp[]"
       }
     ],
     "outputs": [],
@@ -777,7 +1160,7 @@
       {
         "name": "app",
         "type": "address",
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       }
     ],
     "outputs": [],
@@ -790,7 +1173,25 @@
       {
         "name": "app",
         "type": "address",
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "transferOwnership",
+    "inputs": [
+      {
+        "name": "app",
+        "type": "address",
+        "internalType": "contract IApp"
+      },
+      {
+        "name": "newOwner",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "outputs": [],
@@ -803,7 +1204,7 @@
       {
         "name": "app",
         "type": "address",
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       },
       {
         "name": "metadataURI",
@@ -821,22 +1222,22 @@
       {
         "name": "app",
         "type": "address",
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       },
       {
         "name": "release",
         "type": "tuple",
-        "internalType": "structIAppController.Release",
+        "internalType": "struct IAppController.Release",
         "components": [
           {
             "name": "rmsRelease",
             "type": "tuple",
-            "internalType": "structIReleaseManagerTypes.Release",
+            "internalType": "struct IReleaseManagerTypes.Release",
             "components": [
               {
                 "name": "artifacts",
                 "type": "tuple[]",
-                "internalType": "structIReleaseManagerTypes.Artifact[]",
+                "internalType": "struct IReleaseManagerTypes.Artifact[]",
                 "components": [
                   {
                     "name": "digest",
@@ -897,7 +1298,7 @@
     "name": "AppCreated",
     "inputs": [
       {
-        "name": "creator",
+        "name": "owner",
         "type": "address",
         "indexed": true,
         "internalType": "address"
@@ -906,7 +1307,7 @@
         "name": "app",
         "type": "address",
         "indexed": true,
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       },
       {
         "name": "operatorSetId",
@@ -925,7 +1326,7 @@
         "name": "app",
         "type": "address",
         "indexed": true,
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       },
       {
         "name": "metadataURI",
@@ -938,13 +1339,38 @@
   },
   {
     "type": "event",
+    "name": "AppOwnershipTransferred",
+    "inputs": [
+      {
+        "name": "app",
+        "type": "address",
+        "indexed": true,
+        "internalType": "contract IApp"
+      },
+      {
+        "name": "previousOwner",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "newOwner",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "AppStarted",
     "inputs": [
       {
         "name": "app",
         "type": "address",
         "indexed": true,
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       }
     ],
     "anonymous": false
@@ -957,7 +1383,7 @@
         "name": "app",
         "type": "address",
         "indexed": true,
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       }
     ],
     "anonymous": false
@@ -970,7 +1396,7 @@
         "name": "app",
         "type": "address",
         "indexed": true,
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       }
     ],
     "anonymous": false
@@ -983,7 +1409,7 @@
         "name": "app",
         "type": "address",
         "indexed": true,
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       }
     ],
     "anonymous": false
@@ -996,7 +1422,7 @@
         "name": "app",
         "type": "address",
         "indexed": true,
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       }
     ],
     "anonymous": false
@@ -1009,7 +1435,7 @@
         "name": "app",
         "type": "address",
         "indexed": true,
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       },
       {
         "name": "rmsReleaseId",
@@ -1021,17 +1447,17 @@
         "name": "release",
         "type": "tuple",
         "indexed": false,
-        "internalType": "structIAppController.Release",
+        "internalType": "struct IAppController.Release",
         "components": [
           {
             "name": "rmsRelease",
             "type": "tuple",
-            "internalType": "structIReleaseManagerTypes.Release",
+            "internalType": "struct IReleaseManagerTypes.Release",
             "components": [
               {
                 "name": "artifacts",
                 "type": "tuple[]",
-                "internalType": "structIReleaseManagerTypes.Artifact[]",
+                "internalType": "struct IReleaseManagerTypes.Artifact[]",
                 "components": [
                   {
                     "name": "digest",
@@ -1113,6 +1539,81 @@
     "anonymous": false
   },
   {
+    "type": "event",
+    "name": "RoleAdminChanged",
+    "inputs": [
+      {
+        "name": "role",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "previousAdminRole",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "newAdminRole",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RoleGranted",
+    "inputs": [
+      {
+        "name": "role",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "account",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "sender",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RoleRevoked",
+    "inputs": [
+      {
+        "name": "role",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "account",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "sender",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
     "type": "error",
     "name": "AccountHasActiveApps",
     "inputs": []
@@ -1125,6 +1626,11 @@
   {
     "type": "error",
     "name": "AppDoesNotExist",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "CannotRevokeLastAdmin",
     "inputs": []
   },
   {

@@ -39,11 +39,11 @@ const ENVIRONMENTS: Record<string, Omit<EnvironmentConfig, "chainID">> = {
   "sepolia-dev": {
     name: "sepolia",
     build: "dev",
-    appControllerAddress: "0xa86DC1C47cb2518327fB4f9A1627F51966c83B92",
+    appControllerAddress: "0x648295953688895D4dFc1991D24Ab79b1C038579",
     permissionControllerAddress: ChainAddresses[SEPOLIA_CHAIN_ID].PermissionController,
     erc7702DelegatorAddress: CommonAddresses.ERC7702Delegator,
     kmsServerURL: "http://10.128.0.57:8080",
-    userApiServerURL: "https://userapi-compute-sepolia-dev.eigencloud.xyz",
+    userApiServerURL: "http://localhost:8080",
     defaultRPCURL: "https://ethereum-sepolia-rpc.publicnode.com",
     usdcCreditsAddress: "0xbdA3897c3A428763B59015C64AB766c288C97376",
   },
@@ -179,7 +179,7 @@ export function getBuildType(): "dev" | "prod" {
   // Fall back to runtime environment variable
   const runtimeType = process.env.BUILD_TYPE?.toLowerCase();
 
-  const buildType = buildTimeType || runtimeType;
+  const buildType = runtimeType || buildTimeType;
 
   if (buildType === "dev") {
     return "dev";

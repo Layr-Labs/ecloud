@@ -57,6 +57,9 @@ export {
   encodeStartAppData,
   encodeStopAppData,
   encodeTerminateAppData,
+  encodeTransferOwnershipData,
+  encodeGrantTeamRoleData,
+  encodeRevokeTeamRoleData,
 } from "./modules/compute";
 export {
   createBillingModule,
@@ -98,9 +101,49 @@ export {
   getBillingType,
   getAppsByBillingAccount,
   calculateAppID,
+  getAppTimelocked,
+  transferAppOwnership,
+  grantTeamRole,
+  revokeTeamRole,
+  getTeamRoleMembers,
+  getAppOwner,
+  TeamRole,
   type GasEstimate,
   type EstimateGasOptions,
+  type TransferOwnershipOptions,
+  type GrantTeamRoleOptions,
+  type RevokeTeamRoleOptions,
+  getSafeTimelockFactoryAddress,
+  deploySafe,
+  deployTimelock,
+  discoverTimelock,
+  discoverTimelockForEOA,
+  getTimelocksByDeployer,
+  getSafesByDeployer,
+  getPendingTimelockOps,
+  executeTimelockOp,
+  CANONICAL_SALT,
+  type DeploySafeOptions,
+  type DeployTimelockOptions,
+  type DiscoveredTimelock,
+  type PendingTimelockOp,
 } from "./common/contract/caller";
+
+// Safe Transaction Service
+export {
+  proposeSafeTransaction,
+  type ProposeSafeTransactionOptions,
+  type SafeProposalResult,
+} from "./common/contract/safe";
+
+// Identity-aware transaction routing
+export {
+  sendWithIdentity,
+  formatTransactionResult,
+  type StoredIdentity as SdkStoredIdentity,
+  type TransactionResult,
+  type IdentityRouterOptions,
+} from "./common/contract/identity-router";
 
 // Export batch gas estimation and delegation check
 export {

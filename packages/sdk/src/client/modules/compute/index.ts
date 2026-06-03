@@ -28,4 +28,4 @@ export function createComputeModule(config: ComputeModuleConfig): ComputeModule 
 export { createAppModule, type AppModule, type AppModuleConfig } from "./app";
 
 // Re-export app module utilities
-export { encodeStartAppData, encodeStopAppData, encodeTerminateAppData } from "./app";
+export { encodeStartAppData, encodeStopAppData, encodeTerminateAppData, encodeTransferOwnershipData, encodeGrantTeamRoleData, encodeRevokeTeamRoleData } from "./app";

@@ -1,9 +1,13 @@
 import { Command, Args, Flags } from "@oclif/core";
 import { getEnvironmentConfig, UserApiClient, isMainnet } from "@layr-labs/ecloud-sdk";
 import { withTelemetry } from "../../../telemetry";
-import { commonFlags, applyTxOverrides } from "../../../flags";
+import { commonFlags, timelockFlags, applyTxOverrides } from "../../../flags";
 import { createBuildClient, createComputeClient } from "../../../client";
 import { createViemClients } from "../../../utils/viemClients";
+import { printIdentityContext, executeWithIdentity, printTransactionResult } from "../../../utils/identityTransaction";
+import { handleTimelockExecute, handleTimelockCancel } from "../../../utils/timelockExecute";
+import { identityForActiveContext } from "../../../utils/apiIdentity";
+import type { Address } from "viem";
 import {
   getDockerfileInteractive,
   getImageReferenceInteractive,
@@ -130,6 +134,7 @@ export default class AppUpgrade extends Command {
       description: "Skip all confirmation prompts",
       default: false,
     }),
+    ...timelockFlags,
   };
 
   async run() {
@@ -143,6 +148,16 @@ export default class AppUpgrade extends Command {
       const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
       const privateKey = flags["private-key"]!;
 
+      // --execute / --cancel path: handle pending Timelock ops, skipping the build flow
+      if (flags.execute) {
+        await handleTimelockExecute({ opId: flags.execute, environment, privateKey, rpcUrl, log: this.log.bind(this), error: this.error.bind(this) });
+        return;
+      }
+      if (flags.cancel) {
+        await handleTimelockCancel({ opId: flags.cancel, environment, privateKey, rpcUrl, log: this.log.bind(this), error: this.error.bind(this) });
+        return;
+      }
+
       // 1. Get app ID interactively if not provided
       const appID = await getOrPromptAppID({
         appID: args["app-id"],
@@ -151,6 +166,14 @@ export default class AppUpgrade extends Command {
         rpcUrl,
         action: "upgrade",
       });
+
+      // Determine active identity for routing
+      const { publicClient, walletClient, address } = createViemClients({
+        privateKey,
+        rpcUrl,
+        environment,
+      });
+      const identity = printIdentityContext(environment, address, this.log.bind(this));
 
       type VerifiableMode = "none" | "git" | "prebuilt";
       let buildClient: Awaited<ReturnType<typeof createBuildClient>> | undefined;
@@ -309,15 +332,11 @@ export default class AppUpgrade extends Command {
       }
 
       // 5. Get current instance type (best-effort, used as default)
-      const { publicClient, walletClient, address } = createViemClients({
-        privateKey,
-        rpcUrl,
-        environment,
-      });
       let currentInstanceType = "";
       try {
         const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, {
           clientId: getClientId(),
+          identities: identityForActiveContext(environment),
         });
         const infos = await userApiClient.getInfos([appID], 1);
         if (infos.length > 0) {
@@ -381,7 +400,7 @@ export default class AppUpgrade extends Command {
               resourceUsageMonitoring,
             });
 
-      // 10. Apply gas overrides if provided, show estimate, and prompt for confirmation on mainnet
+      // 10. Apply gas overrides if provided, show estimate, and prompt for confirmation
       const finalTx = await applyTxOverrides(gasEstimate, flags, { publicClient, address });
       if (flags["max-fee-per-gas"] || flags["max-priority-fee"]) {
         this.log(
@@ -395,7 +414,7 @@ export default class AppUpgrade extends Command {
       }
       this.log(`\nEstimated transaction cost: ${chalk.cyan(finalTx.maxCostEth)} ETH`);
 
-      if (isMainnet(environmentConfig) && !flags.force) {
+      if ((isMainnet(environmentConfig) || identity.type !== "eoa") && !flags.force) {
         const confirmed = await confirm(`Continue with upgrade?`);
         if (!confirmed) {
           this.log(`\n${chalk.gray(`Upgrade cancelled`)}`);
@@ -403,60 +422,81 @@ export default class AppUpgrade extends Command {
         }
       }
 
-      // 11. Execute the upgrade
-      const res = await compute.app.executeUpgrade(prepared, finalTx);
+      if (identity.type === "eoa") {
+        // 11a. EOA: execute the EIP-7702 batch directly
+        const res = await compute.app.executeUpgrade(prepared, finalTx);
 
-      // 12. Watch until upgrade completes
-      await compute.app.watchUpgrade(res.appId);
+        // 12. Watch until upgrade completes
+        await compute.app.watchUpgrade(res.appId);
 
-      try {
-        const cwd = process.env.INIT_CWD || process.cwd();
-        setLinkedAppForDirectory(environment, cwd, res.appId);
-      } catch (err: any) {
-        this.debug(`Failed to link directory to app: ${err.message}`);
-      }
-
-      this.log(
-        `\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${res.appId}, image: ${res.imageRef})`)}`)}`,
-      );
-
-      // Update profile name if --name was provided (merge with existing profile to avoid wiping fields)
-      if (flags.name) {
         try {
-          const { publicClient, walletClient } = createViemClients({
-            privateKey,
-            rpcUrl,
-            environment,
-          });
-          const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, {
-            clientId: getClientId(),
-          });
-          const infos = await userApiClient.getInfos([res.appId], 1);
-          const existing = infos[0]?.profile;
-
-          await compute.app.setProfile(res.appId, {
-            name: flags.name,
-            website: existing?.website,
-            description: existing?.description,
-            xURL: existing?.xURL,
-          });
-          invalidateProfileCache(environment);
-          this.log(`✓ Profile name updated to "${flags.name}"`);
+          const cwd = process.env.INIT_CWD || process.cwd();
+          setLinkedAppForDirectory(environment, cwd, res.appId);
         } catch (err: any) {
-          this.warn(`Upgrade succeeded but failed to update profile name: ${err.message}`);
+          this.debug(`Failed to link directory to app: ${err.message}`);
+        }
+
+        this.log(
+          `\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${res.appId}, image: ${res.imageRef})`)}`)}`,
+        );
+
+        // Update profile name if --name was provided (merge with existing profile to avoid wiping fields)
+        if (flags.name) {
+          try {
+            const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, {
+              clientId: getClientId(),
+              identities: identityForActiveContext(environment),
+            });
+            const infos = await userApiClient.getInfos([res.appId], 1);
+            const existing = infos[0]?.profile;
+
+            await compute.app.setProfile(res.appId, {
+              name: flags.name,
+              website: existing?.website,
+              description: existing?.description,
+              xURL: existing?.xURL,
+            });
+            invalidateProfileCache(environment);
+            this.log(`✓ Profile name updated to "${flags.name}"`);
+          } catch (err: any) {
+            this.warn(`Upgrade succeeded but failed to update profile name: ${err.message}`);
+          }
+        }
+
+        // Show dashboard link
+        const dashboardUrl = getDashboardUrl(environment, res.appId);
+        this.log(`\n${chalk.gray("View your app:")} ${chalk.blue.underline(dashboardUrl)}`);
+
+        // Health verification hint — "Running" means container started, not serving traffic
+        this.log(
+          chalk.gray(
+            `\nNote: "Running" means the container started. Verify your app is serving traffic before considering the upgrade complete.`,
+          ),
+        );
+      } else {
+        // 11b. Safe/Timelock: route the upgradeApp calldata through identity router.
+        // The first execution in the batch is always the upgradeApp call.
+        const upgradeCallData = prepared.data.executions[0]!.callData;
+        const result = await executeWithIdentity({
+          environment,
+          eoaAddress: address,
+          walletClient,
+          publicClient,
+          environmentConfig,
+          to: environmentConfig.appControllerAddress as Address,
+          data: upgradeCallData,
+          pendingMessage: `Upgrading app ${appID}...`,
+          txDescription: "UpgradeApp",
+          gas: finalTx,
+          delayOverride: flags.delay,
+        });
+
+        this.log("");
+        printTransactionResult(result, this.log.bind(this));
+        if (result.type === "direct") {
+          this.log(`\n✅ ${chalk.green(`App upgrade submitted (image: ${prepared.imageRef})`)}`);
         }
       }
-
-      // Show dashboard link
-      const dashboardUrl = getDashboardUrl(environment, res.appId);
-      this.log(`\n${chalk.gray("View your app:")} ${chalk.blue.underline(dashboardUrl)}`);
-
-      // Health verification hint — "Running" means container started, not serving traffic
-      this.log(
-        chalk.gray(
-          `\nNote: "Running" means the container started. Verify your app is serving traffic before considering the upgrade complete.`,
-        ),
-      );
     });
   }
 }

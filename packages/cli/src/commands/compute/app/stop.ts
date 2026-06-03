@@ -1,6 +1,6 @@
 import { Command, Args, Flags } from "@oclif/core";
 import { createComputeClient } from "../../../client";
-import { commonFlags, applyTxOverrides } from "../../../flags";
+import { commonFlags, timelockFlags, applyTxOverrides } from "../../../flags";
 import {
   getEnvironmentConfig,
   estimateTransactionGas,
@@ -10,8 +10,11 @@ import {
 import { getOrPromptAppID, confirm } from "../../../utils/prompts";
 import { getPrivateKeyInteractive } from "../../../utils/prompts";
 import { createViemClients } from "../../../utils/viemClients";
+import { printIdentityContext, executeWithIdentity, printTransactionResult } from "../../../utils/identityTransaction";
+import { handleTimelockExecute, handleTimelockCancel } from "../../../utils/timelockExecute";
 import chalk from "chalk";
 import { withTelemetry } from "../../../telemetry";
+import type { Address } from "viem";
 
 export default class AppLifecycleStop extends Command {
   static description = "Stop running app (stop GCP instance)";
@@ -29,6 +32,7 @@ export default class AppLifecycleStop extends Command {
       description: "Skip all confirmation prompts",
       default: false,
     }),
+    ...timelockFlags,
   };
 
   async run() {
@@ -44,7 +48,16 @@ export default class AppLifecycleStop extends Command {
       const rpcUrl = flags.rpcUrl || environmentConfig.defaultRPCURL;
 
       // Get private key for gas estimation
-      const privateKey = flags["private-key"] || (await getPrivateKeyInteractive(environment));
+      const privateKey = await getPrivateKeyInteractive(flags["private-key"]);
+
+      if (flags.execute) {
+        await handleTimelockExecute({ opId: flags.execute, environment, privateKey, rpcUrl, log: this.log.bind(this), error: this.error.bind(this) });
+        return;
+      }
+      if (flags.cancel) {
+        await handleTimelockCancel({ opId: flags.cancel, environment, privateKey, rpcUrl, log: this.log.bind(this), error: this.error.bind(this) });
+        return;
+      }
 
       // Resolve app ID (prompt if not provided)
       const appId = await getOrPromptAppID({
@@ -55,50 +68,83 @@ export default class AppLifecycleStop extends Command {
         action: "stop",
       });
 
-      // Create viem clients for gas estimation
-      const { publicClient, address } = createViemClients({
+      // Create viem clients
+      const { publicClient, walletClient, address } = createViemClients({
         privateKey,
         rpcUrl,
         environment,
       });
 
-      // Estimate gas cost
+      // Show which identity will be used
+      const identity = printIdentityContext(environment, address, this.log.bind(this));
+
+      // Encode the calldata
       const callData = encodeStopAppData(appId);
-      const estimate = await estimateTransactionGas({
-        publicClient,
-        from: address,
-        to: environmentConfig.appControllerAddress,
-        data: callData,
-      });
+
+      // Gas estimation only works when sending from EOA directly.
+      // For Safe/Timelock identities, msg.sender is the Safe/Timelock — not the EOA —
+      // so estimating from EOA would revert. Skip estimation for non-EOA identities.
+      const estimate = identity.type === "eoa"
+        ? await estimateTransactionGas({
+            publicClient,
+            from: address,
+            to: environmentConfig.appControllerAddress,
+            data: callData,
+          })
+        : undefined;
 
       // Apply gas overrides if provided
-      const finalTx = await applyTxOverrides(estimate, flags, { publicClient, address });
-      if (flags["max-fee-per-gas"] || flags["max-priority-fee"]) {
-        this.log(chalk.yellow(`Gas override active — max fee: ${flags["max-fee-per-gas"] || "estimated"} gwei, priority fee: ${flags["max-priority-fee"] || "estimated"} gwei`));
-      }
-      if (finalTx.nonce != null) {
-        this.log(chalk.yellow(`Nonce override active — nonce: ${finalTx.nonce}`));
+      const finalTx = estimate ? await applyTxOverrides(estimate, flags, { publicClient, address }) : undefined;
+      if (finalTx) {
+        if (flags["max-fee-per-gas"] || flags["max-priority-fee"]) {
+          this.log(chalk.yellow(`Gas override active — max fee: ${flags["max-fee-per-gas"] || "estimated"} gwei, priority fee: ${flags["max-priority-fee"] || "estimated"} gwei`));
+        }
+        if (finalTx.nonce != null) {
+          this.log(chalk.yellow(`Nonce override active — nonce: ${finalTx.nonce}`));
+        }
       }
 
       // On mainnet, prompt for confirmation with cost
       if (isMainnet(environmentConfig) && !flags.force) {
-        const confirmed = await confirm(
-          `This will cost up to ${finalTx.maxCostEth} ETH. Continue?`,
-        );
+        const costInfo = finalTx ? ` (cost: up to ${finalTx.maxCostEth} ETH)` : "";
+        const confirmed = await confirm(`This will stop app ${appId}${costInfo}. Continue?`);
         if (!confirmed) {
           this.log(`\n${chalk.gray(`Stop cancelled`)}`);
           return;
         }
       }
 
-      const res = await compute.app.stop(appId, {
-        gas: finalTx,
-      });
-
-      if (!res.tx) {
-        this.log(`\n${chalk.gray(`Stop failed`)}`);
+      // Route based on active identity
+      if (identity.type === "eoa") {
+        // Direct transaction (existing behavior)
+        const res = await compute.app.stop(appId, { gas: finalTx });
+        if (!res.tx) {
+          this.log(`\n${chalk.gray(`Stop failed`)}`);
+        } else {
+          this.log(`\n✅ ${chalk.green(`App stopped successfully`)}`);
+        }
       } else {
-        this.log(`\n✅ ${chalk.green(`App stopped successfully`)}`);
+        // Identity-aware routing (Safe propose / Timelock schedule)
+        const result = await executeWithIdentity({
+          environment,
+          eoaAddress: address,
+          walletClient,
+          publicClient,
+          environmentConfig,
+          to: environmentConfig.appControllerAddress as Address,
+          data: callData,
+          pendingMessage: `Stopping app ${appId}...`,
+          txDescription: "StopApp",
+          gas: finalTx,
+          delayOverride: flags.delay,
+        });
+
+        this.log("");
+        printTransactionResult(result, this.log.bind(this));
+
+        if (result.type === "direct") {
+          this.log(`\n✅ ${chalk.green(`App stopped successfully`)}`);
+        }
       }
     });
   }
