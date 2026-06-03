@@ -76,7 +76,8 @@ export default class AppUpgrade extends Command {
     }),
     "log-visibility": Flags.string({
       required: false,
-      description: "Log visibility setting: public, private, or off",
+      description:
+        "Log visibility setting: public, private, or off (non-interactive default: private)",
       options: ["public", "private", "off"],
       env: "ECLOUD_LOG_VISIBILITY",
     }),
@@ -87,7 +88,8 @@ export default class AppUpgrade extends Command {
     }),
     "resource-usage-monitoring": Flags.string({
       required: false,
-      description: "Resource usage monitoring: enable or disable",
+      description:
+        "Resource usage monitoring: enable or disable (non-interactive default: disable)",
       options: ["enable", "disable"],
       env: "ECLOUD_RESOURCE_USAGE_MONITORING",
     }),
@@ -290,9 +292,17 @@ export default class AppUpgrade extends Command {
         }
       }
 
-      // 2. Get dockerfile path interactively (skip when using verifiable image)
+      // 2. Get dockerfile path interactively (skip when using verifiable image).
+      // Also skip when --image-ref is explicitly provided and no --dockerfile was:
+      // the user is upgrading to an existing image, so a stray Dockerfile in the
+      // working directory must not trigger a "build or deploy existing?" prompt
+      // (or, in non-interactive mode, silently flip the upgrade to a local build).
       const isVerifiable = verifiableMode !== "none";
-      const dockerfilePath = isVerifiable ? "" : await getDockerfileInteractive(flags.dockerfile);
+      const deployExistingImageRef = !!flags["image-ref"] && !flags.dockerfile;
+      const dockerfilePath =
+        isVerifiable || deployExistingImageRef
+          ? ""
+          : await getDockerfileInteractive(flags.dockerfile);
       const buildFromDockerfile = dockerfilePath !== "";
 
       // 3. Get image reference interactively (context-aware)
