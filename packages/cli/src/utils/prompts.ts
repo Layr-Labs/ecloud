@@ -63,15 +63,21 @@ function ensureInteractive(missingFlagHint: string): void {
 }
 
 /**
- * True when there is no attached TTY (CI, scripted use, agents).
+ * True when the CLI should run without interactive prompts.
+ *
+ * Precedence: an explicit `--non-interactive` flag, then `CI=true`, then the
+ * absence of a TTY. `isTTY` alone is unreliable in pipes/CI, so the flag and CI
+ * env give callers (agents, scripts) a deterministic signal.
  *
  * The optional deploy/upgrade prompts (env file, log visibility, resource-usage
- * monitoring, Dockerfile-vs-existing-image) all have a safe default, so rather
- * than throwing via `ensureInteractive` they fall back to that default and log
- * what was chosen. Required inputs with no safe default (image source,
- * instance type, app name/id) keep calling `ensureInteractive` and still error.
+ * monitoring, Dockerfile-vs-existing-image, instance type) all have a safe
+ * default, so rather than throwing via `ensureInteractive` they fall back to
+ * that default and log what was chosen. Required inputs with no safe default
+ * (image source, app name/id) are reported all-at-once by the command layer.
  */
-function isNonInteractive(): boolean {
+export function isNonInteractive(flags?: { "non-interactive"?: boolean }): boolean {
+  if (flags?.["non-interactive"]) return true;
+  if (process.env.CI === "true") return true;
   return !process.stdin.isTTY;
 }
 
@@ -82,6 +88,46 @@ function isNonInteractive(): boolean {
  */
 function warnDefaulted(flagHint: string, chosen: string): void {
   console.warn(`Warning: ${flagHint} not set in non-interactive mode; defaulting to ${chosen}.`);
+}
+
+/** The set of required deploy/upgrade inputs that have no safe default. */
+export interface RequiredInputState {
+  imageRef?: string;
+  dockerfile?: string;
+  verifiable?: boolean;
+  repo?: string;
+  commit?: string;
+  name?: string;
+}
+
+/**
+ * Collect ALL missing required deploy/upgrade inputs for non-interactive mode,
+ * so the caller can report them in one error instead of one prompt at a time.
+ *
+ * Covers the image source (and, for deploy, `--name`). The upgrade `app-id` is
+ * a positional arg, so its presence is checked at the call site; this helper
+ * only reports the image-source half for `"app-id"` callers.
+ *
+ * @param identityFlag "name" for deploy, "app-id" for upgrade.
+ */
+export function collectMissingRequiredInputs(
+  state: RequiredInputState,
+  identityFlag: "name" | "app-id",
+): string[] {
+  const missing: string[] = [];
+  const hasImageSource =
+    !!state.imageRef ||
+    !!state.dockerfile ||
+    (!!state.verifiable && !!state.repo && !!state.commit);
+  if (!hasImageSource) {
+    missing.push(
+      "an image source (one of: --image-ref, --dockerfile, or --verifiable with --repo and --commit)",
+    );
+  }
+  if (identityFlag === "name" && !state.name) {
+    missing.push("--name");
+  }
+  return missing;
 }
 
 // ==================== Dockerfile Selection ====================
