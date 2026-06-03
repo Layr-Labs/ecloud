@@ -939,6 +939,13 @@ export async function getEnvFileInteractive(envFilePath?: string): Promise<strin
 // ==================== Instance Type Selection ====================
 
 /**
+ * Smallest TEE tier that runs a real workload (2 vCPU / 8 GB / AMD SEV-SNP);
+ * used as the non-interactive deploy default. Confirmed present in the live
+ * getSKUs list on mainnet-alpha and sepolia-prod (RND-589).
+ */
+export const DEFAULT_NONINTERACTIVE_SKU = "g1-standard-2s";
+
+/**
  * Prompt for instance type
  */
 export interface SkuInfo {
@@ -982,6 +989,7 @@ export async function getInstanceTypeInteractive(
   instanceType: string | undefined,
   defaultSKU: string,
   availableTypes: SkuInfo[],
+  nonInteractive: boolean = false,
 ): Promise<string> {
   if (instanceType) {
     // Validate provided instance type
@@ -991,6 +999,25 @@ export async function getInstanceTypeInteractive(
     }
     const validSKUs = availableTypes.map((t) => t.sku).join(", ");
     throw new Error(`Invalid instance-type: ${instanceType} (must be one of: ${validSKUs})`);
+  }
+
+  // Non-interactive: pick a default instead of prompting (RND-589).
+  // Callers pass isNonInteractive(flags) (flag + CI + isTTY) as this argument.
+  if (nonInteractive) {
+    // Upgrade path: reuse the currently pinned type when one is known.
+    if (defaultSKU) {
+      warnDefaulted("--instance-type", `current type '${defaultSKU}'`);
+      return defaultSKU;
+    }
+    // Deploy path: smallest TEE tier, if the backend offers it.
+    if (availableTypes.some((t) => t.sku === DEFAULT_NONINTERACTIVE_SKU)) {
+      warnDefaulted("--instance-type", `'${DEFAULT_NONINTERACTIVE_SKU}'`);
+      return DEFAULT_NONINTERACTIVE_SKU;
+    }
+    const validSKUs = availableTypes.map((t) => t.sku).join(", ");
+    throw new Error(
+      `Cannot pick a default --instance-type in non-interactive mode: '${DEFAULT_NONINTERACTIVE_SKU}' not offered (available: ${validSKUs}). Provide --instance-type.`,
+    );
   }
 
   ensureInteractive("--instance-type");
