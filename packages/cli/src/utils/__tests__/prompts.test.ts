@@ -8,6 +8,8 @@ import {
   getLogSettingsInteractive,
   getResourceUsageMonitoringInteractive,
   getInstanceTypeInteractive,
+  isNonInteractive,
+  collectMissingRequiredInputs,
 } from "../prompts";
 
 /**
@@ -215,5 +217,60 @@ describe("non-interactive flag defaulting (RND-564)", () => {
         "g1-standard-2s",
       );
     });
+  });
+});
+
+describe("isNonInteractive (RND-589 detection)", () => {
+  const origTTY = process.stdin.isTTY;
+  const origCI = process.env.CI;
+  afterEach(() => {
+    process.stdin.isTTY = origTTY;
+    if (origCI === undefined) delete process.env.CI;
+    else process.env.CI = origCI;
+  });
+
+  it("true when --non-interactive flag is set, even on a TTY", () => {
+    process.stdin.isTTY = true;
+    delete process.env.CI;
+    expect(isNonInteractive({ "non-interactive": true })).toBe(true);
+  });
+  it("true when CI=true, even on a TTY", () => {
+    process.stdin.isTTY = true;
+    process.env.CI = "true";
+    expect(isNonInteractive()).toBe(true);
+  });
+  it("true when no TTY", () => {
+    process.stdin.isTTY = false;
+    delete process.env.CI;
+    expect(isNonInteractive()).toBe(true);
+  });
+  it("false on a TTY with no CI and no flag", () => {
+    process.stdin.isTTY = true;
+    delete process.env.CI;
+    expect(isNonInteractive()).toBe(false);
+  });
+});
+
+describe("collectMissingRequiredInputs (RND-589 all-at-once)", () => {
+  it("returns [] when image source + name present", () => {
+    expect(
+      collectMissingRequiredInputs({ imageRef: "r", name: "n" }, "name"),
+    ).toEqual([]);
+  });
+  it("lists both missing image source and name", () => {
+    const m = collectMissingRequiredInputs({ verifiable: false }, "name");
+    expect(m.join(" ")).toMatch(/image source/);
+    expect(m.join(" ")).toMatch(/--name/);
+  });
+  it("accepts verifiable git source as image source", () => {
+    const m = collectMissingRequiredInputs(
+      { verifiable: true, repo: "x", commit: "y", name: "n" },
+      "name",
+    );
+    expect(m).toEqual([]);
+  });
+  it("reports only the image source for upgrade (app-id handled at call site)", () => {
+    const m = collectMissingRequiredInputs({}, "app-id");
+    expect(m).toEqual([expect.stringMatching(/image source/)]);
   });
 });
