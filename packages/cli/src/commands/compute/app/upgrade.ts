@@ -1,5 +1,10 @@
 import { Command, Args, Flags } from "@oclif/core";
-import { getEnvironmentConfig, UserApiClient, isMainnet } from "@layr-labs/ecloud-sdk";
+import {
+  getEnvironmentConfig,
+  UserApiClient,
+  isMainnet,
+  WatchTimeoutError,
+} from "@layr-labs/ecloud-sdk";
 import { withTelemetry } from "../../../telemetry";
 import { commonFlags, applyTxOverrides } from "../../../flags";
 import { createBuildClient, createComputeClient } from "../../../client";
@@ -134,6 +139,11 @@ export default class AppUpgrade extends Command {
       description: "Skip all confirmation prompts",
       default: false,
       env: "ECLOUD_FORCE",
+    }),
+    "watch-timeout": Flags.integer({
+      description:
+        "Maximum seconds to wait for the upgrade to complete before returning a recovery hint (default: 600)",
+      env: "ECLOUD_WATCH_TIMEOUT_SECONDS",
     }),
   };
 
@@ -450,7 +460,32 @@ export default class AppUpgrade extends Command {
       const res = await compute.app.executeUpgrade(prepared, finalTx);
 
       // 12. Watch until upgrade completes
-      await compute.app.watchUpgrade(res.appId);
+      try {
+        await compute.app.watchUpgrade(res.appId, { timeoutSeconds: flags["watch-timeout"] });
+      } catch (err: any) {
+        if (err instanceof WatchTimeoutError) {
+          this.log("");
+          this.log(
+            chalk.yellow(
+              `Timed out after ${err.elapsedSeconds}s waiting for upgrade to complete (last status: ${err.lastStatus ?? "unknown"}).`,
+            ),
+          );
+          this.log(chalk.gray("The on-chain transaction was submitted; the orchestrator may"));
+          this.log(chalk.gray("still be processing. To check the current status, run:"));
+          this.log("");
+          this.log(`  ${chalk.cyan(`ecloud compute app info ${res.appId}`)}`);
+          this.log("");
+          this.log(chalk.gray(`appId:  ${res.appId}`));
+          this.log(chalk.gray(`txHash: ${res.txHash}`));
+          this.log(
+            chalk.gray(
+              `(override the watch deadline with ECLOUD_WATCH_TIMEOUT_SECONDS, currently ${err.timeoutSeconds}s)`,
+            ),
+          );
+          this.exit(1);
+        }
+        throw err;
+      }
 
       try {
         const cwd = process.env.INIT_CWD || process.cwd();

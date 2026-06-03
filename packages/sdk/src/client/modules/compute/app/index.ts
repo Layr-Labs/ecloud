@@ -16,6 +16,7 @@ import {
   prepareDeployFromVerifiableBuild as prepareDeployFromVerifiableBuildFn,
   executeDeploy as executeDeployFn,
   watchDeployment as watchDeploymentFn,
+  type WatchDeploymentOptions,
 } from "./deploy";
 import {
   upgrade as upgradeApp,
@@ -23,6 +24,7 @@ import {
   prepareUpgradeFromVerifiableBuild as prepareUpgradeFromVerifiableBuildFn,
   executeUpgrade as executeUpgradeFn,
   watchUpgrade as watchUpgradeFn,
+  type WatchUpgradeOptions,
 } from "./upgrade";
 import { createApp, CreateAppOpts } from "./create";
 import { logs, LogsOptions } from "./logs";
@@ -125,7 +127,10 @@ export interface AppModule {
     gasEstimate: GasEstimate;
   }>;
   executeDeploy: (prepared: PreparedDeploy, gas?: GasEstimate) => Promise<ExecuteDeployResult>;
-  watchDeployment: (appId: AppId) => Promise<string | undefined>;
+  watchDeployment: (
+    appId: AppId,
+    opts?: WatchDeploymentOptions,
+  ) => Promise<string | undefined>;
 
   // Granular upgrade control
   prepareUpgrade: (
@@ -143,7 +148,7 @@ export interface AppModule {
     gasEstimate: GasEstimate;
   }>;
   executeUpgrade: (prepared: PreparedUpgrade, gas?: GasEstimate) => Promise<ExecuteUpgradeResult>;
-  watchUpgrade: (appId: AppId) => Promise<void>;
+  watchUpgrade: (appId: AppId, opts?: WatchUpgradeOptions) => Promise<void>;
 
   // Profile management
   setProfile: (appId: AppId, profile: AppProfile) => Promise<AppProfileResponse>;
@@ -314,7 +319,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
       };
     },
 
-    async watchDeployment(appId) {
+    async watchDeployment(appId, opts) {
       return watchDeploymentFn(
         appId,
         walletClient,
@@ -322,6 +327,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
         environment,
         logger,
         skipTelemetry,
+        opts,
       );
     },
 
@@ -383,8 +389,16 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
       };
     },
 
-    async watchUpgrade(appId) {
-      return watchUpgradeFn(appId, walletClient, publicClient, environment, logger, skipTelemetry);
+    async watchUpgrade(appId, opts) {
+      return watchUpgradeFn(
+        appId,
+        walletClient,
+        publicClient,
+        environment,
+        logger,
+        skipTelemetry,
+        opts,
+      );
     },
 
     // Profile management
