@@ -62,6 +62,28 @@ function ensureInteractive(missingFlagHint: string): void {
   }
 }
 
+/**
+ * True when there is no attached TTY (CI, scripted use, agents).
+ *
+ * The optional deploy/upgrade prompts (env file, log visibility, resource-usage
+ * monitoring, Dockerfile-vs-existing-image) all have a safe default, so rather
+ * than throwing via `ensureInteractive` they fall back to that default and log
+ * what was chosen. Required inputs with no safe default (image source,
+ * instance type, app name/id) keep calling `ensureInteractive` and still error.
+ */
+function isNonInteractive(): boolean {
+  return !process.stdin.isTTY;
+}
+
+/**
+ * Emit a single, consistent line noting that an optional flag was defaulted
+ * because we are running without a TTY. Keeps the choice visible/auditable in
+ * CI logs.
+ */
+function warnDefaulted(flagHint: string, chosen: string): void {
+  console.warn(`Warning: ${flagHint} not set in non-interactive mode; defaulting to ${chosen}.`);
+}
+
 // ==================== Dockerfile Selection ====================
 
 /**
@@ -81,6 +103,17 @@ export async function getDockerfileInteractive(dockerfilePath?: string): Promise
   if (!fs.existsSync(dockerfilePath_resolved)) {
     // No Dockerfile found, return empty string (deploy existing image)
     return "";
+  }
+
+  // In non-interactive mode we cannot ask the user to choose between building
+  // the discovered Dockerfile and deploying an existing image. Default to
+  // building from the discovered Dockerfile — the intent when a Dockerfile is
+  // sitting in the working directory. Callers that pass --image-ref skip this
+  // helper entirely (see deploy.ts / upgrade.ts), so this default never
+  // overrides an explicit image reference.
+  if (isNonInteractive()) {
+    warnDefaulted("--dockerfile/--image-ref", `build from '${dockerfilePath_resolved}'`);
+    return dockerfilePath_resolved;
   }
 
   // Interactive prompt when Dockerfile exists
@@ -820,6 +853,13 @@ export async function getEnvFileInteractive(envFilePath?: string): Promise<strin
     return ".env";
   }
 
+  // In non-interactive mode, default to no env file (the same outcome as the
+  // interactive "Continue without env file" choice).
+  if (isNonInteractive()) {
+    warnDefaulted("--env-file", "no env file");
+    return "";
+  }
+
   ensureInteractive("--env-file");
   console.log("\nEnvironment file not found.");
   console.log("Environment files contain variables like RPC_URL, etc.");
@@ -967,6 +1007,13 @@ export async function getLogSettingsInteractive(
           `Invalid log-visibility: ${logVisibility} (must be public, private, or off)`,
         );
     }
+  }
+
+  // In non-interactive mode, default to private logs. Never silently default
+  // to public — private is the conservative choice for an unattended deploy.
+  if (isNonInteractive()) {
+    warnDefaulted("--log-visibility", "'private'");
+    return { logRedirect: "always", publicLogs: false };
   }
 
   ensureInteractive("--log-visibility");
@@ -1437,6 +1484,12 @@ export async function getResourceUsageMonitoringInteractive(
           `Invalid resource-usage-monitoring: ${resourceUsageMonitoring} (must be enable or disable)`,
         );
     }
+  }
+
+  // In non-interactive mode, default to disabled resource usage monitoring.
+  if (isNonInteractive()) {
+    warnDefaulted("--resource-usage-monitoring", "'disable'");
+    return "disable";
   }
 
   ensureInteractive("--resource-usage-monitoring");
