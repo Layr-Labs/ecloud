@@ -24,6 +24,7 @@ import {
   prepareUpgradeFromVerifiableBuild as prepareUpgradeFromVerifiableBuildFn,
   executeUpgrade as executeUpgradeFn,
   watchUpgrade as watchUpgradeFn,
+  type WatchUpgradeOptions,
 } from "./upgrade";
 import { createApp, CreateAppOpts } from "./create";
 import { logs, LogsOptions } from "./logs";
@@ -147,7 +148,7 @@ export interface AppModule {
     gasEstimate: GasEstimate;
   }>;
   executeUpgrade: (prepared: PreparedUpgrade, gas?: GasEstimate) => Promise<ExecuteUpgradeResult>;
-  watchUpgrade: (appId: AppId) => Promise<void>;
+  watchUpgrade: (appId: AppId, opts?: WatchUpgradeOptions) => Promise<void>;
 
   // Profile management
   setProfile: (appId: AppId, profile: AppProfile) => Promise<AppProfileResponse>;
@@ -388,8 +389,16 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
       };
     },
 
-    async watchUpgrade(appId) {
-      return watchUpgradeFn(appId, walletClient, publicClient, environment, logger, skipTelemetry);
+    async watchUpgrade(appId, opts) {
+      return watchUpgradeFn(
+        appId,
+        walletClient,
+        publicClient,
+        environment,
+        logger,
+        skipTelemetry,
+        opts,
+      );
     },
 
     // Profile management
