@@ -1595,9 +1595,7 @@ export async function confirmWithDefault(
   defaultValue: boolean = false,
 ): Promise<boolean> {
   if (!process.stdin.isTTY) {
-    throw new Error(
-      `Cannot confirm "${prompt}" in non-interactive mode. Use --force to skip confirmation prompts.`,
-    );
+    return defaultValue;
   }
   return await inquirerConfirm({
     message: prompt,
