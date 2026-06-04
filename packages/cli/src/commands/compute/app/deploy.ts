@@ -5,6 +5,7 @@ import {
   isMainnet,
   WatchTimeoutError,
 } from "@layr-labs/ecloud-sdk";
+import type { PrepareDeployResult, GasEstimate } from "@layr-labs/ecloud-sdk";
 import { withTelemetry } from "../../../telemetry";
 import { commonFlags, applyTxOverrides } from "../../../flags";
 import { createComputeClient } from "../../../client";
@@ -474,7 +475,8 @@ export default class AppDeploy extends Command {
       // Build/push stage — failures here mean no image was produced and no
       // on-chain tx was attempted. Distinct exit code so callers don't confuse
       // it with an on-chain failure.
-      let prepared, gasEstimate;
+      let prepared: PrepareDeployResult["prepared"];
+      let gasEstimate: GasEstimate;
       try {
         ({ prepared, gasEstimate } =
           verifiableMode === "git"
@@ -529,7 +531,7 @@ export default class AppDeploy extends Command {
       // 10. Execute the deployment (on-chain stage). The image is already
       // built+pushed at this point; a failure here is distinct from a build
       // failure and a re-run will reuse the pushed image.
-      let res;
+      let res: Awaited<ReturnType<typeof compute.app.executeDeploy>>;
       try {
         res = await compute.app.executeDeploy(prepared, finalTx);
       } catch (err) {

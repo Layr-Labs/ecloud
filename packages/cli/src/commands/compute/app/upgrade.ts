@@ -5,6 +5,7 @@ import {
   isMainnet,
   WatchTimeoutError,
 } from "@layr-labs/ecloud-sdk";
+import type { PrepareUpgradeResult, GasEstimate } from "@layr-labs/ecloud-sdk";
 import { withTelemetry } from "../../../telemetry";
 import { commonFlags, applyTxOverrides } from "../../../flags";
 import { createBuildClient, createComputeClient } from "../../../client";
@@ -418,7 +419,8 @@ export default class AppUpgrade extends Command {
       // the image doesn't already have it.
       // Build/push stage — failures here mean no image was produced and no
       // on-chain tx was attempted.
-      let prepared, gasEstimate;
+      let prepared: PrepareUpgradeResult["prepared"];
+      let gasEstimate: GasEstimate;
       try {
         ({ prepared, gasEstimate } =
           verifiableMode === "git"
@@ -469,7 +471,7 @@ export default class AppUpgrade extends Command {
       // 11. Execute the upgrade (on-chain stage). Image already built+pushed;
       // a failure here is distinct from a build failure and a re-run reuses the
       // pushed image.
-      let res;
+      let res: Awaited<ReturnType<typeof compute.app.executeUpgrade>>;
       try {
         res = await compute.app.executeUpgrade(prepared, finalTx);
       } catch (err) {
