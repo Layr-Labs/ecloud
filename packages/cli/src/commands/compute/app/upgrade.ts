@@ -15,7 +15,6 @@ import {
   getImageReferenceInteractive,
   getEnvFile,
   getInstanceType,
-  type SkuInfo,
   getLogSettings,
   getResourceUsageMonitoring,
   getOrPromptAppID,
@@ -30,6 +29,7 @@ import {
   collectMissingRequiredInputs,
 } from "../../../utils/prompts";
 import { getClientId } from "../../../utils/version";
+import { fetchAvailableInstanceTypes } from "../../../utils/instanceTypes";
 import { setLinkedAppForDirectory, invalidateProfileCache } from "../../../utils/globalConfig";
 import chalk from "chalk";
 import { formatVerifiableBuildSummary } from "../../../utils/build";
@@ -565,37 +565,5 @@ export default class AppUpgrade extends Command {
         ),
       );
     });
-  }
-}
-
-/**
- * Fetch available instance types from backend
- */
-async function fetchAvailableInstanceTypes(
-  environment: string,
-  environmentConfig: any,
-  privateKey: string,
-  rpcUrl: string,
-): Promise<SkuInfo[]> {
-  try {
-    const { publicClient, walletClient } = createViemClients({
-      privateKey,
-      rpcUrl,
-      environment,
-    });
-    const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, {
-      clientId: getClientId(),
-    });
-
-    const skuList = await userApiClient.getSKUs();
-    if (skuList.skus.length === 0) {
-      throw new Error("No instance types available from server");
-    }
-
-    return skuList.skus;
-  } catch (err: any) {
-    console.warn(`Failed to fetch instance types: ${err.message}`);
-    // Return a default fallback
-    return [{ sku: "g1-standard-4t", description: "4 vCPUs, 16 GB memory, TDX" }];
   }
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EXIT_CODES, errorMessage, stageFailure } from "../exitCodes";
+import { InsufficientGasError } from "@layr-labs/ecloud-sdk";
 
 describe("errorMessage", () => {
   it("extracts Error.message", () => {
@@ -41,6 +42,22 @@ describe("stageFailure — maps a failed deploy/upgrade stage to message + exit 
     const onchain = stageFailure("upgrade", "onchain", new Error("x"));
     expect(onchain.message).toContain("On-chain upgrade failed");
     expect(onchain.message).toContain("re-running upgrade will reuse it");
+  });
+
+  it("reclassifies an insufficient-gas failure caught in the build stage as on-chain (exit 4)", () => {
+    // The gas pre-flight runs inside prepare*() AFTER the image is built+pushed,
+    // so it surfaces through the build try/catch. But the image already exists,
+    // so it must NOT be reported as exit 3 "no <op> was attempted" — it is an
+    // on-chain-readiness failure (exit 4, "re-run reuses the pushed image").
+    const gasErr = new InsufficientGasError({
+      address: "0xabc0000000000000000000000000000000000abc",
+      requiredWei: BigInt(2),
+      availableWei: BigInt(1),
+    });
+    const { message, exit } = stageFailure("deploy", "build", gasErr);
+    expect(exit).toBe(EXIT_CODES.ONCHAIN_FAILED);
+    expect(message).toContain("Insufficient ETH for gas");
+    expect(message).not.toContain("no deployment was attempted");
   });
 
   it("each stage carries a distinct exit code", () => {
