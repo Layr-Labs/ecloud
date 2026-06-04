@@ -5,7 +5,10 @@
  * A ~7-minute build that succeeds and then fails on-chain must be
  * distinguishable from a build that never produced an image.
  *
- *   1  generic / unclassified error (oclif default)
+ * Exit code 1 is intentionally NOT defined here: it is oclif's default for any
+ * unclassified error (a plain `this.error(msg)` with no `exit` option). The
+ * codes below are the stage-specific ones we assign on top of that baseline.
+ *
  *   2  invalid or missing input — fails before any build
  *   3  build/push failed — no on-chain transaction was attempted
  *   4  build/push succeeded but the on-chain transaction failed

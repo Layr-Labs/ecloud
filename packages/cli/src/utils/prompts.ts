@@ -133,9 +133,10 @@ export function collectMissingRequiredInputs(
 // ==================== Dockerfile Selection ====================
 
 /**
- * Prompt for Dockerfile selection
+ * Resolve the Dockerfile path: explicit flag, else the discovered ./Dockerfile.
+ * When nonInteractive, defaults instead of prompting for build-vs-existing.
  */
-export async function getDockerfileInteractive(
+export async function getDockerfile(
   dockerfilePath?: string,
   nonInteractive: boolean = false,
 ): Promise<string> {
@@ -891,9 +892,10 @@ export async function promptBuildIdFromRecentBuilds(options: {
 // ==================== Environment File Selection ====================
 
 /**
- * Prompt for environment file
+ * Resolve the env file path: explicit flag, else auto-detected ./.env.
+ * When nonInteractive, defaults to no env file instead of prompting.
  */
-export async function getEnvFileInteractive(
+export async function getEnvFile(
   envFilePath?: string,
   nonInteractive: boolean = false,
 ): Promise<string> {
@@ -991,7 +993,7 @@ function formatSkuChoice(it: SkuInfo): string {
   return `${it.sku} - ${it.description}`;
 }
 
-export async function getInstanceTypeInteractive(
+export async function getInstanceType(
   instanceType: string | undefined,
   defaultSKU: string,
   availableTypes: SkuInfo[],
@@ -1068,9 +1070,10 @@ export async function getInstanceTypeInteractive(
 export type LogVisibility = "public" | "private" | "off";
 
 /**
- * Prompt for log settings
+ * Resolve log settings from the --log-visibility value.
+ * When nonInteractive, defaults to private instead of prompting.
  */
-export async function getLogSettingsInteractive(
+export async function getLogSettings(
   logVisibility?: LogVisibility,
   nonInteractive: boolean = false,
 ): Promise<{ logRedirect: string; publicLogs: boolean }> {
@@ -1549,9 +1552,10 @@ async function getAppIDInteractiveFromRegistry(
 export type ResourceUsageMonitoring = "enable" | "disable";
 
 /**
- * Prompt for resource usage monitoring settings
+ * Resolve the resource-usage-monitoring setting from the flag value.
+ * When nonInteractive, defaults to disable instead of prompting.
  */
-export async function getResourceUsageMonitoringInteractive(
+export async function getResourceUsageMonitoring(
   resourceUsageMonitoring?: ResourceUsageMonitoring,
   nonInteractive: boolean = false,
 ): Promise<ResourceUsageMonitoring> {
