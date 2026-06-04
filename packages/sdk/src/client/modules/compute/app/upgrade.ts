@@ -27,6 +27,7 @@ import {
   type GasEstimate,
 } from "../../../common/contract/caller";
 import { estimateBatchGas, createAuthorizationList } from "../../../common/contract/eip7702";
+import { assertSufficientGas } from "../../../common/gas/insufficientGas";
 import { watchUntilUpgradeComplete } from "../../../common/contract/watcher";
 import {
   validateAppID,
@@ -199,6 +200,13 @@ export async function prepareUpgradeFromVerifiableBuild(
         account: batch.walletClient.account!.address,
         executions: batch.executions,
         authorizationList,
+      });
+
+      // Pre-flight: block if the wallet can't cover gas (credits don't pay it).
+      await assertSufficientGas({
+        publicClient: batch.publicClient,
+        address: batch.walletClient.account!.address,
+        gasEstimate,
       });
 
       // Extract only data fields for public type (clients stay internal)
@@ -487,6 +495,13 @@ export async function prepareUpgrade(
         account: batch.walletClient.account!.address,
         executions: batch.executions,
         authorizationList,
+      });
+
+      // Pre-flight: block if the wallet can't cover gas (credits don't pay it).
+      await assertSufficientGas({
+        publicClient: batch.publicClient,
+        address: batch.walletClient.account!.address,
+        gasEstimate,
       });
 
       // Extract only data fields for public type (clients stay internal)
