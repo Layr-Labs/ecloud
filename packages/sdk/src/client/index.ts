@@ -51,6 +51,7 @@ export {
   type WatchUpgradeOptions,
 } from "./modules/compute/app/upgrade";
 export { WatchTimeoutError, WATCH_DEFAULT_TIMEOUT_SECONDS } from "./common/contract/watcher";
+export { InsufficientGasError, assertSufficientGas } from "./common/gas/insufficientGas";
 
 // Export compute module for standalone use
 export {
