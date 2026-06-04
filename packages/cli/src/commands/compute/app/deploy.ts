@@ -170,9 +170,15 @@ export default class AppDeploy extends Command {
     return withTelemetry(this, async () => {
       const { flags } = await this.parse(AppDeploy);
 
+      // Resolve the interactivity decision once (flag › CI › !TTY) and thread it
+      // into the optional-input helpers. They take it as a parameter rather than
+      // re-deriving from process internally, so --non-interactive is honored
+      // even on a TTY and the helpers stay pure/testable.
+      const nonInteractive = isNonInteractive(flags);
+
       // Non-interactive: report every missing required input at once instead of
       // failing one prompt at a time.
-      if (isNonInteractive(flags)) {
+      if (nonInteractive) {
         const missing = collectMissingRequiredInputs(
           {
             imageRef: flags["image-ref"],
@@ -322,7 +328,7 @@ export default class AppDeploy extends Command {
           : await promptVerifiableGitSourceInputs();
 
         // Prompt for env file after git inputs
-        envFilePath = await getEnvFileInteractive(flags["env-file"]);
+        envFilePath = await getEnvFileInteractive(flags["env-file"], nonInteractive);
 
         const includeTlsCaddyfile = isTlsEnabledFromEnvFile(envFilePath);
         if (includeTlsCaddyfile && !inputs.caddyfilePath) {
@@ -409,7 +415,7 @@ export default class AppDeploy extends Command {
       const dockerfilePath =
         isVerifiable || deployExistingImageRef
           ? ""
-          : await getDockerfileInteractive(flags.dockerfile);
+          : await getDockerfileInteractive(flags.dockerfile, nonInteractive);
       const buildFromDockerfile = dockerfilePath !== "";
 
       // 2. Get image reference interactively (context-aware)
@@ -428,7 +434,7 @@ export default class AppDeploy extends Command {
       );
 
       // 4. Get env file path interactively
-      envFilePath = envFilePath ?? (await getEnvFileInteractive(flags["env-file"]));
+      envFilePath = envFilePath ?? (await getEnvFileInteractive(flags["env-file"], nonInteractive));
 
       // 4b. Merge inline --env KEY=VALUE vars (overrides env file values)
       if (flags.env && flags.env.length > 0) {
@@ -446,17 +452,19 @@ export default class AppDeploy extends Command {
         flags["instance-type"],
         "", // No pinned default for new deployments; non-interactive falls back to g1-standard-2s
         availableTypes,
-        isNonInteractive(flags),
+        nonInteractive,
       );
 
       // 6. Get log visibility interactively
       const logSettings = await getLogSettingsInteractive(
         flags["log-visibility"] as LogVisibility | undefined,
+        nonInteractive,
       );
 
       // 7. Get resource usage monitoring interactively
       const resourceUsageMonitoring = await getResourceUsageMonitoringInteractive(
         flags["resource-usage-monitoring"] as ResourceUsageMonitoring | undefined,
+        nonInteractive,
       );
 
       // 8. Prepare deployment (builds image, pushes to registry, prepares batch, estimates gas)
