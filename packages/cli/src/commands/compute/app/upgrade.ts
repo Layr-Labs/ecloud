@@ -157,7 +157,7 @@ export default class AppUpgrade extends Command {
       const appIdInput = args["app-id"] ?? process.env.ECLOUD_APP_ID;
 
       // Non-interactive: report every missing required input at once instead of
-      // failing one prompt at a time (RND-589).
+      // failing one prompt at a time.
       if (isNonInteractive(flags)) {
         const missing = collectMissingRequiredInputs(
           {
@@ -417,7 +417,7 @@ export default class AppUpgrade extends Command {
       // add the ecloud runtime layer (startup script, KMS client, Caddy) if
       // the image doesn't already have it.
       // Build/push stage — failures here mean no image was produced and no
-      // on-chain tx was attempted (RND-591).
+      // on-chain tx was attempted.
       let prepared, gasEstimate;
       try {
         ({ prepared, gasEstimate } =
@@ -468,7 +468,7 @@ export default class AppUpgrade extends Command {
 
       // 11. Execute the upgrade (on-chain stage). Image already built+pushed;
       // a failure here is distinct from a build failure and a re-run reuses the
-      // pushed image (RND-591).
+      // pushed image.
       let res;
       try {
         res = await compute.app.executeUpgrade(prepared, finalTx);

@@ -70,7 +70,7 @@ export default class AppStatus extends Command {
     });
 
     if (flags.wait) {
-      // Reuse the bounded watch machinery (RND-568/569): polls server-side at a
+      // Reuse the bounded watch machinery: polls server-side at a
       // fixed cadence with 429/5xx backoff, throws WatchTimeoutError on timeout.
       const compute = await createComputeClient(validatedFlags);
       try {

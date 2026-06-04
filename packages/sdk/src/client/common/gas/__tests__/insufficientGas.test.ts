@@ -19,7 +19,7 @@ function clientWithBalance(balanceWei: bigint): PublicClient {
   return { getBalance: async () => balanceWei } as unknown as PublicClient;
 }
 
-describe("assertSufficientGas (RND-596)", () => {
+describe("assertSufficientGas", () => {
   it("passes when balance exceeds the estimate", async () => {
     await expect(
       assertSufficientGas({

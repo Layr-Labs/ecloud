@@ -119,7 +119,7 @@ async function extractDigestFromSinglePlatform(
       // Architecture is undetectable from `docker inspect`. Previously this
       // assumed linux/amd64 and deployed anyway — the silent hole that let an
       // arm64 image through to crash on first request in the TEE. Fail closed
-      // instead: refuse rather than guess the platform (RND-597).
+      // instead: refuse rather than guess the platform.
       throw createPlatformErrorMessage(imageRef, ["unknown (could not determine architecture)"]);
     }
 

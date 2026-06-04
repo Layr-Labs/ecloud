@@ -941,7 +941,7 @@ export async function getEnvFileInteractive(envFilePath?: string): Promise<strin
 /**
  * Smallest TEE tier that runs a real workload (2 vCPU / 8 GB / AMD SEV-SNP);
  * used as the non-interactive deploy default. Confirmed present in the live
- * getSKUs list on mainnet-alpha and sepolia-prod (RND-589).
+ * getSKUs list on mainnet-alpha and sepolia-prod.
  */
 export const DEFAULT_NONINTERACTIVE_SKU = "g1-standard-2s";
 
@@ -1001,7 +1001,7 @@ export async function getInstanceTypeInteractive(
     throw new Error(`Invalid instance-type: ${instanceType} (must be one of: ${validSKUs})`);
   }
 
-  // Non-interactive: pick a default instead of prompting (RND-589).
+  // Non-interactive: pick a default instead of prompting.
   // Callers pass isNonInteractive(flags) (flag + CI + isTTY) as this argument.
   if (nonInteractive) {
     // Upgrade path: reuse the currently pinned type when one is known.

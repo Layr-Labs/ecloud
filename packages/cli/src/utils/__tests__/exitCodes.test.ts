@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { EXIT_CODES, errorMessage } from "../exitCodes";
 
-describe("deploy/upgrade exit codes (RND-591)", () => {
+describe("deploy/upgrade exit codes", () => {
   it("uses distinct, stable codes per failure stage", () => {
     expect(EXIT_CODES.INVALID_INPUT).toBe(2);
     expect(EXIT_CODES.BUILD_FAILED).toBe(3);

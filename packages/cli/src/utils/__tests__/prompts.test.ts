@@ -80,10 +80,10 @@ describe("prompts non-interactive regressions", () => {
       await expect(promptUseVerifiableBuild(true)).resolves.toBe(false);
     });
 
-    // Post RND-568/569 merge: confirmWithDefault returns the default in non-TTY
-    // mode instead of throwing, so a verifiable-build confirm resolves to false
-    // (regular build) rather than erroring. RND-589-aligned: optional confirms
-    // never block a non-interactive run.
+    // confirmWithDefault returns the default in non-TTY mode instead of
+    // throwing, so a verifiable-build confirm resolves to false (regular
+    // build) rather than erroring. Optional confirms never block a
+    // non-interactive run.
     it("resolves to false (regular build) when force is false in non-TTY mode", async () => {
       process.stdin.isTTY = false;
       await expect(promptUseVerifiableBuild(false)).resolves.toBe(false);
@@ -97,12 +97,12 @@ describe("prompts non-interactive regressions", () => {
 });
 
 /**
- * RND-564 / RND-571: in non-interactive (non-TTY) mode, the optional deploy /
- * upgrade prompts must fall back to a safe default with a warning instead of
+ * In non-interactive (non-TTY) mode, the optional deploy / upgrade prompts
+ * must fall back to a safe default with a warning instead of
  * throwing "Cannot prompt in non-interactive mode". Required inputs that have
  * no safe default (e.g. --instance-type) must still error.
  */
-describe("non-interactive flag defaulting (RND-564)", () => {
+describe("non-interactive flag defaulting", () => {
   const origIsTTY = process.stdin.isTTY;
 
   afterEach(() => {
@@ -211,7 +211,7 @@ describe("non-interactive flag defaulting (RND-564)", () => {
       );
     });
 
-    // RND-589: deploy with no instance type defaults to g1-standard-2s in non-interactive mode.
+    // Deploy with no instance type defaults to g1-standard-2s in non-interactive mode.
     it("defaults to g1-standard-2s in non-interactive deploy when available", async () => {
       process.stdin.isTTY = false;
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -221,7 +221,7 @@ describe("non-interactive flag defaulting (RND-564)", () => {
       expect(warn).toHaveBeenCalledWith(expect.stringMatching(/--instance-type.*g1-standard-2s/));
     });
 
-    // RND-589: upgrade reuses the currently pinned type (defaultSKU) instead of prompting.
+    // Upgrade reuses the currently pinned type (defaultSKU) instead of prompting.
     it("reuses defaultSKU (pinned type) in non-interactive upgrade", async () => {
       process.stdin.isTTY = false;
       vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -244,7 +244,7 @@ describe("non-interactive flag defaulting (RND-564)", () => {
   });
 });
 
-describe("isNonInteractive (RND-589 detection)", () => {
+describe("isNonInteractive detection", () => {
   const origTTY = process.stdin.isTTY;
   const origCI = process.env.CI;
   afterEach(() => {
@@ -275,7 +275,7 @@ describe("isNonInteractive (RND-589 detection)", () => {
   });
 });
 
-describe("collectMissingRequiredInputs (RND-589 all-at-once)", () => {
+describe("collectMissingRequiredInputs reports all missing at once", () => {
   it("returns [] when image source + name present", () => {
     expect(collectMissingRequiredInputs({ imageRef: "r", name: "n" }, "name")).toEqual([]);
   });

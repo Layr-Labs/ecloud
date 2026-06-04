@@ -110,7 +110,7 @@ describe("version-check init hook", () => {
     expect(upgradePackage).not.toHaveBeenCalled();
   });
 
-  // RND-589: in non-interactive mode the hook must not block on the update
+  // In non-interactive mode the hook must not block on the update
   // prompt (it ran before the command and read as a failure in CI/agents).
   it("does not prompt in non-interactive mode (no TTY)", async () => {
     process.stdin.isTTY = false;

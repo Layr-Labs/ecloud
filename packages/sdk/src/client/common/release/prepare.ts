@@ -72,7 +72,7 @@ export async function prepareRelease(
     await new Promise((resolve) => setTimeout(resolve, REGISTRY_PROPAGATION_WAIT_SECONDS * 1000));
   } else {
     // Pre-flight: verify the remote image is linux/amd64 BEFORE the slow
-    // pull+layer+push (RND-597). getImageDigestAndName runs `docker manifest
+    // pull+layer+push. getImageDigestAndName runs `docker manifest
     // inspect` (no pull) and throws the platform-remediation error for a
     // non-amd64 image, so an arm64 --image-ref fails in seconds instead of
     // minutes — and never slips through to crash in the TEE.

@@ -1,6 +1,6 @@
 /**
  * Distinct process exit codes for deploy/upgrade so a caller (CI, agent) keying
- * off exit status can tell *which stage* failed (RND-591).
+ * off exit status can tell *which stage* failed.
  *
  * A ~7-minute build that succeeds and then fails on-chain must be
  * distinguishable from a build that never produced an image.

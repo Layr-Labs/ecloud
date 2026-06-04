@@ -24,7 +24,7 @@ vi.mock("child_process", () => ({
 
 import { getImageDigestAndName } from "../digest";
 
-describe("getImageDigestAndName amd64 enforcement (RND-597)", () => {
+describe("getImageDigestAndName amd64 enforcement", () => {
   afterEach(() => {
     for (const k of Object.keys(responses)) delete responses[k];
     vi.clearAllMocks();

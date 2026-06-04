@@ -63,7 +63,7 @@ export default class BillingStatus extends Command {
       this.log(`  Wallet: ${billing.address}`);
 
       // Show the wallet's on-chain ETH so the credit-vs-gas gap is visible
-      // before a deploy: compute credits do NOT pay on-chain gas (RND-596).
+      // before a deploy: compute credits do NOT pay on-chain gas.
       // Best-effort — never fail `billing status` if the balance read fails.
       try {
         const privateKey = flags["private-key"];
