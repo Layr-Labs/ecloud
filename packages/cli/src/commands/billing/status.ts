@@ -3,6 +3,7 @@ import { createBillingClient } from "../../client";
 import { commonFlags } from "../../flags";
 import { getEnvironmentConfig } from "@layr-labs/ecloud-sdk";
 import { createViemClients } from "../../utils/viemClients";
+import { errorMessage } from "../../utils/exitCodes";
 import { formatEther } from "viem";
 import chalk from "chalk";
 import { withTelemetry } from "../../telemetry";
@@ -80,8 +81,12 @@ export default class BillingStatus extends Command {
               : "";
           this.log(`  Wallet ETH (${environment}): ${chalk.cyan(`${eth} ETH`)}${note}`);
         }
-      } catch {
-        // ignore — ETH balance is informational
+      } catch (err) {
+        // Best-effort: the ETH line is informational, so a failure here must
+        // not abort `billing status`. But surface the reason rather than
+        // swallowing it — a malformed --private-key or an unreachable RPC is
+        // worth telling the user about.
+        this.warn(`Could not read wallet ETH balance: ${errorMessage(err)}`);
       }
 
       this.log(`  Status: ${formatStatus(result.subscriptionStatus)}`);
