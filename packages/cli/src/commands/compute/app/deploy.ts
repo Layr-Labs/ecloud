@@ -1,10 +1,5 @@
 import { Command, Flags } from "@oclif/core";
-import {
-  getEnvironmentConfig,
-  UserApiClient,
-  isMainnet,
-  WatchTimeoutError,
-} from "@layr-labs/ecloud-sdk";
+import { getEnvironmentConfig, isMainnet, WatchTimeoutError } from "@layr-labs/ecloud-sdk";
 import type { PrepareDeployResult, GasEstimate } from "@layr-labs/ecloud-sdk";
 import { withTelemetry } from "../../../telemetry";
 import { commonFlags, applyTxOverrides } from "../../../flags";
@@ -16,7 +11,6 @@ import {
   getOrPromptAppName,
   getEnvFile,
   getInstanceType,
-  type SkuInfo,
   getLogSettings,
   getResourceUsageMonitoring,
   getAppProfileInteractive,
@@ -32,7 +26,7 @@ import {
   collectMissingRequiredInputs,
 } from "../../../utils/prompts";
 import { invalidateProfileCache, setLinkedAppForDirectory } from "../../../utils/globalConfig";
-import { getClientId } from "../../../utils/version";
+import { fetchAvailableInstanceTypes } from "../../../utils/instanceTypes";
 import chalk from "chalk";
 import { createBuildClient } from "../../../client";
 import { formatVerifiableBuildSummary } from "../../../utils/build";
@@ -671,37 +665,5 @@ export default class AppDeploy extends Command {
         this.log(chalk.gray(`  curl -s -o /dev/null -w "%{http_code}" http://${ipAddress}/`));
       }
     });
-  }
-}
-
-/**
- * Fetch available instance types from backend
- */
-async function fetchAvailableInstanceTypes(
-  environment: string,
-  environmentConfig: any,
-  privateKey: string,
-  rpcUrl: string,
-): Promise<SkuInfo[]> {
-  try {
-    const { publicClient, walletClient } = createViemClients({
-      privateKey,
-      rpcUrl,
-      environment,
-    });
-    const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, {
-      clientId: getClientId(),
-    });
-
-    const skuList = await userApiClient.getSKUs();
-    if (skuList.skus.length === 0) {
-      throw new Error("No instance types available from server");
-    }
-
-    return skuList.skus;
-  } catch (err: any) {
-    console.warn(`Failed to fetch instance types: ${err.message}`);
-    // Return a default fallback
-    return [{ sku: "g1-standard-4t", description: "4 vCPUs, 16 GB memory, TDX" }];
   }
 }

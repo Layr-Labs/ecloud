@@ -123,6 +123,11 @@ export function collectMissingRequiredInputs(
     missing.push(
       "an image source (one of: --image-ref, --dockerfile, or --verifiable with --repo and --commit)",
     );
+  } else if (state.dockerfile && !state.imageRef && !state.verifiable) {
+    // A local --dockerfile build still needs a registry destination to push
+    // the built image to. Without --image-ref, the non-interactive run would
+    // otherwise fall through to an interactive --image-ref prompt and throw.
+    missing.push("--image-ref (registry destination for the built image)");
   }
   if (identityFlag === "name" && !state.name) {
     missing.push("--name");

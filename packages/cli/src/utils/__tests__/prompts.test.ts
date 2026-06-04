@@ -372,4 +372,18 @@ describe("collectMissingRequiredInputs reports all missing at once", () => {
     const m = collectMissingRequiredInputs({}, "app-id");
     expect(m).toEqual([expect.stringMatching(/image source/)]);
   });
+  it("requires --image-ref as the push destination when building from --dockerfile", () => {
+    // A local Dockerfile build still needs somewhere to push the built image.
+    // Non-interactively, a missing --image-ref must be reported here (exit 2),
+    // not deferred to an interactive prompt that then throws as exit 1.
+    const m = collectMissingRequiredInputs({ dockerfile: "Dockerfile", name: "n" }, "name");
+    expect(m).toEqual([expect.stringMatching(/--image-ref/)]);
+  });
+  it("accepts --dockerfile together with --image-ref", () => {
+    const m = collectMissingRequiredInputs(
+      { dockerfile: "Dockerfile", imageRef: "r", name: "n" },
+      "name",
+    );
+    expect(m).toEqual([]);
+  });
 });

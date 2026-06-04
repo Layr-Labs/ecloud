@@ -1,3 +1,5 @@
+import { InsufficientGasError } from "@layr-labs/ecloud-sdk";
+
 /**
  * Distinct process exit codes for deploy/upgrade so a caller (CI, agent) keying
  * off exit status can tell *which stage* failed.
@@ -42,6 +44,12 @@ export type DeployStage = "invalid-input" | "build" | "onchain";
  *
  * - build:   no image was produced, so no on-chain tx was attempted (exit 3).
  * - onchain: the image is already built+pushed; a re-run reuses it (exit 4).
+ *
+ * Exception: the gas pre-flight (`assertSufficientGas`) runs inside prepare*()
+ * AFTER the image is built and pushed, so an `InsufficientGasError` surfaces
+ * through the build try/catch. The image already exists, so it is reclassified
+ * as an on-chain-readiness failure (exit 4) rather than a build failure (exit
+ * 3) — reporting "no <op> was attempted" would be wrong and misleading.
  */
 export function stageFailure(
   operation: DeployOperation,
@@ -49,6 +57,13 @@ export function stageFailure(
   err: unknown,
 ): { message: string; exit: DeployStageExitCode } {
   const noun = operation === "deploy" ? "deployment" : "upgrade";
+
+  // The image is already pushed by the time gas is checked, so treat an
+  // insufficient-gas failure as on-chain regardless of which stage caught it.
+  if (err instanceof InsufficientGasError) {
+    stage = "onchain";
+  }
+
   switch (stage) {
     case "invalid-input":
       return { message: errorMessage(err), exit: EXIT_CODES.INVALID_INPUT };
