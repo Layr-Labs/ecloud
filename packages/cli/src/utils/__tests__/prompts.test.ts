@@ -1,5 +1,24 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "fs";
+
+// Any helper that falls through to an interactive prompt is a bug in these
+// tests' scenarios (we always run with a non-interactive intent). Make that
+// fail loudly and deterministically instead of hanging on real stdin.
+vi.mock("@inquirer/prompts", () => ({
+  select: vi.fn(async () => {
+    throw new Error("unexpected interactive select()");
+  }),
+  input: vi.fn(async () => {
+    throw new Error("unexpected interactive input()");
+  }),
+  password: vi.fn(async () => {
+    throw new Error("unexpected interactive password()");
+  }),
+  confirm: vi.fn(async () => {
+    throw new Error("unexpected interactive confirm()");
+  }),
+}));
+
 import {
   getEnvironmentInteractive,
   promptUseVerifiableBuild,
@@ -117,7 +136,7 @@ describe("non-interactive flag defaulting", () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(false);
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-      await expect(getEnvFileInteractive(undefined)).resolves.toBe("");
+      await expect(getEnvFileInteractive(undefined, true)).resolves.toBe("");
       expect(warn).toHaveBeenCalledWith(expect.stringMatching(/--env-file.*no env file/));
     });
 
@@ -133,7 +152,7 @@ describe("non-interactive flag defaulting", () => {
       process.stdin.isTTY = false;
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-      await expect(getLogSettingsInteractive(undefined)).resolves.toEqual({
+      await expect(getLogSettingsInteractive(undefined, true)).resolves.toEqual({
         logRedirect: "always",
         publicLogs: false,
       });
@@ -143,7 +162,7 @@ describe("non-interactive flag defaulting", () => {
     it("never silently defaults to public in non-TTY mode", async () => {
       process.stdin.isTTY = false;
       vi.spyOn(console, "warn").mockImplementation(() => {});
-      const settings = await getLogSettingsInteractive(undefined);
+      const settings = await getLogSettingsInteractive(undefined, true);
       expect(settings.publicLogs).toBe(false);
     });
 
@@ -161,7 +180,7 @@ describe("non-interactive flag defaulting", () => {
       process.stdin.isTTY = false;
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-      await expect(getResourceUsageMonitoringInteractive(undefined)).resolves.toBe("disable");
+      await expect(getResourceUsageMonitoringInteractive(undefined, true)).resolves.toBe("disable");
       expect(warn).toHaveBeenCalledWith(
         expect.stringMatching(/--resource-usage-monitoring.*disable/),
       );
@@ -185,7 +204,7 @@ describe("non-interactive flag defaulting", () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(true);
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-      const result = await getDockerfileInteractive(undefined);
+      const result = await getDockerfileInteractive(undefined, true);
       expect(result).toMatch(/Dockerfile$/);
       expect(warn).toHaveBeenCalledWith(expect.stringMatching(/--dockerfile.*build from/));
     });
@@ -241,6 +260,72 @@ describe("non-interactive flag defaulting", () => {
         ),
       ).rejects.toThrow(/instance-type/);
     });
+  });
+});
+
+/**
+ * The optional-input helpers must honor an injected non-interactive decision,
+ * not re-derive it from process.stdin/CI internally. This is what lets
+ * `--non-interactive` work on a real TTY (where isTTY is true and CI is unset):
+ * the command resolves isNonInteractive(flags) once and threads the boolean
+ * down. Each test below runs on a TTY with CI unset — so a helper that ignores
+ * the injected flag would fall through to a (mocked, throwing) prompt.
+ */
+describe("optional-input helpers honor injected nonInteractive on a TTY", () => {
+  const origIsTTY = process.stdin.isTTY;
+  const origCI = process.env.CI;
+
+  beforeEach(() => {
+    process.stdin.isTTY = true;
+    delete process.env.CI;
+  });
+  afterEach(() => {
+    process.stdin.isTTY = origIsTTY;
+    if (origCI === undefined) delete process.env.CI;
+    else process.env.CI = origCI;
+    vi.restoreAllMocks();
+  });
+
+  it("getEnvFileInteractive defaults to no env file", async () => {
+    vi.spyOn(fs, "existsSync").mockReturnValue(false);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await expect(getEnvFileInteractive(undefined, true)).resolves.toBe("");
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/--env-file.*no env file/));
+  });
+
+  it("getLogSettingsInteractive defaults to private logs", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await expect(getLogSettingsInteractive(undefined, true)).resolves.toEqual({
+      logRedirect: "always",
+      publicLogs: false,
+    });
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/--log-visibility.*private/));
+  });
+
+  it("getResourceUsageMonitoringInteractive defaults to disable", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await expect(getResourceUsageMonitoringInteractive(undefined, true)).resolves.toBe("disable");
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringMatching(/--resource-usage-monitoring.*disable/),
+    );
+  });
+
+  it("getDockerfileInteractive defaults to building the discovered Dockerfile", async () => {
+    vi.spyOn(fs, "existsSync").mockReturnValue(true);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const result = await getDockerfileInteractive(undefined, true);
+    expect(result).toMatch(/Dockerfile$/);
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/--dockerfile.*build from/));
+  });
+
+  it("the same helpers still prompt on a TTY when nonInteractive is false", async () => {
+    // Sanity: when the injected decision is interactive, the helper reaches the
+    // (mocked) prompt rather than silently defaulting. Proves the boolean is
+    // actually driving the branch, not being ignored.
+    vi.spyOn(fs, "existsSync").mockReturnValue(false);
+    await expect(getLogSettingsInteractive(undefined, false)).rejects.toThrow(
+      /unexpected interactive/,
+    );
   });
 });
 

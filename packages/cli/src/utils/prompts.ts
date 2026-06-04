@@ -135,7 +135,10 @@ export function collectMissingRequiredInputs(
 /**
  * Prompt for Dockerfile selection
  */
-export async function getDockerfileInteractive(dockerfilePath?: string): Promise<string> {
+export async function getDockerfileInteractive(
+  dockerfilePath?: string,
+  nonInteractive: boolean = false,
+): Promise<string> {
   // Check if provided via option
   if (dockerfilePath) {
     return dockerfilePath;
@@ -157,7 +160,7 @@ export async function getDockerfileInteractive(dockerfilePath?: string): Promise
   // sitting in the working directory. Callers that pass --image-ref skip this
   // helper entirely (see deploy.ts / upgrade.ts), so this default never
   // overrides an explicit image reference.
-  if (isNonInteractive()) {
+  if (nonInteractive) {
     warnDefaulted("--dockerfile/--image-ref", `build from '${dockerfilePath_resolved}'`);
     return dockerfilePath_resolved;
   }
@@ -890,7 +893,10 @@ export async function promptBuildIdFromRecentBuilds(options: {
 /**
  * Prompt for environment file
  */
-export async function getEnvFileInteractive(envFilePath?: string): Promise<string> {
+export async function getEnvFileInteractive(
+  envFilePath?: string,
+  nonInteractive: boolean = false,
+): Promise<string> {
   if (envFilePath && fs.existsSync(envFilePath)) {
     return envFilePath;
   }
@@ -901,7 +907,7 @@ export async function getEnvFileInteractive(envFilePath?: string): Promise<strin
 
   // In non-interactive mode, default to no env file (the same outcome as the
   // interactive "Continue without env file" choice).
-  if (isNonInteractive()) {
+  if (nonInteractive) {
     warnDefaulted("--env-file", "no env file");
     return "";
   }
@@ -1066,6 +1072,7 @@ export type LogVisibility = "public" | "private" | "off";
  */
 export async function getLogSettingsInteractive(
   logVisibility?: LogVisibility,
+  nonInteractive: boolean = false,
 ): Promise<{ logRedirect: string; publicLogs: boolean }> {
   if (logVisibility) {
     switch (logVisibility) {
@@ -1084,7 +1091,7 @@ export async function getLogSettingsInteractive(
 
   // In non-interactive mode, default to private logs. Never silently default
   // to public — private is the conservative choice for an unattended deploy.
-  if (isNonInteractive()) {
+  if (nonInteractive) {
     warnDefaulted("--log-visibility", "'private'");
     return { logRedirect: "always", publicLogs: false };
   }
@@ -1546,6 +1553,7 @@ export type ResourceUsageMonitoring = "enable" | "disable";
  */
 export async function getResourceUsageMonitoringInteractive(
   resourceUsageMonitoring?: ResourceUsageMonitoring,
+  nonInteractive: boolean = false,
 ): Promise<ResourceUsageMonitoring> {
   if (resourceUsageMonitoring) {
     switch (resourceUsageMonitoring) {
@@ -1560,7 +1568,7 @@ export async function getResourceUsageMonitoringInteractive(
   }
 
   // In non-interactive mode, default to disabled resource usage monitoring.
-  if (isNonInteractive()) {
+  if (nonInteractive) {
     warnDefaulted("--resource-usage-monitoring", "'disable'");
     return "disable";
   }
