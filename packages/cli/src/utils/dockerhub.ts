@@ -102,5 +102,93 @@ export async function resolveDockerHubImageDigest(imageRef: string): Promise<str
   if (!/^sha256:[0-9a-f]{64}$/i.test(digest)) {
     throw new Error(`Unexpected digest format from Docker registry: ${digest}`);
   }
+
+  // RND-597: a prebuilt image ref must contain a linux/amd64 image, or it will
+  // deploy and then crash on first request in the TEE. The digest fetch above
+  // does not look at architecture, so verify it explicitly here.
+  await assertImageHasAmd64(owner, repo, tag, token, imageRef);
+
   return digest;
+}
+
+const AMD64_ACCEPT = [
+  "application/vnd.oci.image.index.v1+json",
+  "application/vnd.docker.distribution.manifest.list.v2+json",
+  "application/vnd.oci.image.manifest.v1+json",
+  "application/vnd.docker.distribution.manifest.v2+json",
+].join(", ");
+
+/**
+ * Verify a Docker Hub tag exposes a linux/amd64 image (RND-597).
+ *
+ * - Multi-platform (manifest list / OCI index): require a linux/amd64 entry.
+ * - Single-platform: read the config blob's `architecture`/`os` and require
+ *   linux/amd64.
+ *
+ * Throws a remediation error otherwise.
+ */
+async function assertImageHasAmd64(
+  owner: string,
+  repo: string,
+  tag: string,
+  token: string,
+  imageRef: string,
+): Promise<void> {
+  const base = `https://registry-1.docker.io/v2/${owner}/${repo}`;
+  const headers = { Authorization: `Bearer ${token}`, Accept: AMD64_ACCEPT };
+
+  const res = await fetch(`${base}/manifests/${encodeURIComponent(tag)}`, { headers });
+  if (!res.ok) {
+    const body = await safeReadText(res);
+    throw new Error(
+      `Failed to read manifest for ${imageRef} (${res.status}): ${body || res.statusText}`,
+    );
+  }
+  const manifest = (await res.json()) as {
+    manifests?: Array<{ platform?: { os?: string; architecture?: string } }>;
+    config?: { digest?: string };
+    architecture?: string;
+    os?: string;
+  };
+
+  const isAmd64 = (os?: string, arch?: string) => os === "linux" && arch === "amd64";
+
+  // Multi-platform: scan the index entries.
+  if (Array.isArray(manifest.manifests) && manifest.manifests.length > 0) {
+    const platforms = manifest.manifests.map((m) =>
+      m.platform ? `${m.platform.os}/${m.platform.architecture}` : "unknown",
+    );
+    if (manifest.manifests.some((m) => isAmd64(m.platform?.os, m.platform?.architecture))) {
+      return;
+    }
+    throw amd64Error(imageRef, platforms);
+  }
+
+  // Single-platform: the architecture lives in the config blob, not the manifest.
+  const configDigest = manifest.config?.digest;
+  if (!configDigest) {
+    throw amd64Error(imageRef, ["unknown (no platform info in manifest)"]);
+  }
+  const cfgRes = await fetch(`${base}/blobs/${configDigest}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!cfgRes.ok) {
+    throw amd64Error(imageRef, ["unknown (could not read image config)"]);
+  }
+  const cfg = (await cfgRes.json()) as { architecture?: string; os?: string };
+  if (isAmd64(cfg.os, cfg.architecture)) {
+    return;
+  }
+  throw amd64Error(imageRef, [`${cfg.os ?? "unknown"}/${cfg.architecture ?? "unknown"}`]);
+}
+
+function amd64Error(imageRef: string, platforms: string[]): Error {
+  return new Error(
+    `ecloud requires linux/amd64 images for TEE deployment.\n\n` +
+      `Image: ${imageRef}\n` +
+      `Found platform(s): ${platforms.join(", ")}\n` +
+      `Required platform: linux/amd64\n\n` +
+      `To fix: rebuild for linux/amd64 (e.g. docker buildx build --platform linux/amd64 ... --push), ` +
+      `or use a verifiable build (--verifiable --repo <repo> --commit <sha>), which builds server-side.`,
+  );
 }

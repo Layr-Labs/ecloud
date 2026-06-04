@@ -116,18 +116,11 @@ async function extractDigestFromSinglePlatform(
       : null;
 
     if (!config) {
-      // Try to get from manifest config digest
-      if (manifest.config?.digest) {
-        const digest = hexStringToBytes32(manifest.config.digest);
-        const registry = extractRegistryName(imageRef);
-        // Assume linux/amd64 if we can't determine platform
-        return {
-          digest,
-          registry,
-          platform: DOCKER_PLATFORM,
-        };
-      }
-      throw new Error(`Could not determine platform for ${imageRef}`);
+      // Architecture is undetectable from `docker inspect`. Previously this
+      // assumed linux/amd64 and deployed anyway — the silent hole that let an
+      // arm64 image through to crash on first request in the TEE. Fail closed
+      // instead: refuse rather than guess the platform (RND-597).
+      throw createPlatformErrorMessage(imageRef, ["unknown (could not determine architecture)"]);
     }
 
     const platform = `${config.os}/${config.architecture}`;
