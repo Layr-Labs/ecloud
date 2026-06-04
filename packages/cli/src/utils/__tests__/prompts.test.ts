@@ -22,11 +22,11 @@ vi.mock("@inquirer/prompts", () => ({
 import {
   getEnvironmentInteractive,
   promptUseVerifiableBuild,
-  getDockerfileInteractive,
-  getEnvFileInteractive,
-  getLogSettingsInteractive,
-  getResourceUsageMonitoringInteractive,
-  getInstanceTypeInteractive,
+  getDockerfile,
+  getEnvFile,
+  getLogSettings,
+  getResourceUsageMonitoring,
+  getInstanceType,
   isNonInteractive,
   collectMissingRequiredInputs,
 } from "../prompts";
@@ -129,30 +129,30 @@ describe("non-interactive flag defaulting", () => {
     vi.restoreAllMocks();
   });
 
-  describe("getEnvFileInteractive", () => {
+  describe("getEnvFile", () => {
     it("defaults to no env file in non-TTY mode when none is found", async () => {
       process.stdin.isTTY = false;
       // No explicit path, and no auto-detected .env on disk.
       vi.spyOn(fs, "existsSync").mockReturnValue(false);
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-      await expect(getEnvFileInteractive(undefined, true)).resolves.toBe("");
+      await expect(getEnvFile(undefined, true)).resolves.toBe("");
       expect(warn).toHaveBeenCalledWith(expect.stringMatching(/--env-file.*no env file/));
     });
 
     it("still returns an explicitly provided, existing env file in non-TTY mode", async () => {
       process.stdin.isTTY = false;
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "custom.env");
-      await expect(getEnvFileInteractive("custom.env")).resolves.toBe("custom.env");
+      await expect(getEnvFile("custom.env")).resolves.toBe("custom.env");
     });
   });
 
-  describe("getLogSettingsInteractive", () => {
+  describe("getLogSettings", () => {
     it("defaults to private logs in non-TTY mode", async () => {
       process.stdin.isTTY = false;
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-      await expect(getLogSettingsInteractive(undefined, true)).resolves.toEqual({
+      await expect(getLogSettings(undefined, true)).resolves.toEqual({
         logRedirect: "always",
         publicLogs: false,
       });
@@ -162,25 +162,25 @@ describe("non-interactive flag defaulting", () => {
     it("never silently defaults to public in non-TTY mode", async () => {
       process.stdin.isTTY = false;
       vi.spyOn(console, "warn").mockImplementation(() => {});
-      const settings = await getLogSettingsInteractive(undefined, true);
+      const settings = await getLogSettings(undefined, true);
       expect(settings.publicLogs).toBe(false);
     });
 
     it("honors an explicit --log-visibility value regardless of TTY", async () => {
       process.stdin.isTTY = false;
-      await expect(getLogSettingsInteractive("public")).resolves.toEqual({
+      await expect(getLogSettings("public")).resolves.toEqual({
         logRedirect: "always",
         publicLogs: true,
       });
     });
   });
 
-  describe("getResourceUsageMonitoringInteractive", () => {
+  describe("getResourceUsageMonitoring", () => {
     it("defaults to disable in non-TTY mode", async () => {
       process.stdin.isTTY = false;
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-      await expect(getResourceUsageMonitoringInteractive(undefined, true)).resolves.toBe("disable");
+      await expect(getResourceUsageMonitoring(undefined, true)).resolves.toBe("disable");
       expect(warn).toHaveBeenCalledWith(
         expect.stringMatching(/--resource-usage-monitoring.*disable/),
       );
@@ -188,15 +188,15 @@ describe("non-interactive flag defaulting", () => {
 
     it("honors an explicit value regardless of TTY", async () => {
       process.stdin.isTTY = false;
-      await expect(getResourceUsageMonitoringInteractive("enable")).resolves.toBe("enable");
+      await expect(getResourceUsageMonitoring("enable")).resolves.toBe("enable");
     });
   });
 
-  describe("getDockerfileInteractive", () => {
+  describe("getDockerfile", () => {
     it("returns '' (deploy existing image) when no Dockerfile exists, even in non-TTY mode", async () => {
       process.stdin.isTTY = false;
       vi.spyOn(fs, "existsSync").mockReturnValue(false);
-      await expect(getDockerfileInteractive(undefined)).resolves.toBe("");
+      await expect(getDockerfile(undefined)).resolves.toBe("");
     });
 
     it("defaults to building the discovered Dockerfile in non-TTY mode", async () => {
@@ -204,20 +204,18 @@ describe("non-interactive flag defaulting", () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(true);
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-      const result = await getDockerfileInteractive(undefined, true);
+      const result = await getDockerfile(undefined, true);
       expect(result).toMatch(/Dockerfile$/);
       expect(warn).toHaveBeenCalledWith(expect.stringMatching(/--dockerfile.*build from/));
     });
 
     it("returns an explicitly provided Dockerfile path verbatim", async () => {
       process.stdin.isTTY = false;
-      await expect(getDockerfileInteractive("./custom/Dockerfile")).resolves.toBe(
-        "./custom/Dockerfile",
-      );
+      await expect(getDockerfile("./custom/Dockerfile")).resolves.toBe("./custom/Dockerfile");
     });
   });
 
-  describe("getInstanceTypeInteractive", () => {
+  describe("getInstanceType", () => {
     const types = [
       { sku: "g1-standard-2s", friendly_name: "Standard 2s", description: "2 vCPU, SEV-SNP" },
       { sku: "g1-standard-4t", friendly_name: "Standard 4t", description: "4 vCPU, TDX" },
@@ -225,18 +223,14 @@ describe("non-interactive flag defaulting", () => {
 
     it("returns an explicitly provided, valid instance type in non-TTY mode", async () => {
       process.stdin.isTTY = false;
-      await expect(getInstanceTypeInteractive("g1-standard-2s", "", types)).resolves.toBe(
-        "g1-standard-2s",
-      );
+      await expect(getInstanceType("g1-standard-2s", "", types)).resolves.toBe("g1-standard-2s");
     });
 
     // Deploy with no instance type defaults to g1-standard-2s in non-interactive mode.
     it("defaults to g1-standard-2s in non-interactive deploy when available", async () => {
       process.stdin.isTTY = false;
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-      await expect(getInstanceTypeInteractive(undefined, "", types, true)).resolves.toBe(
-        "g1-standard-2s",
-      );
+      await expect(getInstanceType(undefined, "", types, true)).resolves.toBe("g1-standard-2s");
       expect(warn).toHaveBeenCalledWith(expect.stringMatching(/--instance-type.*g1-standard-2s/));
     });
 
@@ -244,15 +238,15 @@ describe("non-interactive flag defaulting", () => {
     it("reuses defaultSKU (pinned type) in non-interactive upgrade", async () => {
       process.stdin.isTTY = false;
       vi.spyOn(console, "warn").mockImplementation(() => {});
-      await expect(
-        getInstanceTypeInteractive(undefined, "g1-standard-4t", types, true),
-      ).resolves.toBe("g1-standard-4t");
+      await expect(getInstanceType(undefined, "g1-standard-4t", types, true)).resolves.toBe(
+        "g1-standard-4t",
+      );
     });
 
     it("errors in non-interactive when the default SKU is not offered", async () => {
       process.stdin.isTTY = false;
       await expect(
-        getInstanceTypeInteractive(
+        getInstanceType(
           undefined,
           "",
           [{ sku: "g1-micro-1v", friendly_name: "m", description: "" }],
@@ -286,34 +280,34 @@ describe("optional-input helpers honor injected nonInteractive on a TTY", () => 
     vi.restoreAllMocks();
   });
 
-  it("getEnvFileInteractive defaults to no env file", async () => {
+  it("getEnvFile defaults to no env file", async () => {
     vi.spyOn(fs, "existsSync").mockReturnValue(false);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    await expect(getEnvFileInteractive(undefined, true)).resolves.toBe("");
+    await expect(getEnvFile(undefined, true)).resolves.toBe("");
     expect(warn).toHaveBeenCalledWith(expect.stringMatching(/--env-file.*no env file/));
   });
 
-  it("getLogSettingsInteractive defaults to private logs", async () => {
+  it("getLogSettings defaults to private logs", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    await expect(getLogSettingsInteractive(undefined, true)).resolves.toEqual({
+    await expect(getLogSettings(undefined, true)).resolves.toEqual({
       logRedirect: "always",
       publicLogs: false,
     });
     expect(warn).toHaveBeenCalledWith(expect.stringMatching(/--log-visibility.*private/));
   });
 
-  it("getResourceUsageMonitoringInteractive defaults to disable", async () => {
+  it("getResourceUsageMonitoring defaults to disable", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    await expect(getResourceUsageMonitoringInteractive(undefined, true)).resolves.toBe("disable");
+    await expect(getResourceUsageMonitoring(undefined, true)).resolves.toBe("disable");
     expect(warn).toHaveBeenCalledWith(
       expect.stringMatching(/--resource-usage-monitoring.*disable/),
     );
   });
 
-  it("getDockerfileInteractive defaults to building the discovered Dockerfile", async () => {
+  it("getDockerfile defaults to building the discovered Dockerfile", async () => {
     vi.spyOn(fs, "existsSync").mockReturnValue(true);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const result = await getDockerfileInteractive(undefined, true);
+    const result = await getDockerfile(undefined, true);
     expect(result).toMatch(/Dockerfile$/);
     expect(warn).toHaveBeenCalledWith(expect.stringMatching(/--dockerfile.*build from/));
   });
@@ -323,9 +317,7 @@ describe("optional-input helpers honor injected nonInteractive on a TTY", () => 
     // (mocked) prompt rather than silently defaulting. Proves the boolean is
     // actually driving the branch, not being ignored.
     vi.spyOn(fs, "existsSync").mockReturnValue(false);
-    await expect(getLogSettingsInteractive(undefined, false)).rejects.toThrow(
-      /unexpected interactive/,
-    );
+    await expect(getLogSettings(undefined, false)).rejects.toThrow(/unexpected interactive/);
   });
 });
 

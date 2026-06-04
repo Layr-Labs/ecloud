@@ -11,14 +11,14 @@ import { commonFlags, applyTxOverrides } from "../../../flags";
 import { createComputeClient } from "../../../client";
 import { createViemClients } from "../../../utils/viemClients";
 import {
-  getDockerfileInteractive,
+  getDockerfile,
   getImageReferenceInteractive,
   getOrPromptAppName,
-  getEnvFileInteractive,
-  getInstanceTypeInteractive,
+  getEnvFile,
+  getInstanceType,
   type SkuInfo,
-  getLogSettingsInteractive,
-  getResourceUsageMonitoringInteractive,
+  getLogSettings,
+  getResourceUsageMonitoring,
   getAppProfileInteractive,
   LogVisibility,
   ResourceUsageMonitoring,
@@ -328,7 +328,7 @@ export default class AppDeploy extends Command {
           : await promptVerifiableGitSourceInputs();
 
         // Prompt for env file after git inputs
-        envFilePath = await getEnvFileInteractive(flags["env-file"], nonInteractive);
+        envFilePath = await getEnvFile(flags["env-file"], nonInteractive);
 
         const includeTlsCaddyfile = isTlsEnabledFromEnvFile(envFilePath);
         if (includeTlsCaddyfile && !inputs.caddyfilePath) {
@@ -415,7 +415,7 @@ export default class AppDeploy extends Command {
       const dockerfilePath =
         isVerifiable || deployExistingImageRef
           ? ""
-          : await getDockerfileInteractive(flags.dockerfile, nonInteractive);
+          : await getDockerfile(flags.dockerfile, nonInteractive);
       const buildFromDockerfile = dockerfilePath !== "";
 
       // 2. Get image reference interactively (context-aware)
@@ -434,7 +434,7 @@ export default class AppDeploy extends Command {
       );
 
       // 4. Get env file path interactively
-      envFilePath = envFilePath ?? (await getEnvFileInteractive(flags["env-file"], nonInteractive));
+      envFilePath = envFilePath ?? (await getEnvFile(flags["env-file"], nonInteractive));
 
       // 4b. Merge inline --env KEY=VALUE vars (overrides env file values)
       if (flags.env && flags.env.length > 0) {
@@ -448,7 +448,7 @@ export default class AppDeploy extends Command {
         privateKey,
         rpcUrl,
       );
-      const instanceType = await getInstanceTypeInteractive(
+      const instanceType = await getInstanceType(
         flags["instance-type"],
         "", // No pinned default for new deployments; non-interactive falls back to g1-standard-2s
         availableTypes,
@@ -456,13 +456,13 @@ export default class AppDeploy extends Command {
       );
 
       // 6. Get log visibility interactively
-      const logSettings = await getLogSettingsInteractive(
+      const logSettings = await getLogSettings(
         flags["log-visibility"] as LogVisibility | undefined,
         nonInteractive,
       );
 
       // 7. Get resource usage monitoring interactively
-      const resourceUsageMonitoring = await getResourceUsageMonitoringInteractive(
+      const resourceUsageMonitoring = await getResourceUsageMonitoring(
         flags["resource-usage-monitoring"] as ResourceUsageMonitoring | undefined,
         nonInteractive,
       );

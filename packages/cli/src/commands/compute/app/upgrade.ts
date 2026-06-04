@@ -11,13 +11,13 @@ import { commonFlags, applyTxOverrides } from "../../../flags";
 import { createBuildClient, createComputeClient } from "../../../client";
 import { createViemClients } from "../../../utils/viemClients";
 import {
-  getDockerfileInteractive,
+  getDockerfile,
   getImageReferenceInteractive,
-  getEnvFileInteractive,
-  getInstanceTypeInteractive,
+  getEnvFile,
+  getInstanceType,
   type SkuInfo,
-  getLogSettingsInteractive,
-  getResourceUsageMonitoringInteractive,
+  getLogSettings,
+  getResourceUsageMonitoring,
   getOrPromptAppID,
   LogVisibility,
   ResourceUsageMonitoring,
@@ -270,7 +270,7 @@ export default class AppUpgrade extends Command {
           : await promptVerifiableGitSourceInputs();
 
         // Prompt for env file after git inputs
-        envFilePath = await getEnvFileInteractive(flags["env-file"], nonInteractive);
+        envFilePath = await getEnvFile(flags["env-file"], nonInteractive);
         const includeTlsCaddyfile = isTlsEnabledFromEnvFile(envFilePath);
         if (includeTlsCaddyfile && !inputs.caddyfilePath) {
           inputs.caddyfilePath = "Caddyfile";
@@ -352,7 +352,7 @@ export default class AppUpgrade extends Command {
       const dockerfilePath =
         isVerifiable || deployExistingImageRef
           ? ""
-          : await getDockerfileInteractive(flags.dockerfile, nonInteractive);
+          : await getDockerfile(flags.dockerfile, nonInteractive);
       const buildFromDockerfile = dockerfilePath !== "";
 
       // 3. Get image reference interactively (context-aware)
@@ -361,7 +361,7 @@ export default class AppUpgrade extends Command {
         : await getImageReferenceInteractive(flags["image-ref"], buildFromDockerfile);
 
       // 4. Get env file path interactively
-      envFilePath = envFilePath ?? (await getEnvFileInteractive(flags["env-file"], nonInteractive));
+      envFilePath = envFilePath ?? (await getEnvFile(flags["env-file"], nonInteractive));
 
       // 4b. Merge inline --env KEY=VALUE vars (overrides env file values)
       if (flags.env && flags.env.length > 0) {
@@ -394,7 +394,7 @@ export default class AppUpgrade extends Command {
         privateKey,
         rpcUrl,
       );
-      const instanceType = await getInstanceTypeInteractive(
+      const instanceType = await getInstanceType(
         flags["instance-type"],
         currentInstanceType,
         availableTypes,
@@ -402,13 +402,13 @@ export default class AppUpgrade extends Command {
       );
 
       // 7. Get log visibility interactively
-      const logSettings = await getLogSettingsInteractive(
+      const logSettings = await getLogSettings(
         flags["log-visibility"] as LogVisibility | undefined,
         nonInteractive,
       );
 
       // 8. Get resource usage monitoring interactively
-      const resourceUsageMonitoring = await getResourceUsageMonitoringInteractive(
+      const resourceUsageMonitoring = await getResourceUsageMonitoring(
         flags["resource-usage-monitoring"] as ResourceUsageMonitoring | undefined,
         nonInteractive,
       );
