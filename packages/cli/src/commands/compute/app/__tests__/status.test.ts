@@ -30,7 +30,7 @@ vi.mock("../../../../client", () => ({
   createComputeClient: vi.fn(async () => ({ app: { watchDeployment } })),
 }));
 
-describe("compute app status (RND-592)", () => {
+describe("compute app status", () => {
   let logOutput: string[];
 
   beforeEach(() => {

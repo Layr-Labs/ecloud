@@ -9,11 +9,11 @@ vi.mock("axios", () => ({
 import { requestWithRetry } from "../retry";
 
 /**
- * RND-592: requestWithRetry retries 429 (rate limit) AND transient gateway
+ * requestWithRetry retries 429 (rate limit) AND transient gateway
  * errors 502/503/504, then returns the last response. 2xx/4xx (other than 429)
  * are returned immediately without retry.
  */
-describe("requestWithRetry retryable statuses (RND-592)", () => {
+describe("requestWithRetry retryable statuses", () => {
   afterEach(() => {
     vi.clearAllMocks();
     vi.useRealTimers();

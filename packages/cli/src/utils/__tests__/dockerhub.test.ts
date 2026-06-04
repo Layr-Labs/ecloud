@@ -43,7 +43,7 @@ function stubFetch(handlers: {
   );
 }
 
-describe("resolveDockerHubImageDigest amd64 enforcement (RND-597)", () => {
+describe("resolveDockerHubImageDigest amd64 enforcement", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("accepts a multi-platform image that includes linux/amd64", async () => {

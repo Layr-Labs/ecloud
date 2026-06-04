@@ -7,7 +7,7 @@ const MAX_BACKOFF_MS = 30000;
 /**
  * HTTP statuses worth retrying with backoff: rate limiting (429) and transient
  * gateway/availability errors (502/503/504). Agents that poll status hit these
- * under load, and they are routinely recoverable on retry (RND-592).
+ * under load, and they are routinely recoverable on retry.
  */
 const RETRYABLE_STATUSES = new Set([429, 502, 503, 504]);
 

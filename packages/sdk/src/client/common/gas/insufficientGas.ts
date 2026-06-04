@@ -9,7 +9,7 @@ import type { GasEstimate } from "../contract/caller";
  * Compute credits (Stripe / USDC-converted) do NOT pay on-chain gas — gas is
  * paid by the user's EOA at send time via EIP-7702. Without this pre-flight the
  * transaction reverts only after submission, which to an agent is
- * indistinguishable from other failures (RND-596).
+ * indistinguishable from other failures.
  */
 export class InsufficientGasError extends Error {
   public readonly address: Address;

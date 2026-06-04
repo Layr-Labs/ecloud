@@ -103,7 +103,7 @@ export async function resolveDockerHubImageDigest(imageRef: string): Promise<str
     throw new Error(`Unexpected digest format from Docker registry: ${digest}`);
   }
 
-  // RND-597: a prebuilt image ref must contain a linux/amd64 image, or it will
+  // A prebuilt image ref must contain a linux/amd64 image, or it will
   // deploy and then crash on first request in the TEE. The digest fetch above
   // does not look at architecture, so verify it explicitly here.
   await assertImageHasAmd64(owner, repo, tag, token, imageRef);
@@ -119,7 +119,7 @@ const AMD64_ACCEPT = [
 ].join(", ");
 
 /**
- * Verify a Docker Hub tag exposes a linux/amd64 image (RND-597).
+ * Verify a Docker Hub tag exposes a linux/amd64 image.
  *
  * - Multi-platform (manifest list / OCI index): require a linux/amd64 entry.
  * - Single-platform: read the config blob's `architecture`/`os` and require

@@ -13,11 +13,11 @@ import { getBuildType } from "@layr-labs/ecloud-sdk";
 import { getDefaultEnvironment } from "../utils/globalConfig";
 
 /**
- * RND-589: prod builds default --environment to mainnet-alpha (was sepolia);
+ * Prod builds default --environment to mainnet-alpha (was sepolia);
  * dev builds stay sepolia-dev; an explicit configured default always wins.
  * The default is an async thunk on the oclif flag definition.
  */
-describe("commonFlags.environment default (RND-589)", () => {
+describe("commonFlags.environment default", () => {
   // oclif stores the default function on the flag's `default` property.
   const resolveDefault = () =>
     (commonFlags.environment as unknown as { default: () => Promise<string> }).default();
