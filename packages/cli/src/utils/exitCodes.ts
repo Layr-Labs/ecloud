@@ -27,3 +27,42 @@ export function errorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   return String(err);
 }
+
+/** The operation a failure occurred under (drives the user-facing wording). */
+export type DeployOperation = "deploy" | "upgrade";
+
+/** Which stage of deploy/upgrade failed (drives the exit code). */
+export type DeployStage = "invalid-input" | "build" | "onchain";
+
+/**
+ * Map a failed deploy/upgrade stage to a user-facing message and the matching
+ * process exit code, so a caller (CI, agent) keying off exit status can tell
+ * *which stage* failed. Pure — the command layer feeds the result straight to
+ * `this.error(message, { exit })`.
+ *
+ * - build:   no image was produced, so no on-chain tx was attempted (exit 3).
+ * - onchain: the image is already built+pushed; a re-run reuses it (exit 4).
+ */
+export function stageFailure(
+  operation: DeployOperation,
+  stage: DeployStage,
+  err: unknown,
+): { message: string; exit: DeployStageExitCode } {
+  const noun = operation === "deploy" ? "deployment" : "upgrade";
+  switch (stage) {
+    case "invalid-input":
+      return { message: errorMessage(err), exit: EXIT_CODES.INVALID_INPUT };
+    case "build":
+      return {
+        message: `Build/push failed (no ${noun} was attempted): ${errorMessage(err)}`,
+        exit: EXIT_CODES.BUILD_FAILED,
+      };
+    case "onchain":
+      return {
+        message:
+          `On-chain ${noun} failed after the image was built and pushed: ${errorMessage(err)}\n` +
+          `The image is already pushed — re-running ${operation} will reuse it.`,
+        exit: EXIT_CODES.ONCHAIN_FAILED,
+      };
+  }
+}

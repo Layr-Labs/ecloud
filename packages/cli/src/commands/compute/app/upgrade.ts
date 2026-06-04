@@ -41,7 +41,7 @@ import {
 } from "../../../utils/dockerhub";
 import { isTlsEnabledFromEnvFile } from "../../../utils/tls";
 import { mergeInlineEnvVars } from "../../../utils/env";
-import { EXIT_CODES, errorMessage } from "../../../utils/exitCodes";
+import { stageFailure } from "../../../utils/exitCodes";
 import type { SubmitBuildRequest } from "@layr-labs/ecloud-sdk";
 
 export default class AppUpgrade extends Command {
@@ -180,10 +180,12 @@ export default class AppUpgrade extends Command {
           missing.push("app-id (positional arg or ECLOUD_APP_ID)");
         }
         if (missing.length > 0) {
-          this.error(
+          const { message, exit } = stageFailure(
+            "upgrade",
+            "invalid-input",
             `Missing required input(s) for non-interactive upgrade:\n  - ${missing.join("\n  - ")}`,
-            { exit: EXIT_CODES.INVALID_INPUT },
           );
+          this.error(message, { exit });
         }
       }
 
@@ -449,9 +451,8 @@ export default class AppUpgrade extends Command {
                 resourceUsageMonitoring,
               }));
       } catch (err) {
-        this.error(`Build/push failed (no upgrade was attempted): ${errorMessage(err)}`, {
-          exit: EXIT_CODES.BUILD_FAILED,
-        });
+        const { message, exit } = stageFailure("upgrade", "build", err);
+        this.error(message, { exit });
       }
 
       // 10. Apply gas overrides if provided, show estimate, and prompt for confirmation on mainnet
@@ -483,11 +484,8 @@ export default class AppUpgrade extends Command {
       try {
         res = await compute.app.executeUpgrade(prepared, finalTx);
       } catch (err) {
-        this.error(
-          `On-chain upgrade failed after the image was built and pushed: ${errorMessage(err)}\n` +
-            `The image is already pushed — re-running upgrade will reuse it.`,
-          { exit: EXIT_CODES.ONCHAIN_FAILED },
-        );
+        const { message, exit } = stageFailure("upgrade", "onchain", err);
+        this.error(message, { exit });
       }
 
       // 12. Watch until upgrade completes
