@@ -56,4 +56,20 @@ describe("getImageDigestAndName amd64 enforcement", () => {
     });
     await expect(getImageDigestAndName("docker.io/x/y:tag")).rejects.toThrow(/linux\/amd64/);
   });
+
+  it("remediation offers buildx and the --verifiable --repo --commit server-side path", async () => {
+    // The remediation must point at both fixes a non-amd64 --image-ref has:
+    // rebuild for amd64 with buildx, OR switch to a server-side verifiable build
+    // (which needs no local Docker at all). Kept consistent with the CLI's
+    // prebuilt-image rejection so both arm64 entry points say the same thing.
+    responses.manifest = JSON.stringify({
+      manifests: [
+        { digest: "sha256:" + "d".repeat(64), platform: { os: "linux", architecture: "arm64" } },
+      ],
+    });
+    await expect(getImageDigestAndName("docker.io/x/y:tag")).rejects.toThrow(/buildx/);
+    await expect(getImageDigestAndName("docker.io/x/y:tag")).rejects.toThrow(
+      /--verifiable --repo .* --commit/,
+    );
+  });
 });
