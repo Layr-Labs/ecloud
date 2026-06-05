@@ -229,14 +229,11 @@ Image: ${imageRef}
 Found platform(s): ${platforms.join(", ")}
 Required platform: ${DOCKER_PLATFORM}
 
-To fix this issue:
-1. Manual fix:
-   a. Rebuild your image with the correct platform:
-      docker build --platform ${DOCKER_PLATFORM} -t ${imageRef} .
-   b. Push the rebuilt image to your remote registry:
-      docker push ${imageRef}
-
-2. Or use the SDK to build with the correct platform automatically.`;
+To fix, either:
+1. Rebuild the image for ${DOCKER_PLATFORM} and push it:
+     docker buildx build --platform ${DOCKER_PLATFORM} -t ${imageRef} --push .
+2. Or use a verifiable build (--verifiable --repo <repo> --commit <sha>), which
+   builds server-side and needs no local Docker.`;
 
   return new Error(errorMsg);
 }
