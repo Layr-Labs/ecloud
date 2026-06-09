@@ -69,10 +69,19 @@ export default class AppStatus extends Command {
       clientId: getClientId(),
     });
 
-    if (flags.wait) {
+    // One-shot read first. --wait only blocks while the app is still
+    // transitioning; a settled status (Running/Stopped/Terminated/Failed/...)
+    // returns immediately instead of polling until the watch timeout.
+    const initialStatus = await this.readStatus(userApiClient, appID);
+
+    if (flags.wait && isTransitionalStatus(initialStatus)) {
       // Reuse the bounded watch machinery: polls server-side at a
       // fixed cadence with 429/5xx backoff, throws WatchTimeoutError on timeout.
-      const compute = await createComputeClient(validatedFlags);
+      // In --json mode, route SDK progress to stderr so stdout stays pure JSON.
+      const compute = await createComputeClient(
+        validatedFlags,
+        flags.json ? { logger: stderrLogger } : {},
+      );
       try {
         await compute.app.watchDeployment(appID, {
           timeoutSeconds: flags["watch-timeout"],
@@ -90,20 +99,62 @@ export default class AppStatus extends Command {
           throw err;
         }
       }
-    }
 
-    // One-shot status read (also the final read after --wait).
-    const statuses = await userApiClient.getStatuses([appID]);
-    const status = statuses[0]?.status || "Unknown";
-
-    if (flags.json) {
-      this.log(JSON.stringify({ appId: appID, status }));
+      // Final read after waiting; the status has (hopefully) settled.
+      const finalStatus = await this.readStatus(userApiClient, appID);
+      this.emit(appID, finalStatus, flags.json);
       return;
     }
 
+    this.emit(appID, initialStatus, flags.json);
+  }
+
+  /** Fetch the current status for an app, defaulting to "Unknown". */
+  private async readStatus(userApiClient: UserApiClient, appID: string): Promise<string> {
+    const statuses = await userApiClient.getStatuses([appID]);
+    return statuses[0]?.status || "Unknown";
+  }
+
+  /** Write the status as JSON (machine-readable) or a formatted line. */
+  private emit(appID: string, status: string, json: boolean): void {
+    if (json) {
+      this.log(JSON.stringify({ appId: appID, status }));
+      return;
+    }
     this.log(`${chalk.bold(appID)}: ${formatStatus(status)}`);
   }
 }
+
+/**
+ * Statuses that represent an in-progress transition the orchestrator will move
+ * out of on its own. Only these are worth blocking on with --wait; any other
+ * (settled) status returns immediately. Compared case-insensitively so a casing
+ * change on the server side doesn't silently turn --wait into a no-op.
+ */
+const TRANSITIONAL_STATUSES = new Set([
+  "created",
+  "deploying",
+  "upgrading",
+  "resuming",
+  "stopping",
+  "terminating",
+]);
+
+function isTransitionalStatus(status: string): boolean {
+  return TRANSITIONAL_STATUSES.has(status.toLowerCase());
+}
+
+/**
+ * Logger that routes every level to stderr. Used in --json mode so SDK
+ * progress output ("Waiting for app to start...", "Status: ...") never
+ * pollutes the JSON object on stdout.
+ */
+const stderrLogger = {
+  debug: (...args: unknown[]) => console.error(...args),
+  info: (...args: unknown[]) => console.error(...args),
+  warn: (...args: unknown[]) => console.error(...args),
+  error: (...args: unknown[]) => console.error(...args),
+};
 
 function formatStatus(status: string): string {
   switch (status.toLowerCase()) {
