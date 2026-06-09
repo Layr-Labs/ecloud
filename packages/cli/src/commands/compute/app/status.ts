@@ -29,7 +29,7 @@ export default class AppStatus extends Command {
     ...commonFlags,
     wait: Flags.boolean({
       description:
-        "Block until the app reaches a terminal status (Running/Stopped) or the watch timeout elapses, instead of returning immediately",
+        "Block while the app is still transitioning (Deploying/Upgrading/etc.) until it settles or the watch timeout elapses. Already-settled statuses (Running/Stopped/Terminated/...) return immediately.",
       default: false,
     }),
     "watch-timeout": Flags.integer({
