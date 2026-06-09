@@ -179,6 +179,12 @@ export interface PreparedUpgrade {
   appId: AppId;
   /** Final image reference */
   imageRef: string;
+  /**
+   * Digest of the image this upgrade will publish, when known. May be
+   * `0x`-prefixed hex (built path) or `sha256:`-prefixed (verifiable path);
+   * compare via `reconcileReleaseDigest` / `normalizeDigest`, which accept either.
+   */
+  imageDigest?: string;
 }
 
 export interface LifecycleOpts {

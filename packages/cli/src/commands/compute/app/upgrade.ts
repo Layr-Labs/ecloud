@@ -44,6 +44,37 @@ import { mergeInlineEnvVars } from "../../../utils/env";
 import { stageFailure } from "../../../utils/exitCodes";
 import type { SubmitBuildRequest } from "@layr-labs/ecloud-sdk";
 
+/**
+ * After an upgrade, reconcile the indexer-served release digest against the
+ * digest we just deployed. Match → confirm. Timeout → warn (propagation in
+ * progress) but do not fail. Unknown expected digest → skip. Fail-open: a
+ * reconciliation error never blocks the already-successful upgrade.
+ */
+export async function reconcileAndReport(
+  cmd: { log(message?: string): void; warn(message: string): void; debug?(message: string): void },
+  compute: { app: { reconcileReleaseDigest(appId: string, expected: string, opts?: { intervalMs?: number; timeoutMs?: number }): Promise<{ matched: boolean; lastDigest?: string; elapsedMs: number }> } },
+  appId: string,
+  expectedDigest: string | undefined,
+): Promise<void> {
+  if (!expectedDigest) {
+    return; // can't reconcile without a target; no regression vs. prior behavior
+  }
+  try {
+    // Use the SDK's default poll cadence and timeout (currently 3s / 45s).
+    const result = await compute.app.reconcileReleaseDigest(appId, expectedDigest);
+    if (result.matched) {
+      cmd.log(`Upgraded to ${expectedDigest}`);
+    } else {
+      cmd.warn(
+        `New release not yet visible — indexer propagation in progress. ` +
+          `Re-check with 'ecloud compute app releases ${appId}' shortly.`,
+      );
+    }
+  } catch (err: any) {
+    cmd.debug?.(`reconcileReleaseDigest failed (ignored): ${err?.message ?? err}`);
+  }
+}
+
 export default class AppUpgrade extends Command {
   static description = "Upgrade existing deployment";
 
@@ -455,6 +486,9 @@ export default class AppUpgrade extends Command {
         this.error(message, { exit });
       }
 
+      // Digest we expect the upgrade to publish, for post-upgrade reconciliation.
+      const expectedDigest: string | undefined = verifiableImageDigest ?? prepared.imageDigest;
+
       // 10. Apply gas overrides if provided, show estimate, and prompt for confirmation on mainnet
       const finalTx = await applyTxOverrides(gasEstimate, flags, { publicClient, address });
       if (flags["max-fee-per-gas"] || flags["max-priority-fee"]) {
@@ -525,6 +559,17 @@ export default class AppUpgrade extends Command {
 
       this.log(
         `\n✅ ${chalk.green(`App upgraded successfully ${chalk.bold(`(id: ${res.appId}, image: ${res.imageRef})`)}`)}`,
+      );
+
+      await reconcileAndReport(
+        {
+          log: (m?: string) => this.log(m),
+          warn: (m: string) => this.warn(m),
+          debug: (m: string) => this.debug(m),
+        },
+        compute,
+        res.appId,
+        expectedDigest,
       );
 
       // Update profile name if --name was provided (merge with existing profile to avoid wiping fields)
