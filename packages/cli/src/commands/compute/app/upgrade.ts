@@ -39,7 +39,7 @@ import {
   assertEigencloudContainersImageRef,
   resolveDockerHubImageDigest,
 } from "../../../utils/dockerhub";
-import { isTlsEnabledFromEnvFile } from "../../../utils/tls";
+import { isTlsEnabledFromEnvFile, TLS_DISABLED_WARNING } from "../../../utils/tls";
 import { mergeInlineEnvVars } from "../../../utils/env";
 import { stageFailure } from "../../../utils/exitCodes";
 import type { SubmitBuildRequest } from "@layr-labs/ecloud-sdk";
@@ -399,6 +399,12 @@ export default class AppUpgrade extends Command {
       // 4b. Merge inline --env KEY=VALUE vars (overrides env file values)
       if (flags.env && flags.env.length > 0) {
         envFilePath = mergeInlineEnvVars(envFilePath, flags.env);
+      }
+
+      // 4c. Warn if DOMAIN is unset — the app will run, but nothing binds
+      // ports 80/443, so HTTP(S) requests are refused with no other signal.
+      if (!isTlsEnabledFromEnvFile(envFilePath)) {
+        this.warn(TLS_DISABLED_WARNING);
       }
 
       // 5. Get current instance type (best-effort, used as default)

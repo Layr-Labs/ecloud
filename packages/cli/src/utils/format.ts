@@ -4,6 +4,7 @@
 
 import chalk from "chalk";
 import type { AppInfo } from "@layr-labs/ecloud-sdk";
+import { TLS_INFO_LINE } from "./tls";
 
 /**
  * Format bytes to human readable string
@@ -191,15 +192,20 @@ export function printAppDisplay(
     singleAddress?: boolean;
     /** Show profile details section */
     showProfile?: boolean;
+    /** Show the static TLS/ports info line (app info only, not list) */
+    showTls?: boolean;
   } = {},
 ): void {
-  const { singleAddress = false, showProfile = false } = options;
+  const { singleAddress = false, showProfile = false, showTls = false } = options;
 
   log(`${indent}ID:             ${display.id}`);
   log(`${indent}Release Time:   ${display.releaseTime}`);
   log(`${indent}Status:         ${display.status}`);
   log(`${indent}Instance:       ${display.instance}`);
   log(`${indent}IP:             ${display.ip}`);
+  if (showTls) {
+    log(`${indent}TLS:            ${chalk.gray(TLS_INFO_LINE)}`);
+  }
   log(`${indent}CPU:            ${display.cpu}`);
   log(`${indent}Memory:         ${display.memory} ${display.memoryUsage}`);
 

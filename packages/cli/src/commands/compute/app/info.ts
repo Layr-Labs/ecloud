@@ -164,6 +164,7 @@ export default class AppInfo extends Command {
     printAppDisplay(display, this.log.bind(this), "  ", {
       singleAddress: false,
       showProfile: true,
+      showTls: true,
     });
 
     // Show verifiability status
