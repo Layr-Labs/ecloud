@@ -26,8 +26,9 @@ vi.mock("../../../../utils/viemClients", () => ({
   createViemClients: vi.fn(() => ({ publicClient: {}, walletClient: {} })),
 }));
 const watchDeployment = vi.fn();
+const createComputeClient = vi.fn(async () => ({ app: { watchDeployment } }));
 vi.mock("../../../../client", () => ({
-  createComputeClient: vi.fn(async () => ({ app: { watchDeployment } })),
+  createComputeClient: (...args: unknown[]) => createComputeClient(...(args as [])),
 }));
 
 describe("compute app status", () => {
@@ -68,11 +69,55 @@ describe("compute app status", () => {
     expect(JSON.parse(out[0])).toEqual({ appId: APP, status: "Unknown" });
   });
 
-  it("--wait blocks via watchDeployment, then does a final status read", async () => {
+  it("--wait blocks via watchDeployment for transitional statuses, then does a final status read", async () => {
+    // Initial read: still deploying -> should wait. Final read: settled.
+    getStatuses
+      .mockResolvedValueOnce([{ address: APP, status: "Deploying" }])
+      .mockResolvedValueOnce([{ address: APP, status: "Running" }]);
     watchDeployment.mockResolvedValue(undefined);
-    getStatuses.mockResolvedValue([{ address: APP, status: "Running" }]);
     const out = await runCommand({ wait: true, json: true, "watch-timeout": 30 });
     expect(watchDeployment).toHaveBeenCalledWith(APP, { timeoutSeconds: 30 });
+    expect(JSON.parse(out[0])).toEqual({ appId: APP, status: "Running" });
+  });
+
+  it("--wait returns immediately for Running without watching", async () => {
+    getStatuses.mockResolvedValue([{ address: APP, status: "Running" }]);
+    const out = await runCommand({ wait: true, json: false });
+    expect(watchDeployment).not.toHaveBeenCalled();
+    expect(out.join("\n")).toContain("Running");
+  });
+
+  it("--wait returns immediately for Terminated without watching", async () => {
+    getStatuses.mockResolvedValue([{ address: APP, status: "Terminated" }]);
+    const out = await runCommand({ wait: true, json: true });
+    expect(watchDeployment).not.toHaveBeenCalled();
+    expect(JSON.parse(out[0])).toEqual({ appId: APP, status: "Terminated" });
+  });
+
+  it("--wait returns immediately for Stopped without watching", async () => {
+    getStatuses.mockResolvedValue([{ address: APP, status: "Stopped" }]);
+    const out = await runCommand({ wait: true, json: true });
+    expect(watchDeployment).not.toHaveBeenCalled();
+    expect(JSON.parse(out[0])).toEqual({ appId: APP, status: "Stopped" });
+  });
+
+  it("--wait --json keeps stdout pure JSON by routing SDK progress off stdout", async () => {
+    // Transitional initial status forces a watch; the SDK progress logger
+    // must not be allowed to write to stdout or it corrupts the JSON.
+    getStatuses
+      .mockResolvedValueOnce([{ address: APP, status: "Deploying" }])
+      .mockResolvedValueOnce([{ address: APP, status: "Running" }]);
+    watchDeployment.mockResolvedValue(undefined);
+
+    const out = await runCommand({ wait: true, json: true, "watch-timeout": 30 });
+
+    // The compute client must be built with a logger override so the SDK
+    // does not print "Waiting for app to start..." / "Status: ..." to stdout.
+    const clientOpts = createComputeClient.mock.calls[0]?.[1] as { logger?: unknown } | undefined;
+    expect(clientOpts?.logger).toBeDefined();
+
+    // stdout is exactly one line, and that line is the JSON object.
+    expect(out).toHaveLength(1);
     expect(JSON.parse(out[0])).toEqual({ appId: APP, status: "Running" });
   });
 });

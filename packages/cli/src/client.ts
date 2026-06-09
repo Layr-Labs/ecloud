@@ -5,13 +5,27 @@ import {
   createAdminModule,
   getEnvironmentConfig,
   requirePrivateKey,
+  type Logger,
 } from "@layr-labs/ecloud-sdk";
 import { CommonFlags, validateCommonFlags } from "./flags";
 import { getClientId } from "./utils/version";
 import { createViemClients } from "./utils/viemClients";
 import { Hex } from "viem";
 
-export async function createComputeClient(flags: CommonFlags) {
+/** Options for {@link createComputeClient}. */
+export interface CreateComputeClientOptions {
+  /**
+   * Logger override forwarded to the SDK compute module. Commands emitting
+   * machine-readable output (`--json`) pass a stderr-routed logger so SDK
+   * progress messages never corrupt stdout.
+   */
+  logger?: Logger;
+}
+
+export async function createComputeClient(
+  flags: CommonFlags,
+  options: CreateComputeClientOptions = {},
+) {
   flags = await validateCommonFlags(flags);
 
   const environment = flags.environment;
@@ -39,6 +53,7 @@ export async function createComputeClient(flags: CommonFlags) {
     environment,
     clientId: getClientId(),
     skipTelemetry: true, // CLI already has telemetry, skip SDK telemetry
+    logger: options.logger,
   });
 }
 

@@ -57,6 +57,7 @@ import type {
   PrepareUpgradeFromVerifiableBuildOpts,
   PreparedDeploy,
   PreparedUpgrade,
+  Logger,
 } from "../../../common/types";
 import { getLogger } from "../../../common/utils";
 
@@ -181,6 +182,12 @@ export interface AppModuleConfig {
   environment: string;
   clientId?: string;
   skipTelemetry?: boolean; // Skip telemetry when called from CLI
+  /**
+   * Optional logger override. Defaults to a stdout/stderr logger that respects
+   * `verbose`. Callers producing machine-readable output pass a logger that
+   * keeps progress off stdout.
+   */
+  logger?: Logger;
 }
 
 export function createAppModule(ctx: AppModuleConfig): AppModule {
@@ -196,8 +203,8 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
   // Pull config for selected Environment
   const environment = getEnvironmentConfig(ctx.environment);
 
-  // Get logger that respects verbose setting
-  const logger = getLogger(ctx.verbose);
+  // Use the caller-provided logger if any, else one that respects verbose.
+  const logger = ctx.logger ?? getLogger(ctx.verbose);
 
   return {
     async create(opts) {
