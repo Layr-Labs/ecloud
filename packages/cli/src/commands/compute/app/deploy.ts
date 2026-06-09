@@ -39,7 +39,57 @@ import {
 import { isTlsEnabledFromEnvFile } from "../../../utils/tls";
 import { mergeInlineEnvVars } from "../../../utils/env";
 import { stageFailure } from "../../../utils/exitCodes";
+import { findLiveAppByName } from "../../../utils/appCollision";
 import type { SubmitBuildRequest } from "@layr-labs/ecloud-sdk";
+
+/** Args for the deploy-time name-collision guard. */
+export interface NameCollisionGuardArgs {
+  environment: string;
+  privateKey: string;
+  rpcUrl: string;
+  name: string;
+  forceNew: boolean;
+}
+
+/**
+ * Guard: refuse to provision a second billable app that shares a live app's
+ * name. Errors (exit 2) on a collision unless forceNew. Fail-open — if the
+ * check itself cannot complete, warn and let the deploy proceed.
+ *
+ * `cmd` is the oclif Command (for this.error/this.warn); typed minimally so the
+ * function stays unit-testable without a full Command instance.
+ */
+export async function assertNoLiveNameCollision(
+  cmd: { error(message: string, opts?: { exit?: number }): never; warn(message: string): void },
+  args: NameCollisionGuardArgs,
+): Promise<void> {
+  if (args.forceNew) {
+    return;
+  }
+
+  let existing: Awaited<ReturnType<typeof findLiveAppByName>>;
+  try {
+    existing = await findLiveAppByName({
+      environment: args.environment,
+      privateKey: args.privateKey,
+      rpcUrl: args.rpcUrl,
+      name: args.name,
+    });
+  } catch {
+    cmd.warn(
+      `Could not verify whether an app named '${args.name}' already exists; proceeding.`,
+    );
+    return;
+  }
+
+  if (existing) {
+    cmd.error(
+      `App '${args.name}' already exists at ${existing} — upgrade it with ` +
+        `'ecloud compute app upgrade ${existing}', or pass --force-new to deploy a separate app.`,
+      { exit: 2 },
+    );
+  }
+}
 
 export default class AppDeploy extends Command {
   static description = "Deploy new app";
@@ -152,6 +202,11 @@ export default class AppDeploy extends Command {
       description: "Skip all confirmation prompts",
       default: false,
       env: "ECLOUD_FORCE",
+    }),
+    "force-new": Flags.boolean({
+      description:
+        "Deploy a new app even if a non-terminated app with the same name already exists. Without this, deploy errors and points you to 'app upgrade'.",
+      default: false,
     }),
     "watch-timeout": Flags.integer({
       description:
@@ -428,6 +483,17 @@ export default class AppDeploy extends Command {
         suggestedAppBaseName,
         skipDefaultAppName,
       );
+
+      // 3b. Guard against accidentally provisioning a duplicate billable app:
+      // error if a non-terminated app with this name already exists on-chain
+      // for the caller (unless --force-new). Fail-open inside the guard.
+      await assertNoLiveNameCollision(this, {
+        environment,
+        privateKey,
+        rpcUrl,
+        name: appName,
+        forceNew: flags["force-new"],
+      });
 
       // 4. Get env file path interactively
       envFilePath = envFilePath ?? (await getEnvFile(flags["env-file"], nonInteractive));
