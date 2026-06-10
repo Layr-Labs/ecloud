@@ -104,3 +104,70 @@ describe("formatFundsBlock", () => {
     expect(out).not.toContain("fund with ETH");
   });
 });
+
+import { formatLineItem } from "../billingFormat";
+
+describe("formatLineItem", () => {
+  const base = { currency: "usd" };
+
+  it("parses the SKU from the API description and uses structured numerics", () => {
+    const line = formatLineItem(
+      { ...base, description: "0 × Pro 1 (at $0.07395890411 / month)", price: 0.07395890411, quantity: 0, subtotal: 0 },
+      "Compute",
+    );
+    expect(line).toContain("Compute (Pro 1)");
+    expect(line).toContain("$0.00");
+    // API price is the hourly rate (matches the published pricing table),
+    // despite the description text saying "/ month".
+    expect(line).toContain("0 hours × $0.074/hour");
+    expect(line).not.toContain("month))");
+  });
+
+  it("handles a multi-word SKU", () => {
+    const line = formatLineItem(
+      { ...base, description: "2 × Enterprise 1 (at $0.32875342466 / month)", price: 0.32875342466, quantity: 2, subtotal: 0.66 },
+      "Compute",
+    );
+    expect(line).toContain("Compute (Enterprise 1)");
+    expect(line).toContain("$0.66");
+    expect(line).toContain("2 hours × $0.329/hour");
+  });
+
+  it("uses structured fields, not numbers embedded in the description", () => {
+    const line = formatLineItem(
+      { ...base, description: "0 × Starter 2 (at $9.99 / month)", price: 0.05, quantity: 7, subtotal: 1.23 },
+      "Compute",
+    );
+    expect(line).toContain("Compute (Starter 2)");
+    expect(line).toContain("$1.23");
+    expect(line).toContain("7 hours × $0.050/hour");
+    expect(line).not.toContain("9.99");
+  });
+
+  it("falls back to the raw description when the format does not match", () => {
+    const line = formatLineItem(
+      { ...base, description: "weird unparseable format", price: 0.1, quantity: 1, subtotal: 0.1 },
+      "Compute",
+    );
+    expect(line).toContain("weird unparseable format");
+    expect(line).not.toContain("Compute (");
+  });
+});
+
+import { formatEthDisplay } from "../billingFormat";
+
+describe("formatEthDisplay", () => {
+  it("rounds to at most 4 decimal places (the most significant)", () => {
+    expect(formatEthDisplay(98925371351956974n)).toBe("0.0989"); // 0.098925371351956974
+  });
+  it("strips trailing zeros (up to 4 dp, not padded)", () => {
+    expect(formatEthDisplay(1500000000000000000n)).toBe("1.5"); // 1.5 ETH
+    expect(formatEthDisplay(1000000000000000000n)).toBe("1");   // 1 ETH
+  });
+  it("renders exact zero as '0' (keeps the fund-with-ETH note firing)", () => {
+    expect(formatEthDisplay(0n)).toBe("0");
+  });
+  it("rounds sub-0.0001 dust down to '0'", () => {
+    expect(formatEthDisplay(100000000000n)).toBe("0"); // 0.0000001 ETH
+  });
+});

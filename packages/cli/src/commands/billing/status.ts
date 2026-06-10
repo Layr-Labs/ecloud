@@ -4,10 +4,10 @@ import { commonFlags } from "../../flags";
 import { getEnvironmentConfig, type AccountCreditsResponse } from "@layr-labs/ecloud-sdk";
 import { createViemClients } from "../../utils/viemClients";
 import { errorMessage } from "../../utils/exitCodes";
-import { formatEther, formatUnits } from "viem";
+import { formatUnits } from "viem";
 import chalk from "chalk";
 import { withTelemetry } from "../../telemetry";
-import { formatFundsBlock } from "../../utils/billingFormat";
+import { formatFundsBlock, formatLineItem, formatEthDisplay } from "../../utils/billingFormat";
 
 export default class BillingStatus extends Command {
   static description = "Show subscription status";
@@ -74,22 +74,9 @@ export default class BillingStatus extends Command {
       // Display line items if available
       if (result.lineItems && result.lineItems.length > 0) {
         this.log(`\n${chalk.bold("  Line Items:")}`);
+        const productLabel = `${flags.product.charAt(0).toUpperCase()}${flags.product.slice(1)}`;
         for (const item of result.lineItems) {
-          const product = `${flags.product.charAt(0).toUpperCase()}${flags.product.slice(1)}`;
-          const isChainSpecific = item.description.match(/\b(sepolia|mainnet)\b/i);
-          if (isChainSpecific) {
-            const chain = item.description.toLowerCase().includes("sepolia")
-              ? "Sepolia"
-              : "Mainnet";
-            this.log(
-              `    • ${product} (${chain}): $${item.subtotal.toFixed(2)} (${item.quantity} vCPU hours × $${item.price.toFixed(3)}/vCPU hour)`,
-            );
-          } else {
-            const sku = item.description.split(" ").slice(-2).join(" ") || "Unknown";
-            this.log(
-              `    • ${product} (${sku}): $${item.subtotal.toFixed(2)} (${item.quantity} hours × $${item.price.toFixed(3)}/hour)`,
-            );
-          }
+          this.log(formatLineItem(item, productLabel));
         }
       }
 
@@ -111,7 +98,7 @@ export default class BillingStatus extends Command {
         try {
           const { publicClient, address } = createViemClients({ privateKey, rpcUrl, environment });
           const balanceWei = await publicClient.getBalance({ address });
-          walletEthFormatted = formatEther(balanceWei);
+          walletEthFormatted = formatEthDisplay(balanceWei);
         } catch (err) {
           this.warn(`Could not read wallet ETH balance: ${errorMessage(err)}`);
         }
