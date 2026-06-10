@@ -463,6 +463,21 @@ export interface ProductSubscriptionResponse {
   portalUrl?: string;
 }
 
+/**
+ * The 3-way credit split from billing-api `GET /v1/accounts/{eth}/credits`.
+ * All credit figures are in dollars. Distinct from on-chain wallet balances.
+ */
+export interface AccountCreditsResponse {
+  /** Total spendable Stripe credit balance, in dollars. */
+  remainingCredits: number;
+  /** Paid credits (Category: Paid / PermanentCredits), in dollars. */
+  permanentCredits: number;
+  /** Promotional credits (Category: Promotional), in dollars. */
+  promotionalCredits: number;
+  /** Unix seconds of the next promotional-credit expiry; 0 if none. */
+  nextPromotionalCreditExpiry: number;
+}
+
 export interface SubscriptionOpts {
   productId?: ProductID;
   /** URL to redirect to after successful checkout */

@@ -27,6 +27,7 @@ import type {
   PaymentMethodsResponse,
   CreditPurchaseResponse,
   RedeemCouponResponse,
+  AccountCreditsResponse,
 } from "../../common/types";
 
 export type BillingChain = "ethereum" | "base";
@@ -56,6 +57,8 @@ export interface BillingModule {
   address: Address;
   subscribe: (opts?: SubscriptionOpts) => Promise<SubscribeResponse>;
   getStatus: (opts?: SubscriptionOpts) => Promise<ProductSubscriptionResponse>;
+  /** Read the 3-way Stripe credit split (promotional/paid/total) for the wallet. */
+  getAccountCredits: () => Promise<AccountCreditsResponse>;
   cancel: (opts?: SubscriptionOpts) => Promise<CancelResponse>;
   /** Read on-chain state needed for top-up */
   getTopUpInfo: (opts?: { chain?: BillingChain }) => Promise<TopUpInfo>;
@@ -302,6 +305,10 @@ export function createBillingModule(config: BillingModuleConfig): BillingModule 
           return result;
         },
       );
+    },
+
+    async getAccountCredits(): Promise<AccountCreditsResponse> {
+      return billingApi.getAccountCredits(address);
     },
 
     async cancel(opts) {
