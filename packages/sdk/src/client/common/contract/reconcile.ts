@@ -41,6 +41,8 @@ function sleep(ms: number): Promise<void> {
 /**
  * Poll until releases[0].imageDigest matches expectedDigest (normalized) or the
  * timeout elapses. Read failures are treated as a non-match and retried.
+ *
+ * releases[0] is the newest: both backends return releases newest-first.
  */
 export async function reconcileReleaseDigest(
   userApiClient: UserApiClient,
