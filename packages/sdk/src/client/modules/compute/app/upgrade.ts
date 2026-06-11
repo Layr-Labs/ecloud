@@ -27,6 +27,7 @@ import {
   type GasEstimate,
 } from "../../../common/contract/caller";
 import { estimateBatchGas, createAuthorizationList } from "../../../common/contract/eip7702";
+import { assertSufficientGas } from "../../../common/gas/insufficientGas";
 import { watchUntilUpgradeComplete } from "../../../common/contract/watcher";
 import {
   validateAppID,
@@ -199,6 +200,13 @@ export async function prepareUpgradeFromVerifiableBuild(
         account: batch.walletClient.account!.address,
         executions: batch.executions,
         authorizationList,
+      });
+
+      // Pre-flight: block if the wallet can't cover gas (credits don't pay it).
+      await assertSufficientGas({
+        publicClient: batch.publicClient,
+        address: batch.walletClient.account!.address,
+        gasEstimate,
       });
 
       // Extract only data fields for public type (clients stay internal)
@@ -489,6 +497,13 @@ export async function prepareUpgrade(
         authorizationList,
       });
 
+      // Pre-flight: block if the wallet can't cover gas (credits don't pay it).
+      await assertSufficientGas({
+        publicClient: batch.publicClient,
+        address: batch.walletClient.account!.address,
+        gasEstimate,
+      });
+
       // Extract only data fields for public type (clients stay internal)
       const data: PreparedUpgradeData = {
         appId: batch.appId,
@@ -543,6 +558,10 @@ export async function executeUpgrade(options: ExecuteUpgradeOptions): Promise<Up
  * Call this after executeUpgrade to wait for the upgrade to finish.
  * Can be called separately to allow for intermediate operations.
  */
+export interface WatchUpgradeOptions {
+  timeoutSeconds?: number;
+}
+
 export async function watchUpgrade(
   appId: string,
   walletClient: WalletClient,
@@ -550,6 +569,7 @@ export async function watchUpgrade(
   environmentConfig: EnvironmentConfig,
   logger: Logger = defaultLogger,
   skipTelemetry?: boolean,
+  opts?: WatchUpgradeOptions,
 ): Promise<void> {
   return withSDKTelemetry(
     {
@@ -567,6 +587,7 @@ export async function watchUpgrade(
           publicClient,
           environmentConfig,
           appId: appId as Address,
+          timeoutSeconds: opts?.timeoutSeconds,
         },
         logger,
       );

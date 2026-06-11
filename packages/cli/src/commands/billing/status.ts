@@ -1,6 +1,10 @@
 import { Command, Flags } from "@oclif/core";
 import { createBillingClient } from "../../client";
 import { commonFlags } from "../../flags";
+import { getEnvironmentConfig } from "@layr-labs/ecloud-sdk";
+import { createViemClients } from "../../utils/viemClients";
+import { errorMessage } from "../../utils/exitCodes";
+import { formatEther } from "viem";
 import chalk from "chalk";
 import { withTelemetry } from "../../telemetry";
 
@@ -58,6 +62,33 @@ export default class BillingStatus extends Command {
 
       this.log(`\n${chalk.bold("Subscription Status:")}`);
       this.log(`  Wallet: ${billing.address}`);
+
+      // Show the wallet's on-chain ETH so the credit-vs-gas gap is visible
+      // before a deploy: compute credits do NOT pay on-chain gas.
+      // Best-effort — never fail `billing status` if the balance read fails.
+      try {
+        const privateKey = flags["private-key"];
+        if (privateKey) {
+          const environment = flags.environment;
+          const environmentConfig = getEnvironmentConfig(environment);
+          const rpcUrl = flags["rpc-url"] || environmentConfig.defaultRPCURL;
+          const { publicClient, address } = createViemClients({ privateKey, rpcUrl, environment });
+          const balanceWei = await publicClient.getBalance({ address });
+          const eth = formatEther(balanceWei);
+          const note =
+            balanceWei === BigInt(0)
+              ? chalk.yellow("  (fund with ETH to pay deploy/upgrade gas)")
+              : "";
+          this.log(`  Wallet ETH (${environment}): ${chalk.cyan(`${eth} ETH`)}${note}`);
+        }
+      } catch (err) {
+        // Best-effort: the ETH line is informational, so a failure here must
+        // not abort `billing status`. But surface the reason rather than
+        // swallowing it — a malformed --private-key or an unreachable RPC is
+        // worth telling the user about.
+        this.warn(`Could not read wallet ETH balance: ${errorMessage(err)}`);
+      }
+
       this.log(`  Status: ${formatStatus(result.subscriptionStatus)}`);
       this.log(`  Product: ${result.productId}`);
 
@@ -75,7 +106,9 @@ export default class BillingStatus extends Command {
           const product = `${flags.product.charAt(0).toUpperCase()}${flags.product.slice(1)}`;
           const isChainSpecific = item.description.match(/\b(sepolia|mainnet)\b/i);
           if (isChainSpecific) {
-            const chain = item.description.toLowerCase().includes("sepolia") ? "Sepolia" : "Mainnet";
+            const chain = item.description.toLowerCase().includes("sepolia")
+              ? "Sepolia"
+              : "Mainnet";
             this.log(
               `    • ${product} (${chain}): $${item.subtotal.toFixed(2)} (${item.quantity} vCPU hours × $${item.price.toFixed(3)}/vCPU hour)`,
             );

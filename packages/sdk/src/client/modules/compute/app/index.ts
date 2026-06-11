@@ -16,6 +16,7 @@ import {
   prepareDeployFromVerifiableBuild as prepareDeployFromVerifiableBuildFn,
   executeDeploy as executeDeployFn,
   watchDeployment as watchDeploymentFn,
+  type WatchDeploymentOptions,
 } from "./deploy";
 import {
   upgrade as upgradeApp,
@@ -23,6 +24,7 @@ import {
   prepareUpgradeFromVerifiableBuild as prepareUpgradeFromVerifiableBuildFn,
   executeUpgrade as executeUpgradeFn,
   watchUpgrade as watchUpgradeFn,
+  type WatchUpgradeOptions,
 } from "./upgrade";
 import { createApp, CreateAppOpts } from "./create";
 import { logs, LogsOptions } from "./logs";
@@ -55,6 +57,7 @@ import type {
   PrepareUpgradeFromVerifiableBuildOpts,
   PreparedDeploy,
   PreparedUpgrade,
+  Logger,
 } from "../../../common/types";
 import { getLogger } from "../../../common/utils";
 
@@ -125,7 +128,10 @@ export interface AppModule {
     gasEstimate: GasEstimate;
   }>;
   executeDeploy: (prepared: PreparedDeploy, gas?: GasEstimate) => Promise<ExecuteDeployResult>;
-  watchDeployment: (appId: AppId) => Promise<string | undefined>;
+  watchDeployment: (
+    appId: AppId,
+    opts?: WatchDeploymentOptions,
+  ) => Promise<string | undefined>;
 
   // Granular upgrade control
   prepareUpgrade: (
@@ -143,7 +149,7 @@ export interface AppModule {
     gasEstimate: GasEstimate;
   }>;
   executeUpgrade: (prepared: PreparedUpgrade, gas?: GasEstimate) => Promise<ExecuteUpgradeResult>;
-  watchUpgrade: (appId: AppId) => Promise<void>;
+  watchUpgrade: (appId: AppId, opts?: WatchUpgradeOptions) => Promise<void>;
 
   // Profile management
   setProfile: (appId: AppId, profile: AppProfile) => Promise<AppProfileResponse>;
@@ -176,6 +182,12 @@ export interface AppModuleConfig {
   environment: string;
   clientId?: string;
   skipTelemetry?: boolean; // Skip telemetry when called from CLI
+  /**
+   * Optional logger override. Defaults to a stdout/stderr logger that respects
+   * `verbose`. Callers producing machine-readable output pass a logger that
+   * keeps progress off stdout.
+   */
+  logger?: Logger;
 }
 
 export function createAppModule(ctx: AppModuleConfig): AppModule {
@@ -191,8 +203,8 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
   // Pull config for selected Environment
   const environment = getEnvironmentConfig(ctx.environment);
 
-  // Get logger that respects verbose setting
-  const logger = getLogger(ctx.verbose);
+  // Use the caller-provided logger if any, else one that respects verbose.
+  const logger = ctx.logger ?? getLogger(ctx.verbose);
 
   return {
     async create(opts) {
@@ -314,7 +326,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
       };
     },
 
-    async watchDeployment(appId) {
+    async watchDeployment(appId, opts) {
       return watchDeploymentFn(
         appId,
         walletClient,
@@ -322,6 +334,7 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
         environment,
         logger,
         skipTelemetry,
+        opts,
       );
     },
 
@@ -383,8 +396,16 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
       };
     },
 
-    async watchUpgrade(appId) {
-      return watchUpgradeFn(appId, walletClient, publicClient, environment, logger, skipTelemetry);
+    async watchUpgrade(appId, opts) {
+      return watchUpgradeFn(
+        appId,
+        walletClient,
+        publicClient,
+        environment,
+        logger,
+        skipTelemetry,
+        opts,
+      );
     },
 
     // Profile management

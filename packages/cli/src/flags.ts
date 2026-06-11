@@ -12,6 +12,7 @@ export type CommonFlags = {
   "max-fee-per-gas"?: string;
   "max-priority-fee"?: string;
   nonce?: string;
+  "non-interactive"?: boolean;
 };
 
 export const commonFlags = {
@@ -20,7 +21,7 @@ export const commonFlags = {
     description: "Deployment environment to use",
     env: "ECLOUD_ENV",
     default: async () =>
-      getDefaultEnvironment() || (getBuildType() === "dev" ? "sepolia-dev" : "sepolia"),
+      getDefaultEnvironment() || (getBuildType() === "dev" ? "sepolia-dev" : "mainnet-alpha"),
   }),
   "private-key": Flags.string({
     required: false,
@@ -50,6 +51,13 @@ export const commonFlags = {
   nonce: Flags.string({
     required: false,
     description: 'Override transaction nonce (integer or "latest" to replace a stuck transaction)',
+  }),
+  "non-interactive": Flags.boolean({
+    required: false,
+    description:
+      "Assume non-interactive mode: default safe prompts and error all-at-once on missing required inputs",
+    env: "ECLOUD_NON_INTERACTIVE",
+    default: false,
   }),
 };
 
@@ -102,7 +110,9 @@ export async function applyTxOverrides(
     } else {
       const parsed = Number(nonceStr);
       if (!Number.isInteger(parsed) || parsed < 0) {
-        throw new Error(`Invalid nonce: "${nonceStr}". Must be a non-negative integer or "latest".`);
+        throw new Error(
+          `Invalid nonce: "${nonceStr}". Must be a non-negative integer or "latest".`,
+        );
       }
       nonce = parsed;
     }

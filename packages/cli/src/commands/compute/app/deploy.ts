@@ -1,18 +1,18 @@
 import { Command, Flags } from "@oclif/core";
-import { getEnvironmentConfig, UserApiClient, isMainnet } from "@layr-labs/ecloud-sdk";
+import { getEnvironmentConfig, isMainnet, WatchTimeoutError } from "@layr-labs/ecloud-sdk";
+import type { PrepareDeployResult, GasEstimate } from "@layr-labs/ecloud-sdk";
 import { withTelemetry } from "../../../telemetry";
 import { commonFlags, applyTxOverrides } from "../../../flags";
 import { createComputeClient } from "../../../client";
 import { createViemClients } from "../../../utils/viemClients";
 import {
-  getDockerfileInteractive,
+  getDockerfile,
   getImageReferenceInteractive,
   getOrPromptAppName,
-  getEnvFileInteractive,
-  getInstanceTypeInteractive,
-  type SkuInfo,
-  getLogSettingsInteractive,
-  getResourceUsageMonitoringInteractive,
+  getEnvFile,
+  getInstanceType,
+  getLogSettings,
+  getResourceUsageMonitoring,
   getAppProfileInteractive,
   LogVisibility,
   ResourceUsageMonitoring,
@@ -22,9 +22,11 @@ import {
   promptVerifiableGitSourceInputs,
   promptVerifiablePrebuiltImageRef,
   imagePathToBlob,
+  isNonInteractive,
+  collectMissingRequiredInputs,
 } from "../../../utils/prompts";
 import { invalidateProfileCache, setLinkedAppForDirectory } from "../../../utils/globalConfig";
-import { getClientId } from "../../../utils/version";
+import { fetchAvailableInstanceTypes } from "../../../utils/instanceTypes";
 import chalk from "chalk";
 import { createBuildClient } from "../../../client";
 import { formatVerifiableBuildSummary } from "../../../utils/build";
@@ -36,6 +38,7 @@ import {
 } from "../../../utils/dockerhub";
 import { isTlsEnabledFromEnvFile } from "../../../utils/tls";
 import { mergeInlineEnvVars } from "../../../utils/env";
+import { stageFailure } from "../../../utils/exitCodes";
 import type { SubmitBuildRequest } from "@layr-labs/ecloud-sdk";
 
 export default class AppDeploy extends Command {
@@ -72,7 +75,8 @@ export default class AppDeploy extends Command {
     }),
     "log-visibility": Flags.string({
       required: false,
-      description: "Log visibility setting: public, private, or off",
+      description:
+        "Log visibility setting: public, private, or off (non-interactive default: private)",
       options: ["public", "private", "off"],
       env: "ECLOUD_LOG_VISIBILITY",
     }),
@@ -88,7 +92,8 @@ export default class AppDeploy extends Command {
     }),
     "resource-usage-monitoring": Flags.string({
       required: false,
-      description: "Resource usage monitoring: enable or disable",
+      description:
+        "Resource usage monitoring: enable or disable (non-interactive default: disable)",
       options: ["enable", "disable"],
       env: "ECLOUD_RESOURCE_USAGE_MONITORING",
     }),
@@ -146,12 +151,49 @@ export default class AppDeploy extends Command {
     force: Flags.boolean({
       description: "Skip all confirmation prompts",
       default: false,
+      env: "ECLOUD_FORCE",
+    }),
+    "watch-timeout": Flags.integer({
+      description:
+        "Maximum seconds to wait for the app to start before returning a recovery hint (default: 600)",
+      env: "ECLOUD_WATCH_TIMEOUT_SECONDS",
     }),
   };
 
   async run() {
     return withTelemetry(this, async () => {
       const { flags } = await this.parse(AppDeploy);
+
+      // Resolve the interactivity decision once (flag › CI › !TTY) and thread it
+      // into the optional-input helpers. They take it as a parameter rather than
+      // re-deriving from process internally, so --non-interactive is honored
+      // even on a TTY and the helpers stay pure/testable.
+      const nonInteractive = isNonInteractive(flags);
+
+      // Non-interactive: report every missing required input at once instead of
+      // failing one prompt at a time.
+      if (nonInteractive) {
+        const missing = collectMissingRequiredInputs(
+          {
+            imageRef: flags["image-ref"],
+            dockerfile: flags.dockerfile,
+            verifiable: flags.verifiable,
+            repo: flags.repo,
+            commit: flags.commit,
+            name: flags.name,
+          },
+          "name",
+        );
+        if (missing.length > 0) {
+          const { message, exit } = stageFailure(
+            "deploy",
+            "invalid-input",
+            `Missing required input(s) for non-interactive deploy:\n  - ${missing.join("\n  - ")}`,
+          );
+          this.error(message, { exit });
+        }
+      }
+
       const compute = await createComputeClient(flags);
 
       // Get validated values from flags (mutated by createComputeClient)
@@ -282,7 +324,7 @@ export default class AppDeploy extends Command {
           : await promptVerifiableGitSourceInputs();
 
         // Prompt for env file after git inputs
-        envFilePath = await getEnvFileInteractive(flags["env-file"]);
+        envFilePath = await getEnvFile(flags["env-file"], nonInteractive);
 
         const includeTlsCaddyfile = isTlsEnabledFromEnvFile(envFilePath);
         if (includeTlsCaddyfile && !inputs.caddyfilePath) {
@@ -359,9 +401,17 @@ export default class AppDeploy extends Command {
         }
       }
 
-      // 1. Get dockerfile path interactively (skip when using verifiable image)
+      // 1. Get dockerfile path interactively (skip when using verifiable image).
+      // Also skip when --image-ref is explicitly provided and no --dockerfile was:
+      // the user is deploying an existing image, so a stray Dockerfile in the
+      // working directory must not trigger a "build or deploy existing?" prompt
+      // (or, in non-interactive mode, silently flip the deploy to a local build).
       const isVerifiable = verifiableMode !== "none";
-      const dockerfilePath = isVerifiable ? "" : await getDockerfileInteractive(flags.dockerfile);
+      const deployExistingImageRef = !!flags["image-ref"] && !flags.dockerfile;
+      const dockerfilePath =
+        isVerifiable || deployExistingImageRef
+          ? ""
+          : await getDockerfile(flags.dockerfile, nonInteractive);
       const buildFromDockerfile = dockerfilePath !== "";
 
       // 2. Get image reference interactively (context-aware)
@@ -380,7 +430,7 @@ export default class AppDeploy extends Command {
       );
 
       // 4. Get env file path interactively
-      envFilePath = envFilePath ?? (await getEnvFileInteractive(flags["env-file"]));
+      envFilePath = envFilePath ?? (await getEnvFile(flags["env-file"], nonInteractive));
 
       // 4b. Merge inline --env KEY=VALUE vars (overrides env file values)
       if (flags.env && flags.env.length > 0) {
@@ -394,20 +444,23 @@ export default class AppDeploy extends Command {
         privateKey,
         rpcUrl,
       );
-      const instanceType = await getInstanceTypeInteractive(
+      const instanceType = await getInstanceType(
         flags["instance-type"],
-        "", // No default for new deployments
+        "", // No pinned default for new deployments; non-interactive falls back to g1-standard-2s
         availableTypes,
+        nonInteractive,
       );
 
       // 6. Get log visibility interactively
-      const logSettings = await getLogSettingsInteractive(
+      const logSettings = await getLogSettings(
         flags["log-visibility"] as LogVisibility | undefined,
+        nonInteractive,
       );
 
       // 7. Get resource usage monitoring interactively
-      const resourceUsageMonitoring = await getResourceUsageMonitoringInteractive(
+      const resourceUsageMonitoring = await getResourceUsageMonitoring(
         flags["resource-usage-monitoring"] as ResourceUsageMonitoring | undefined,
+        nonInteractive,
       );
 
       // 8. Prepare deployment (builds image, pushes to registry, prepares batch, estimates gas)
@@ -423,28 +476,38 @@ export default class AppDeploy extends Command {
       // the normal prepareDeploy path so that layerRemoteImageIfNeeded can
       // add the ecloud runtime layer (startup script, KMS client, Caddy) if
       // the image doesn't already have it.
-      const { prepared, gasEstimate } =
-        verifiableMode === "git"
-          ? await compute.app.prepareDeployFromVerifiableBuild({
-              name: appName,
-              imageRef,
-              imageDigest: verifiableImageDigest!,
-              envFile: envFilePath,
-              instanceType,
-              logVisibility,
-              resourceUsageMonitoring,
-              billTo: "developer",
-            })
-          : await compute.app.prepareDeploy({
-              name: appName,
-              dockerfile: dockerfilePath,
-              imageRef,
-              envFile: envFilePath,
-              instanceType,
-              logVisibility,
-              resourceUsageMonitoring,
-              billTo: "developer",
-            });
+      // Build/push stage — failures here mean no image was produced and no
+      // on-chain tx was attempted. Distinct exit code so callers don't confuse
+      // it with an on-chain failure.
+      let prepared: PrepareDeployResult["prepared"];
+      let gasEstimate: GasEstimate;
+      try {
+        ({ prepared, gasEstimate } =
+          verifiableMode === "git"
+            ? await compute.app.prepareDeployFromVerifiableBuild({
+                name: appName,
+                imageRef,
+                imageDigest: verifiableImageDigest!,
+                envFile: envFilePath,
+                instanceType,
+                logVisibility,
+                resourceUsageMonitoring,
+                billTo: "developer",
+              })
+            : await compute.app.prepareDeploy({
+                name: appName,
+                dockerfile: dockerfilePath,
+                imageRef,
+                envFile: envFilePath,
+                instanceType,
+                logVisibility,
+                resourceUsageMonitoring,
+                billTo: "developer",
+              }));
+      } catch (err) {
+        const { message, exit } = stageFailure("deploy", "build", err);
+        this.error(message, { exit });
+      }
 
       // 9. Apply gas overrides if provided, show estimate, and prompt for confirmation on mainnet
       const finalTx = await applyTxOverrides(gasEstimate, flags, { publicClient, address });
@@ -468,8 +531,16 @@ export default class AppDeploy extends Command {
         }
       }
 
-      // 10. Execute the deployment
-      const res = await compute.app.executeDeploy(prepared, finalTx);
+      // 10. Execute the deployment (on-chain stage). The image is already
+      // built+pushed at this point; a failure here is distinct from a build
+      // failure and a re-run will reuse the pushed image.
+      let res: Awaited<ReturnType<typeof compute.app.executeDeploy>>;
+      try {
+        res = await compute.app.executeDeploy(prepared, finalTx);
+      } catch (err) {
+        const { message, exit } = stageFailure("deploy", "onchain", err);
+        this.error(message, { exit });
+      }
 
       // 11. Collect app profile while deployment is in progress (optional)
       if (!flags["skip-profile"]) {
@@ -533,7 +604,41 @@ export default class AppDeploy extends Command {
       }
 
       // 12. Watch until app is running
-      const ipAddress = await compute.app.watchDeployment(res.appId);
+      let ipAddress: string | undefined;
+      try {
+        ipAddress = await compute.app.watchDeployment(res.appId, {
+          timeoutSeconds: flags["watch-timeout"],
+        });
+      } catch (watchErr: any) {
+        if (watchErr instanceof WatchTimeoutError) {
+          this.log(
+            `\n${chalk.yellow("⚠")} ${chalk.yellow(
+              `Deployment did not reach Running within ${watchErr.elapsedSeconds}s (last status: ${watchErr.lastStatus ?? "unknown"}).`,
+            )}`,
+          );
+          this.log(
+            chalk.gray(
+              `The deploy transaction succeeded, but the orchestrator hasn't reported the app as Running yet.`,
+            ),
+          );
+          this.log(chalk.gray(`  appId:  ${res.appId}`));
+          if (res.txHash) {
+            this.log(chalk.gray(`  txHash: ${res.txHash}`));
+          }
+          this.log(
+            chalk.gray(
+              `Check progress later with: ${chalk.cyan(`ecloud compute app info ${res.appId}`)}`,
+            ),
+          );
+          this.log(
+            chalk.gray(
+              `Override the watch timeout with the ${chalk.cyan("ECLOUD_WATCH_TIMEOUT_SECONDS")} environment variable.`,
+            ),
+          );
+          this.exit(1);
+        }
+        throw watchErr;
+      }
 
       try {
         const cwd = process.env.INIT_CWD || process.cwd();
@@ -560,37 +665,5 @@ export default class AppDeploy extends Command {
         this.log(chalk.gray(`  curl -s -o /dev/null -w "%{http_code}" http://${ipAddress}/`));
       }
     });
-  }
-}
-
-/**
- * Fetch available instance types from backend
- */
-async function fetchAvailableInstanceTypes(
-  environment: string,
-  environmentConfig: any,
-  privateKey: string,
-  rpcUrl: string,
-): Promise<SkuInfo[]> {
-  try {
-    const { publicClient, walletClient } = createViemClients({
-      privateKey,
-      rpcUrl,
-      environment,
-    });
-    const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, {
-      clientId: getClientId(),
-    });
-
-    const skuList = await userApiClient.getSKUs();
-    if (skuList.skus.length === 0) {
-      throw new Error("No instance types available from server");
-    }
-
-    return skuList.skus;
-  } catch (err: any) {
-    console.warn(`Failed to fetch instance types: ${err.message}`);
-    // Return a default fallback
-    return [{ sku: "g1-standard-4t", description: "4 vCPUs, 16 GB memory, TDX" }];
   }
 }

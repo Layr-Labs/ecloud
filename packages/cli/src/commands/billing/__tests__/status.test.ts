@@ -8,7 +8,16 @@ vi.mock("../../../telemetry", () => ({
   withTelemetry: vi.fn((_cmd: unknown, fn: () => Promise<void>) => fn()),
 }));
 
+vi.mock("@layr-labs/ecloud-sdk", () => ({
+  getEnvironmentConfig: vi.fn(() => ({ defaultRPCURL: "https://rpc.example" })),
+}));
+
+vi.mock("../../../utils/viemClients", () => ({
+  createViemClients: vi.fn(),
+}));
+
 import { createBillingClient } from "../../../client";
+import { createViemClients } from "../../../utils/viemClients";
 
 describe("ecloud billing status — top-up hint", () => {
   let logOutput: string[];
@@ -19,6 +28,7 @@ describe("ecloud billing status — top-up hint", () => {
 
   beforeEach(() => {
     logOutput = [];
+    warnOutput = [];
     mockBilling = {
       address: "0xabcdef1234567890abcdef1234567890abcdef12",
       getStatus: vi.fn(),
@@ -26,15 +36,24 @@ describe("ecloud billing status — top-up hint", () => {
     (createBillingClient as ReturnType<typeof vi.fn>).mockResolvedValue(mockBilling);
   });
 
-  async function runStatusCommand(statusResult: Record<string, unknown>) {
+  let warnOutput: string[];
+
+  async function runStatusCommand(
+    statusResult: Record<string, unknown>,
+    flagOverrides: Record<string, unknown> = {},
+  ) {
     const { default: BillingStatus } = await import("../status");
     mockBilling.getStatus.mockResolvedValue(statusResult);
 
     const cmd = new BillingStatus([], {} as any);
     cmd.parse = vi.fn().mockResolvedValue({
-      flags: { product: "compute", verbose: false },
+      flags: { product: "compute", verbose: false, ...flagOverrides },
     });
     cmd.log = vi.fn((...args: string[]) => logOutput.push(args.join(" ")));
+    cmd.warn = vi.fn((msg: string | Error) => {
+      warnOutput.push(typeof msg === "string" ? msg : msg.message);
+      return msg as string & Error;
+    });
     cmd.debug = vi.fn();
 
     await cmd.run();
@@ -83,5 +102,39 @@ describe("ecloud billing status — top-up hint", () => {
     const fullOutput = output.join("\n");
 
     expect(fullOutput).not.toContain("Need more credits?");
+  });
+
+  describe("wallet ETH balance line", () => {
+    it("warns (does not silently swallow) when the balance read fails, but still completes", async () => {
+      (createViemClients as ReturnType<typeof vi.fn>).mockImplementation(() => {
+        throw new Error("invalid private key");
+      });
+
+      const output = await runStatusCommand(
+        { subscriptionStatus: "active", productId: "compute" },
+        { "private-key": "0xbad", environment: "sepolia" },
+      );
+
+      // The command still finishes and prints the rest of the status.
+      expect(output.join("\n")).toContain("Subscription Status:");
+      // The failure reason is surfaced, not discarded.
+      expect(warnOutput.join("\n")).toMatch(/wallet ETH|balance/i);
+      expect(warnOutput.join("\n")).toContain("invalid private key");
+    });
+
+    it("prints the ETH line on a successful balance read", async () => {
+      (createViemClients as ReturnType<typeof vi.fn>).mockReturnValue({
+        publicClient: { getBalance: vi.fn().mockResolvedValue(1000000000000000000n) },
+        address: "0xabcdef1234567890abcdef1234567890abcdef12",
+      });
+
+      const output = await runStatusCommand(
+        { subscriptionStatus: "active", productId: "compute" },
+        { "private-key": "0xgood", environment: "sepolia" },
+      );
+
+      expect(output.join("\n")).toMatch(/Wallet ETH.*1 ETH/);
+      expect(warnOutput).toHaveLength(0);
+    });
   });
 });

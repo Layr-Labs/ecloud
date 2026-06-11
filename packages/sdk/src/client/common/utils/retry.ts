@@ -4,6 +4,13 @@ const MAX_RETRIES = 5;
 const INITIAL_BACKOFF_MS = 1000;
 const MAX_BACKOFF_MS = 30000;
 
+/**
+ * HTTP statuses worth retrying with backoff: rate limiting (429) and transient
+ * gateway/availability errors (502/503/504). Agents that poll status hit these
+ * under load, and they are routinely recoverable on retry.
+ */
+const RETRYABLE_STATUSES = new Set([429, 502, 503, 504]);
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -27,7 +34,7 @@ export async function requestWithRetry(config: AxiosRequestConfig): Promise<Axio
     const res = await axios({ ...config, validateStatus: () => true });
     lastResponse = res;
 
-    if (res.status !== 429) {
+    if (!RETRYABLE_STATUSES.has(res.status)) {
       return res;
     }
 
