@@ -14,6 +14,8 @@ import { REGISTRY_PROPAGATION_WAIT_SECONDS } from "../constants";
 
 import { parseAndValidateEnvFile } from "../env/parser";
 
+import { bytesToHex } from "viem";
+
 import { Release, EnvironmentConfig, Logger, AppId } from "../types";
 
 export interface PrepareReleaseOptions {
@@ -30,6 +32,8 @@ export interface PrepareReleaseOptions {
 export interface PrepareReleaseResult {
   release: Release;
   finalImageRef: string;
+  /** The pushed image digest as a 0x-prefixed hex string (bytes32). */
+  imageDigest: string;
 }
 
 /**
@@ -190,5 +194,6 @@ export async function prepareRelease(
   return {
     release,
     finalImageRef,
+    imageDigest: bytesToHex(digest),
   };
 }

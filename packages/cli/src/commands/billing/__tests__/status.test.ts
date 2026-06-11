@@ -24,6 +24,8 @@ describe("ecloud billing status — top-up hint", () => {
   let mockBilling: {
     address: string;
     getStatus: ReturnType<typeof vi.fn>;
+    getAccountCredits: ReturnType<typeof vi.fn>;
+    getTopUpInfo: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {
@@ -32,6 +34,13 @@ describe("ecloud billing status — top-up hint", () => {
     mockBilling = {
       address: "0xabcdef1234567890abcdef1234567890abcdef12",
       getStatus: vi.fn(),
+      getAccountCredits: vi.fn().mockResolvedValue({
+        remainingCredits: 0,
+        permanentCredits: 0,
+        promotionalCredits: 0,
+        nextPromotionalCreditExpiry: 0,
+      }),
+      getTopUpInfo: vi.fn().mockResolvedValue({ usdcBalance: 0n }),
     };
     (createBillingClient as ReturnType<typeof vi.fn>).mockResolvedValue(mockBilling);
   });
@@ -133,8 +142,29 @@ describe("ecloud billing status — top-up hint", () => {
         { "private-key": "0xgood", environment: "sepolia" },
       );
 
-      expect(output.join("\n")).toMatch(/Wallet ETH.*1 ETH/);
+      expect(output.join("\n")).toMatch(/Wallet \(sepolia\):/);
+      expect(output.join("\n")).toMatch(/ETH:\s+1 ETH/);
       expect(warnOutput).toHaveLength(0);
+    });
+
+    it("renders the promotional/paid credit split", async () => {
+      (createViemClients as ReturnType<typeof vi.fn>).mockReturnValue({
+        publicClient: { getBalance: vi.fn().mockResolvedValue(0n) },
+        address: "0xabcdef1234567890abcdef1234567890abcdef12",
+      });
+      mockBilling.getAccountCredits.mockResolvedValue({
+        remainingCredits: 25,
+        permanentCredits: 0,
+        promotionalCredits: 25,
+        nextPromotionalCreditExpiry: 0,
+      });
+      const output = await runStatusCommand(
+        { subscriptionStatus: "active", productId: "compute" },
+        { "private-key": "0xgood", environment: "sepolia" },
+      );
+      const out = output.join("\n");
+      expect(out).toContain("Credits (Stripe):");
+      expect(out).toContain("Promotional:");
     });
   });
 });

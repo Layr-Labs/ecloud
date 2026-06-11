@@ -260,8 +260,13 @@ it in a shell loop (or a hardcoded `sleep`) hammers the API and trips server
 rate limits. `status --wait` blocks using the CLI's internal watch loop, which
 paces requests and backs off on `429/502/503/504`.
 
+`--wait` only blocks while the app is still transitioning (`Deploying`,
+`Upgrading`, `Resuming`, `Stopping`, `Terminating`, `Created`). If the app has
+already settled (`Running`, `Stopped`, `Terminated`, `Suspended`, `Failed`), it
+returns immediately — so it is always safe to call, even after the app is up.
+
 ```bash
-# Blocks until the app reaches a terminal status or the timeout elapses.
+# Blocks only if still transitioning; otherwise returns the settled status now.
 ecloud compute app status <app-id> --wait
 
 # Bound the wait (default 600s) and/or get machine-readable output:

@@ -51,6 +51,12 @@ export {
   type WatchUpgradeOptions,
 } from "./modules/compute/app/upgrade";
 export { WatchTimeoutError, WATCH_DEFAULT_TIMEOUT_SECONDS } from "./common/contract/watcher";
+export {
+  reconcileReleaseDigest,
+  normalizeDigest,
+  type ReconcileReleaseDigestOptions,
+  type ReconcileResult,
+} from "./common/contract/reconcile";
 export { InsufficientGasError, assertSufficientGas } from "./common/gas/insufficientGas";
 
 // Export compute module for standalone use

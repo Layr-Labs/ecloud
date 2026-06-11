@@ -179,6 +179,12 @@ export interface PreparedUpgrade {
   appId: AppId;
   /** Final image reference */
   imageRef: string;
+  /**
+   * Digest of the image this upgrade will publish, when known. May be
+   * `0x`-prefixed hex (built path) or `sha256:`-prefixed (verifiable path);
+   * compare via `reconcileReleaseDigest` / `normalizeDigest`, which accept either.
+   */
+  imageDigest?: string;
 }
 
 export interface LifecycleOpts {
@@ -455,6 +461,21 @@ export interface ProductSubscriptionResponse {
   cancelAtPeriodEnd?: boolean;
   canceledAt?: string;
   portalUrl?: string;
+}
+
+/**
+ * The 3-way credit split from billing-api `GET /v1/accounts/{eth}/credits`.
+ * All credit figures are in dollars. Distinct from on-chain wallet balances.
+ */
+export interface AccountCreditsResponse {
+  /** Total spendable Stripe credit balance, in dollars. */
+  remainingCredits: number;
+  /** Paid credits (Category: Paid / PermanentCredits), in dollars. */
+  permanentCredits: number;
+  /** Promotional credits (Category: Promotional), in dollars. */
+  promotionalCredits: number;
+  /** Unix seconds of the next promotional-credit expiry; 0 if none. */
+  nextPromotionalCreditExpiry: number;
 }
 
 export interface SubscriptionOpts {

@@ -221,6 +221,7 @@ export async function prepareUpgradeFromVerifiableBuild(
           data,
           appId: appID as Address,
           imageRef: options.imageRef,
+          imageDigest: options.imageDigest,
         },
         gasEstimate,
       };
@@ -448,7 +449,7 @@ export async function prepareUpgrade(
 
       // 4. Prepare the release (includes build/push if needed)
       logger.info("Preparing release...");
-      const { release, finalImageRef } = await prepareRelease(
+      const { release, finalImageRef, imageDigest } = await prepareRelease(
         {
           dockerfilePath,
           imageRef,
@@ -516,6 +517,7 @@ export async function prepareUpgrade(
           data,
           appId: appID,
           imageRef: finalImageRef,
+          imageDigest,
         },
         gasEstimate,
       };

@@ -41,6 +41,11 @@ import {
 } from "../../../common/contract/caller";
 import { withSDKTelemetry } from "../../../common/telemetry/wrapper";
 import { UserApiClient } from "../../../common/utils/userapi";
+import {
+  reconcileReleaseDigest as reconcileReleaseDigestFn,
+  type ReconcileReleaseDigestOptions,
+  type ReconcileResult,
+} from "../../../common/contract/reconcile";
 
 import type {
   AppId,
@@ -150,6 +155,11 @@ export interface AppModule {
   }>;
   executeUpgrade: (prepared: PreparedUpgrade, gas?: GasEstimate) => Promise<ExecuteUpgradeResult>;
   watchUpgrade: (appId: AppId, opts?: WatchUpgradeOptions) => Promise<void>;
+  reconcileReleaseDigest: (
+    appId: AppId,
+    expectedDigest: string,
+    opts?: ReconcileReleaseDigestOptions,
+  ) => Promise<ReconcileResult>;
 
   // Profile management
   setProfile: (appId: AppId, profile: AppProfile) => Promise<AppProfileResponse>;
@@ -406,6 +416,16 @@ export function createAppModule(ctx: AppModuleConfig): AppModule {
         skipTelemetry,
         opts,
       );
+    },
+
+    async reconcileReleaseDigest(appId, expectedDigest, opts) {
+      const userApiClient = new UserApiClient(
+        environment,
+        walletClient,
+        publicClient,
+        ctx.clientId ? { clientId: ctx.clientId } : undefined,
+      );
+      return reconcileReleaseDigestFn(userApiClient, appId, expectedDigest, opts);
     },
 
     // Profile management

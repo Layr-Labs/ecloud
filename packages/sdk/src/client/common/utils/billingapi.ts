@@ -26,6 +26,7 @@ import {
   AddAdminResponse,
   ListAdminsResponse,
   RedeemCouponResponse,
+  AccountCreditsResponse,
 } from "../types";
 import { calculateBillingAuthSignature } from "./auth";
 import { BillingEnvironmentConfig } from "../types";
@@ -166,6 +167,29 @@ export class BillingApiClient {
       : undefined;
     const resp = await this.makeAuthenticatedRequest(endpoint, "POST", productId, body);
     return resp.json();
+  }
+
+  async getAccountCredits(ethAddress: string): Promise<AccountCreditsResponse> {
+    const endpoint = `${this.config.billingApiServerURL}/accounts/${ethAddress}/credits`;
+    const resp = await this.makeAuthenticatedRequest(endpoint, "GET", "compute");
+    const raw = (await resp.json()) as Record<string, unknown>;
+    const num = (...candidates: unknown[]): number => {
+      for (const c of candidates) {
+        if (c === undefined || c === null) continue;
+        const n = Number(c);
+        if (Number.isFinite(n)) return n;
+      }
+      return 0;
+    };
+    return {
+      remainingCredits: num(raw.remainingCredits, raw.remaining_credits),
+      permanentCredits: num(raw.permanentCredits, raw.permanent_credits),
+      promotionalCredits: num(raw.promotionalCredits, raw.promotional_credits),
+      nextPromotionalCreditExpiry: num(
+        raw.nextPromotionalCreditExpiry,
+        raw.next_promotional_credit_expiry,
+      ),
+    };
   }
 
   async getSubscription(

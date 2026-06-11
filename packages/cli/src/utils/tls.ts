@@ -26,3 +26,17 @@ export function isTlsEnabledFromEnvFile(envFilePath: string | undefined): boolea
   if (!match?.[1]) return false;
   return isTlsEnabledFromDomain(match[1]);
 }
+
+/**
+ * Warning shown at deploy/upgrade when DOMAIN is unset (TLS off): the app will
+ * run, but nothing binds ports 80/443, so HTTP(S) requests are refused.
+ */
+export const TLS_DISABLED_WARNING =
+  "DOMAIN not set → ports 80/443 will not be reachable. Run `ecloud compute app configure tls` to enable HTTPS.";
+
+/**
+ * Static TLS line for `app info`. DOMAIN is encrypted (private env), so the
+ * actual on/off state can't be read back from the server — this is informational.
+ */
+export const TLS_INFO_LINE =
+  "Set via DOMAIN env (not shown here). If unset, ports 80/443 are closed — run `ecloud compute app configure tls`.";
