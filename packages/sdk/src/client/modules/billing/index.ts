@@ -23,6 +23,7 @@ import type {
   SubscribeResponse,
   CancelResponse,
   ProductSubscriptionResponse,
+  RedeemCodeResponse,
 } from "../../common/types";
 
 export interface TopUpOpts {
@@ -44,6 +45,11 @@ export interface TopUpInfo {
   currentAllowance: bigint;
 }
 
+export interface RedeemCodeOpts {
+  code: string;
+  productId?: ProductID;
+}
+
 export interface BillingModule {
   address: Address;
   subscribe: (opts?: SubscriptionOpts) => Promise<SubscribeResponse>;
@@ -53,6 +59,8 @@ export interface BillingModule {
   getTopUpInfo: () => Promise<TopUpInfo>;
   /** Purchase credits with USDC on-chain */
   topUp: (opts: TopUpOpts) => Promise<TopUpResult>;
+  /** Redeem a promotion code for promotional credits */
+  redeemCode: (opts: RedeemCodeOpts) => Promise<RedeemCodeResponse>;
 }
 
 export interface BillingModuleConfig {
@@ -278,6 +286,21 @@ export function createBillingModule(config: BillingModuleConfig): BillingModule 
           return {
             type: "canceled" as const,
           };
+        },
+      );
+    },
+
+    async redeemCode(opts) {
+      return withSDKTelemetry(
+        {
+          functionName: "redeemCode",
+          skipTelemetry,
+          properties: { productId: opts.productId || "compute" },
+        },
+        async () => {
+          const productId: ProductID = opts.productId || "compute";
+          logger.debug(`Redeeming code for ${productId}...`);
+          return billingApi.redeemCode(opts.code, productId);
         },
       );
     },
