@@ -251,4 +251,4 @@ export { getKMSKeysForEnvironment } from "./client/common/utils/keys";
 // =============================================================================
 // Re-export common types
 // =============================================================================
-export type Environment = "sepolia" | "sepolia-dev" | "mainnet-alpha";
+export type Environment = "sepolia" | "sepolia-dev" | "mainnet-alpha" | "local";
