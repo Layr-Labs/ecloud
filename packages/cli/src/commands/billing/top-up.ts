@@ -22,6 +22,19 @@ import { withTelemetry } from "../../telemetry";
 const POLL_INTERVAL_MS = 5_000;
 const POLL_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
 
+function getUsdcFundingNetwork(environment: string): string {
+  // Prod "sepolia" deploys compute to Sepolia, but billing uses the mainnet USDC credits contract.
+  switch (environment) {
+    case "sepolia-dev":
+      return "Sepolia";
+    case "sepolia":
+    case "mainnet-alpha":
+      return "Ethereum mainnet";
+    default:
+      return "the configured billing network";
+  }
+}
+
 export default class BillingTopUp extends Command {
   static description = "Purchase EigenCompute credits with USDC";
 
@@ -73,7 +86,9 @@ export default class BillingTopUp extends Command {
         const applied = status.creditsApplied ?? 0;
         baselineTotal = remaining + applied;
         if (status.remainingCredits !== undefined) {
-          this.log(`  ${chalk.bold("Credits:")} ${chalk.cyan(`$${status.remainingCredits.toFixed(2)}`)}`);
+          this.log(
+            `  ${chalk.bold("Credits:")} ${chalk.cyan(`$${status.remainingCredits.toFixed(2)}`)}`,
+          );
         }
       } catch {
         this.debug("Could not fetch current credit balance");
@@ -87,8 +102,9 @@ export default class BillingTopUp extends Command {
       this.log(`  ${chalk.bold("USDC:")}    ${balanceFormatted} USDC`);
 
       if (usdcBalance === BigInt(0)) {
+        const fundingNetwork = getUsdcFundingNetwork(flags.environment);
         this.log(`\n${chalk.yellow("  No USDC in wallet.")}`);
-        this.log(`  Send USDC on Sepolia to: ${chalk.cyan(walletAddress)}`);
+        this.log(`  Send USDC on ${fundingNetwork} to: ${chalk.cyan(walletAddress)}`);
         this.log(`  Then re-run: ${chalk.cyan("ecloud billing top-up")}\n`);
         return;
       }
@@ -103,10 +119,8 @@ export default class BillingTopUp extends Command {
             const n = parseFloat(val);
             if (isNaN(n) || n <= 0) return "Enter a positive number";
             const raw = BigInt(Math.round(n * 1e6));
-            if (raw < minimumPurchase)
-              return `Minimum purchase is ${minimumFormatted} USDC`;
-            if (raw > usdcBalance)
-              return `Insufficient balance. You have ${balanceFormatted} USDC`;
+            if (raw < minimumPurchase) return `Minimum purchase is ${minimumFormatted} USDC`;
+            if (raw > usdcBalance) return `Insufficient balance. You have ${balanceFormatted} USDC`;
             return true;
           },
         }));
@@ -144,15 +158,19 @@ export default class BillingTopUp extends Command {
           const remaining = status.remainingCredits ?? 0;
           const applied = status.creditsApplied ?? 0;
           const currentTotal = remaining + applied;
-          this.debug(`Poll: remaining=${remaining}, applied=${applied}, total=${currentTotal}, baseline=${baselineTotal}`);
-          if (
-            baselineTotal === undefined || currentTotal > baselineTotal
-          ) {
-            const creditsAdded = baselineTotal !== undefined ? currentTotal - baselineTotal : undefined;
-            const isMatched = creditsAdded !== undefined && Math.abs(creditsAdded - amountFloat * 2) < 0.01;
+          this.debug(
+            `Poll: remaining=${remaining}, applied=${applied}, total=${currentTotal}, baseline=${baselineTotal}`,
+          );
+          if (baselineTotal === undefined || currentTotal > baselineTotal) {
+            const creditsAdded =
+              baselineTotal !== undefined ? currentTotal - baselineTotal : undefined;
+            const isMatched =
+              creditsAdded !== undefined && Math.abs(creditsAdded - amountFloat * 2) < 0.01;
             const appliedFromTopUp = creditsAdded !== undefined ? creditsAdded - remaining : 0;
 
-            this.log(`\n  ${chalk.green("✓")} Credits received: ${chalk.cyan(`$${(creditsAdded ?? amountFloat).toFixed(2)}`)}`);
+            this.log(
+              `\n  ${chalk.green("✓")} Credits received: ${chalk.cyan(`$${(creditsAdded ?? amountFloat).toFixed(2)}`)}`,
+            );
             if (isMatched) {
               this.log(`  ${chalk.green("✓")} Includes $${amountFloat.toFixed(2)} match bonus!`);
             }
@@ -160,7 +178,9 @@ export default class BillingTopUp extends Command {
               this.log(`  Remaining balance: ${chalk.cyan(`$${remaining.toFixed(2)}`)}`);
             }
             if (appliedFromTopUp > 0) {
-              this.log(`  ${chalk.gray(`$${appliedFromTopUp.toFixed(2)} applied to current bill`)}`);
+              this.log(
+                `  ${chalk.gray(`$${appliedFromTopUp.toFixed(2)} applied to current bill`)}`,
+              );
             }
             this.log();
             return;

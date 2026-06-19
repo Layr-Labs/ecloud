@@ -47,12 +47,14 @@ describe("ecloud billing top-up", () => {
     vi.useRealTimers();
   });
 
-  function setupOnChainState(overrides: {
-    usdcAddress?: string;
-    minimumPurchase?: bigint;
-    usdcBalance?: bigint;
-    currentAllowance?: bigint;
-  } = {}) {
+  function setupOnChainState(
+    overrides: {
+      usdcAddress?: string;
+      minimumPurchase?: bigint;
+      usdcBalance?: bigint;
+      currentAllowance?: bigint;
+    } = {},
+  ) {
     const {
       usdcAddress = "0xUSDCAddress0000000000000000000000000000",
       minimumPurchase = BigInt(1_000_000), // 1 USDC
@@ -122,7 +124,7 @@ describe("ecloud billing top-up", () => {
     });
   });
 
-  it("zero USDC balance: exits with fund wallet message", async () => {
+  it("zero USDC balance: exits with Sepolia fund wallet message for sepolia-dev", async () => {
     setupOnChainState({ usdcBalance: BigInt(0) });
     mockBilling.getStatus.mockResolvedValue({ subscriptionStatus: "inactive" });
 
@@ -132,6 +134,22 @@ describe("ecloud billing top-up", () => {
 
     expect(fullOutput).toContain("No USDC in wallet");
     expect(fullOutput).toContain("Send USDC on Sepolia to");
+    expect(fullOutput).toContain(WALLET_ADDRESS);
+
+    // Should not have called topUp
+    expect(mockBilling.topUp).not.toHaveBeenCalled();
+  });
+
+  it("zero USDC balance: shows Ethereum mainnet funding network for prod sepolia billing", async () => {
+    setupOnChainState({ usdcBalance: BigInt(0) });
+    mockBilling.getStatus.mockResolvedValue({ subscriptionStatus: "inactive" });
+
+    const cmd = createCommand({ amount: "50", environment: "sepolia" });
+    await cmd.run();
+    const fullOutput = logOutput.join("\n");
+
+    expect(fullOutput).toContain("No USDC in wallet");
+    expect(fullOutput).toContain("Send USDC on Ethereum mainnet to");
     expect(fullOutput).toContain(WALLET_ADDRESS);
 
     // Should not have called topUp
