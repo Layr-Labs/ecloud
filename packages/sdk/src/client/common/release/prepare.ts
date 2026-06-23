@@ -14,7 +14,7 @@ import { REGISTRY_PROPAGATION_WAIT_SECONDS } from "../constants";
 
 import { parseAndValidateEnvFile } from "../env/parser";
 
-import { Release, EnvironmentConfig, Logger, AppId } from "../types";
+import { Release, EnvironmentConfig, Logger, AppId, EMPTY_CONTAINER_POLICY } from "../types";
 
 export interface PrepareReleaseOptions {
   dockerfilePath?: string;
@@ -177,6 +177,7 @@ export async function prepareRelease(
     },
     publicEnv: new Uint8Array(Buffer.from(JSON.stringify(publicEnv))),
     encryptedEnv: new Uint8Array(Buffer.from(encryptedEnvStr)),
+    containerPolicy: EMPTY_CONTAINER_POLICY,
   };
 
   return {

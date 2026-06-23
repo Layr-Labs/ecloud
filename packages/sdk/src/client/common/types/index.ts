@@ -246,6 +246,33 @@ export interface EnvironmentConfig {
   usdcCreditsAddress?: Address;
 }
 
+/**
+ * Container execution policy carried on a release. The AppController does not
+ * read these fields on-chain — they are emitted on the AppUpgraded/AppCreated
+ * release event and consumed off-chain by the platform/operator. The CLI does
+ * not currently surface any of these knobs, so an empty policy is sent (see
+ * EMPTY_CONTAINER_POLICY). The field is still required because it is part of
+ * the AppController `Release` struct ABI; omitting it shifts the selector and
+ * the on-chain call reverts in the dispatcher.
+ */
+export interface ContainerPolicy {
+  args: string[];
+  cmdOverride: string[];
+  env: Array<{ key: string; value: string }>;
+  envOverride: Array<{ key: string; value: string }>;
+  restartPolicy: string;
+}
+
+/** An empty container policy — preserves the CLI's pre-existing behavior of not
+ * overriding container args/cmd/env or setting a restart policy. */
+export const EMPTY_CONTAINER_POLICY: ContainerPolicy = {
+  args: [],
+  cmdOverride: [],
+  env: [],
+  envOverride: [],
+  restartPolicy: "",
+};
+
 export interface Release {
   rmsRelease: {
     artifacts: Array<{
@@ -256,6 +283,7 @@ export interface Release {
   };
   publicEnv: Uint8Array; // JSON bytes
   encryptedEnv: Uint8Array; // Encrypted string bytes
+  containerPolicy: ContainerPolicy;
 }
 
 export interface ParsedEnvironment {

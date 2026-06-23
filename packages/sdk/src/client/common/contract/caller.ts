@@ -254,6 +254,7 @@ export async function prepareDeployBatch(
     },
     publicEnv: bytesToHex(release.publicEnv) as Hex,
     encryptedEnv: bytesToHex(release.encryptedEnv) as Hex,
+    containerPolicy: release.containerPolicy,
   };
 
   const functionName = options.billTo === "app" ? "createAppWithIsolatedBilling" : "createApp";
@@ -750,6 +751,7 @@ export async function prepareUpgradeBatch(
     },
     publicEnv: bytesToHex(release.publicEnv) as Hex,
     encryptedEnv: bytesToHex(release.encryptedEnv) as Hex,
+    containerPolicy: release.containerPolicy,
   };
 
   const upgradeData = encodeFunctionData({
