@@ -1,6 +1,7 @@
 import { parseAndValidateEnvFile } from "../env/parser";
 import { encryptRSAOAEPAndAES256GCM, getAppProtectedHeaders } from "../encryption/kms";
 import { getKMSKeysForEnvironment } from "../utils/keys";
+import { EMPTY_CONTAINER_POLICY } from "../types";
 import type { EnvironmentConfig, Logger, Release } from "../types";
 
 export interface CreateReleaseFromImageDigestOptions {
@@ -74,6 +75,7 @@ export async function createReleaseFromImageDigest(
     },
     publicEnv: new Uint8Array(Buffer.from(JSON.stringify(publicEnv))),
     encryptedEnv: new Uint8Array(Buffer.from(encryptedEnvStr)),
+    containerPolicy: EMPTY_CONTAINER_POLICY,
   };
 }
 

@@ -10,27 +10,27 @@
       {
         "name": "_permissionController",
         "type": "address",
-        "internalType": "contractIPermissionController"
+        "internalType": "contract IPermissionController"
       },
       {
         "name": "_releaseManager",
         "type": "address",
-        "internalType": "contractIReleaseManager"
+        "internalType": "contract IReleaseManager"
       },
       {
         "name": "_computeAVSRegistrar",
         "type": "address",
-        "internalType": "contractIComputeAVSRegistrar"
+        "internalType": "contract IComputeAVSRegistrar"
       },
       {
         "name": "_computeOperator",
         "type": "address",
-        "internalType": "contractIComputeOperator"
+        "internalType": "contract IComputeOperator"
       },
       {
         "name": "_appBeacon",
         "type": "address",
-        "internalType": "contractIBeacon"
+        "internalType": "contract IBeacon"
       }
     ],
     "stateMutability": "nonpayable"
@@ -56,7 +56,7 @@
       {
         "name": "",
         "type": "address",
-        "internalType": "contractIBeacon"
+        "internalType": "contract IBeacon"
       }
     ],
     "stateMutability": "view"
@@ -104,7 +104,7 @@
       {
         "name": "",
         "type": "address",
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       }
     ],
     "stateMutability": "view"
@@ -117,7 +117,7 @@
       {
         "name": "",
         "type": "address",
-        "internalType": "contractIComputeAVSRegistrar"
+        "internalType": "contract IComputeAVSRegistrar"
       }
     ],
     "stateMutability": "view"
@@ -130,10 +130,23 @@
       {
         "name": "",
         "type": "address",
-        "internalType": "contractIComputeOperator"
+        "internalType": "contract IComputeOperator"
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "confirmUpgrade",
+    "inputs": [
+      {
+        "name": "app",
+        "type": "address",
+        "internalType": "contract IApp"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -147,17 +160,17 @@
       {
         "name": "release",
         "type": "tuple",
-        "internalType": "structIAppController.Release",
+        "internalType": "struct IAppController.Release",
         "components": [
           {
             "name": "rmsRelease",
             "type": "tuple",
-            "internalType": "structIReleaseManagerTypes.Release",
+            "internalType": "struct IReleaseManagerTypes.Release",
             "components": [
               {
                 "name": "artifacts",
                 "type": "tuple[]",
-                "internalType": "structIReleaseManagerTypes.Artifact[]",
+                "internalType": "struct IReleaseManagerTypes.Artifact[]",
                 "components": [
                   {
                     "name": "digest",
@@ -187,6 +200,62 @@
             "name": "encryptedEnv",
             "type": "bytes",
             "internalType": "bytes"
+          },
+          {
+            "name": "containerPolicy",
+            "type": "tuple",
+            "internalType": "struct IAppController.ContainerPolicy",
+            "components": [
+              {
+                "name": "args",
+                "type": "string[]",
+                "internalType": "string[]"
+              },
+              {
+                "name": "cmdOverride",
+                "type": "string[]",
+                "internalType": "string[]"
+              },
+              {
+                "name": "env",
+                "type": "tuple[]",
+                "internalType": "struct IAppController.EnvVar[]",
+                "components": [
+                  {
+                    "name": "key",
+                    "type": "string",
+                    "internalType": "string"
+                  },
+                  {
+                    "name": "value",
+                    "type": "string",
+                    "internalType": "string"
+                  }
+                ]
+              },
+              {
+                "name": "envOverride",
+                "type": "tuple[]",
+                "internalType": "struct IAppController.EnvVar[]",
+                "components": [
+                  {
+                    "name": "key",
+                    "type": "string",
+                    "internalType": "string"
+                  },
+                  {
+                    "name": "value",
+                    "type": "string",
+                    "internalType": "string"
+                  }
+                ]
+              },
+              {
+                "name": "restartPolicy",
+                "type": "string",
+                "internalType": "string"
+              }
+            ]
           }
         ]
       }
@@ -195,7 +264,7 @@
       {
         "name": "app",
         "type": "address",
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       }
     ],
     "stateMutability": "nonpayable"
@@ -212,17 +281,17 @@
       {
         "name": "release",
         "type": "tuple",
-        "internalType": "structIAppController.Release",
+        "internalType": "struct IAppController.Release",
         "components": [
           {
             "name": "rmsRelease",
             "type": "tuple",
-            "internalType": "structIReleaseManagerTypes.Release",
+            "internalType": "struct IReleaseManagerTypes.Release",
             "components": [
               {
                 "name": "artifacts",
                 "type": "tuple[]",
-                "internalType": "structIReleaseManagerTypes.Artifact[]",
+                "internalType": "struct IReleaseManagerTypes.Artifact[]",
                 "components": [
                   {
                     "name": "digest",
@@ -252,6 +321,62 @@
             "name": "encryptedEnv",
             "type": "bytes",
             "internalType": "bytes"
+          },
+          {
+            "name": "containerPolicy",
+            "type": "tuple",
+            "internalType": "struct IAppController.ContainerPolicy",
+            "components": [
+              {
+                "name": "args",
+                "type": "string[]",
+                "internalType": "string[]"
+              },
+              {
+                "name": "cmdOverride",
+                "type": "string[]",
+                "internalType": "string[]"
+              },
+              {
+                "name": "env",
+                "type": "tuple[]",
+                "internalType": "struct IAppController.EnvVar[]",
+                "components": [
+                  {
+                    "name": "key",
+                    "type": "string",
+                    "internalType": "string"
+                  },
+                  {
+                    "name": "value",
+                    "type": "string",
+                    "internalType": "string"
+                  }
+                ]
+              },
+              {
+                "name": "envOverride",
+                "type": "tuple[]",
+                "internalType": "struct IAppController.EnvVar[]",
+                "components": [
+                  {
+                    "name": "key",
+                    "type": "string",
+                    "internalType": "string"
+                  },
+                  {
+                    "name": "value",
+                    "type": "string",
+                    "internalType": "string"
+                  }
+                ]
+              },
+              {
+                "name": "restartPolicy",
+                "type": "string",
+                "internalType": "string"
+              }
+            ]
           }
         ]
       }
@@ -260,7 +385,45 @@
       {
         "name": "app",
         "type": "address",
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "createEmptyApp",
+    "inputs": [
+      {
+        "name": "salt",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "app",
+        "type": "address",
+        "internalType": "contract IApp"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "createEmptyAppWithIsolatedBilling",
+    "inputs": [
+      {
+        "name": "salt",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "app",
+        "type": "address",
+        "internalType": "contract IApp"
       }
     ],
     "stateMutability": "nonpayable"
@@ -299,31 +462,12 @@
   },
   {
     "type": "function",
-    "name": "getBillingType",
-    "inputs": [
-      {
-        "name": "app",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint8",
-        "internalType": "uint8"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "getAppCreator",
     "inputs": [
       {
         "name": "app",
         "type": "address",
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       }
     ],
     "outputs": [
@@ -342,7 +486,7 @@
       {
         "name": "app",
         "type": "address",
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       }
     ],
     "outputs": [
@@ -361,7 +505,26 @@
       {
         "name": "app",
         "type": "address",
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getAppPendingReleaseBlockNumber",
+    "inputs": [
+      {
+        "name": "app",
+        "type": "address",
+        "internalType": "contract IApp"
       }
     ],
     "outputs": [
@@ -380,14 +543,14 @@
       {
         "name": "app",
         "type": "address",
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       }
     ],
     "outputs": [
       {
         "name": "",
         "type": "uint8",
-        "internalType": "enumIAppController.AppStatus"
+        "internalType": "enum IAppController.AppStatus"
       }
     ],
     "stateMutability": "view"
@@ -411,12 +574,12 @@
       {
         "name": "apps",
         "type": "address[]",
-        "internalType": "contractIApp[]"
+        "internalType": "contract IApp[]"
       },
       {
         "name": "appConfigsMem",
         "type": "tuple[]",
-        "internalType": "structIAppController.AppConfig[]",
+        "internalType": "struct IAppController.AppConfig[]",
         "components": [
           {
             "name": "creator",
@@ -434,9 +597,14 @@
             "internalType": "uint32"
           },
           {
+            "name": "pendingReleaseBlockNumber",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
             "name": "status",
             "type": "uint8",
-            "internalType": "enumIAppController.AppStatus"
+            "internalType": "enum IAppController.AppStatus"
           }
         ]
       }
@@ -467,12 +635,12 @@
       {
         "name": "apps",
         "type": "address[]",
-        "internalType": "contractIApp[]"
+        "internalType": "contract IApp[]"
       },
       {
         "name": "appConfigsMem",
         "type": "tuple[]",
-        "internalType": "structIAppController.AppConfig[]",
+        "internalType": "struct IAppController.AppConfig[]",
         "components": [
           {
             "name": "creator",
@@ -490,9 +658,14 @@
             "internalType": "uint32"
           },
           {
+            "name": "pendingReleaseBlockNumber",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
             "name": "status",
             "type": "uint8",
-            "internalType": "enumIAppController.AppStatus"
+            "internalType": "enum IAppController.AppStatus"
           }
         ]
       }
@@ -523,12 +696,12 @@
       {
         "name": "apps",
         "type": "address[]",
-        "internalType": "contractIApp[]"
+        "internalType": "contract IApp[]"
       },
       {
         "name": "appConfigsMem",
         "type": "tuple[]",
-        "internalType": "structIAppController.AppConfig[]",
+        "internalType": "struct IAppController.AppConfig[]",
         "components": [
           {
             "name": "creator",
@@ -546,9 +719,14 @@
             "internalType": "uint32"
           },
           {
+            "name": "pendingReleaseBlockNumber",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
             "name": "status",
             "type": "uint8",
-            "internalType": "enumIAppController.AppStatus"
+            "internalType": "enum IAppController.AppStatus"
           }
         ]
       }
@@ -579,12 +757,12 @@
       {
         "name": "apps",
         "type": "address[]",
-        "internalType": "contractIApp[]"
+        "internalType": "contract IApp[]"
       },
       {
         "name": "appConfigsMem",
         "type": "tuple[]",
-        "internalType": "structIAppController.AppConfig[]",
+        "internalType": "struct IAppController.AppConfig[]",
         "components": [
           {
             "name": "creator",
@@ -602,11 +780,54 @@
             "internalType": "uint32"
           },
           {
+            "name": "pendingReleaseBlockNumber",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
             "name": "status",
             "type": "uint8",
-            "internalType": "enumIAppController.AppStatus"
+            "internalType": "enum IAppController.AppStatus"
           }
         ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getBillingAccount",
+    "inputs": [
+      {
+        "name": "app",
+        "type": "address",
+        "internalType": "contract IApp"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getBillingType",
+    "inputs": [
+      {
+        "name": "app",
+        "type": "address",
+        "internalType": "contract IApp"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "enum IAppController.BillingType"
       }
     ],
     "stateMutability": "view"
@@ -677,7 +898,7 @@
       {
         "name": "",
         "type": "address",
-        "internalType": "contractIPermissionController"
+        "internalType": "contract IPermissionController"
       }
     ],
     "stateMutability": "view"
@@ -690,7 +911,7 @@
       {
         "name": "",
         "type": "address",
-        "internalType": "contractIReleaseManager"
+        "internalType": "contract IReleaseManager"
       }
     ],
     "stateMutability": "view"
@@ -733,7 +954,7 @@
       {
         "name": "app",
         "type": "address",
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       }
     ],
     "outputs": [],
@@ -746,7 +967,7 @@
       {
         "name": "app",
         "type": "address",
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       }
     ],
     "outputs": [],
@@ -764,7 +985,7 @@
       {
         "name": "apps",
         "type": "address[]",
-        "internalType": "contractIApp[]"
+        "internalType": "contract IApp[]"
       }
     ],
     "outputs": [],
@@ -777,7 +998,7 @@
       {
         "name": "app",
         "type": "address",
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       }
     ],
     "outputs": [],
@@ -790,7 +1011,7 @@
       {
         "name": "app",
         "type": "address",
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       }
     ],
     "outputs": [],
@@ -803,7 +1024,7 @@
       {
         "name": "app",
         "type": "address",
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       },
       {
         "name": "metadataURI",
@@ -821,22 +1042,22 @@
       {
         "name": "app",
         "type": "address",
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       },
       {
         "name": "release",
         "type": "tuple",
-        "internalType": "structIAppController.Release",
+        "internalType": "struct IAppController.Release",
         "components": [
           {
             "name": "rmsRelease",
             "type": "tuple",
-            "internalType": "structIReleaseManagerTypes.Release",
+            "internalType": "struct IReleaseManagerTypes.Release",
             "components": [
               {
                 "name": "artifacts",
                 "type": "tuple[]",
-                "internalType": "structIReleaseManagerTypes.Artifact[]",
+                "internalType": "struct IReleaseManagerTypes.Artifact[]",
                 "components": [
                   {
                     "name": "digest",
@@ -866,6 +1087,62 @@
             "name": "encryptedEnv",
             "type": "bytes",
             "internalType": "bytes"
+          },
+          {
+            "name": "containerPolicy",
+            "type": "tuple",
+            "internalType": "struct IAppController.ContainerPolicy",
+            "components": [
+              {
+                "name": "args",
+                "type": "string[]",
+                "internalType": "string[]"
+              },
+              {
+                "name": "cmdOverride",
+                "type": "string[]",
+                "internalType": "string[]"
+              },
+              {
+                "name": "env",
+                "type": "tuple[]",
+                "internalType": "struct IAppController.EnvVar[]",
+                "components": [
+                  {
+                    "name": "key",
+                    "type": "string",
+                    "internalType": "string"
+                  },
+                  {
+                    "name": "value",
+                    "type": "string",
+                    "internalType": "string"
+                  }
+                ]
+              },
+              {
+                "name": "envOverride",
+                "type": "tuple[]",
+                "internalType": "struct IAppController.EnvVar[]",
+                "components": [
+                  {
+                    "name": "key",
+                    "type": "string",
+                    "internalType": "string"
+                  },
+                  {
+                    "name": "value",
+                    "type": "string",
+                    "internalType": "string"
+                  }
+                ]
+              },
+              {
+                "name": "restartPolicy",
+                "type": "string",
+                "internalType": "string"
+              }
+            ]
           }
         ]
       }
@@ -906,7 +1183,7 @@
         "name": "app",
         "type": "address",
         "indexed": true,
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       },
       {
         "name": "operatorSetId",
@@ -925,7 +1202,7 @@
         "name": "app",
         "type": "address",
         "indexed": true,
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       },
       {
         "name": "metadataURI",
@@ -944,7 +1221,7 @@
         "name": "app",
         "type": "address",
         "indexed": true,
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       }
     ],
     "anonymous": false
@@ -957,7 +1234,7 @@
         "name": "app",
         "type": "address",
         "indexed": true,
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       }
     ],
     "anonymous": false
@@ -970,7 +1247,7 @@
         "name": "app",
         "type": "address",
         "indexed": true,
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       }
     ],
     "anonymous": false
@@ -983,7 +1260,7 @@
         "name": "app",
         "type": "address",
         "indexed": true,
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       }
     ],
     "anonymous": false
@@ -996,7 +1273,7 @@
         "name": "app",
         "type": "address",
         "indexed": true,
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       }
     ],
     "anonymous": false
@@ -1009,7 +1286,7 @@
         "name": "app",
         "type": "address",
         "indexed": true,
-        "internalType": "contractIApp"
+        "internalType": "contract IApp"
       },
       {
         "name": "rmsReleaseId",
@@ -1021,17 +1298,17 @@
         "name": "release",
         "type": "tuple",
         "indexed": false,
-        "internalType": "structIAppController.Release",
+        "internalType": "struct IAppController.Release",
         "components": [
           {
             "name": "rmsRelease",
             "type": "tuple",
-            "internalType": "structIReleaseManagerTypes.Release",
+            "internalType": "struct IReleaseManagerTypes.Release",
             "components": [
               {
                 "name": "artifacts",
                 "type": "tuple[]",
-                "internalType": "structIReleaseManagerTypes.Artifact[]",
+                "internalType": "struct IReleaseManagerTypes.Artifact[]",
                 "components": [
                   {
                     "name": "digest",
@@ -1061,6 +1338,62 @@
             "name": "encryptedEnv",
             "type": "bytes",
             "internalType": "bytes"
+          },
+          {
+            "name": "containerPolicy",
+            "type": "tuple",
+            "internalType": "struct IAppController.ContainerPolicy",
+            "components": [
+              {
+                "name": "args",
+                "type": "string[]",
+                "internalType": "string[]"
+              },
+              {
+                "name": "cmdOverride",
+                "type": "string[]",
+                "internalType": "string[]"
+              },
+              {
+                "name": "env",
+                "type": "tuple[]",
+                "internalType": "struct IAppController.EnvVar[]",
+                "components": [
+                  {
+                    "name": "key",
+                    "type": "string",
+                    "internalType": "string"
+                  },
+                  {
+                    "name": "value",
+                    "type": "string",
+                    "internalType": "string"
+                  }
+                ]
+              },
+              {
+                "name": "envOverride",
+                "type": "tuple[]",
+                "internalType": "struct IAppController.EnvVar[]",
+                "components": [
+                  {
+                    "name": "key",
+                    "type": "string",
+                    "internalType": "string"
+                  },
+                  {
+                    "name": "value",
+                    "type": "string",
+                    "internalType": "string"
+                  }
+                ]
+              },
+              {
+                "name": "restartPolicy",
+                "type": "string",
+                "internalType": "string"
+              }
+            ]
           }
         ]
       }
@@ -1105,6 +1438,25 @@
       },
       {
         "name": "limit",
+        "type": "uint32",
+        "indexed": false,
+        "internalType": "uint32"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "UpgradeConfirmed",
+    "inputs": [
+      {
+        "name": "app",
+        "type": "address",
+        "indexed": true,
+        "internalType": "contract IApp"
+      },
+      {
+        "name": "pendingReleaseBlockNumber",
         "type": "uint32",
         "indexed": false,
         "internalType": "uint32"
@@ -1165,6 +1517,11 @@
   {
     "type": "error",
     "name": "MoreThanOneArtifact",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NoPendingUpgrade",
     "inputs": []
   },
   {
