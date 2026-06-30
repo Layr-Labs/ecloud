@@ -20,10 +20,50 @@ import chalk from "chalk";
 import { input, select } from "@inquirer/prompts";
 import open from "open";
 import { withTelemetry } from "../../telemetry";
-import { type BillingChain } from "@layr-labs/ecloud-sdk";
+import { type BillingChain, getEnvironmentConfig } from "@layr-labs/ecloud-sdk";
 
 const POLL_INTERVAL_MS = 5_000;
 const POLL_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
+
+/** Resolve the x402 credit target. `--app` and `--creator` are mutually exclusive. */
+export function resolveX402Target(
+  flags: { creator?: string; app?: string },
+  walletAddress: string,
+): { type: "app" | "creator"; address: string } {
+  if (flags.app && flags.creator) {
+    throw new Error("--app and --creator are mutually exclusive");
+  }
+  if (flags.app) return { type: "app", address: flags.app };
+  if (flags.creator) return { type: "creator", address: flags.creator };
+  return { type: "creator", address: walletAddress };
+}
+
+/** Build the x402 credit-purchase endpoint URL for a target. */
+export function buildX402Url(
+  baseUrl: string,
+  target: { type: "app" | "creator"; address: string },
+): string {
+  const base = baseUrl.replace(/\/+$/, "");
+  const segment = target.type === "app" ? "apps" : "creators";
+  return `${base}/${segment}/${target.address}/x402-credits`;
+}
+
+/** Resolve the platform API base URL: --api-url → ECLOUD_API_URL → env config. */
+export function resolveX402BaseUrl(
+  flags: { "api-url"?: string },
+  environment: string,
+): string {
+  const fromFlag = flags["api-url"]; // also bound to ECLOUD_API_URL via the flag's env
+  if (fromFlag) return fromFlag.replace(/\/+$/, "");
+  const fromEnvVar = process.env.ECLOUD_API_URL;
+  if (fromEnvVar) return fromEnvVar.replace(/\/+$/, "");
+  const fromConfig = getEnvironmentConfig(environment).platformApiURL;
+  if (fromConfig) return fromConfig.replace(/\/+$/, "");
+  throw new Error(
+    `No platform API URL configured for environment "${environment}"; pass --api-url ` +
+      `or set ECLOUD_API_URL.`,
+  );
+}
 
 export default class BillingTopUp extends Command {
   static description = "Purchase EigenCompute credits with USDC or credit card";
@@ -38,8 +78,8 @@ export default class BillingTopUp extends Command {
     ...commonFlags,
     method: Flags.string({
       required: false,
-      description: "Payment method: usdc (on-chain) or card (credit card)",
-      options: ["usdc", "card"],
+      description: "Payment method: usdc (on-chain), card (credit card), or x402 (USDC over x402)",
+      options: ["usdc", "card", "x402"],
     }),
     amount: Flags.string({
       required: false,
@@ -60,6 +100,19 @@ export default class BillingTopUp extends Command {
       required: false,
       description: "Blockchain network for USDC payment: ethereum or base",
       options: ["ethereum", "base"],
+    }),
+    creator: Flags.string({
+      required: false,
+      description: "x402: creator address to credit (defaults to your wallet). Mutually exclusive with --app.",
+    }),
+    app: Flags.string({
+      required: false,
+      description: "x402: app address to credit. Mutually exclusive with --creator.",
+    }),
+    "api-url": Flags.string({
+      required: false,
+      description: "x402: override the platform API base URL",
+      env: "ECLOUD_API_URL",
     }),
   };
 

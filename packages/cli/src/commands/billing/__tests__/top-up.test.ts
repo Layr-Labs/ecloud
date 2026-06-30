@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { resolveX402Target, buildX402Url, resolveX402BaseUrl } from "../top-up";
 
 vi.mock("../../../client", () => ({
   createBillingClient: vi.fn(),
@@ -432,5 +433,57 @@ describe("ecloud billing top-up", () => {
 
     expect(select).not.toHaveBeenCalled();
     expect(input).not.toHaveBeenCalled();
+  });
+
+  describe("x402 helpers", () => {
+    const WALLET = "0x1234567890abcdef1234567890abcdef12345678";
+
+    describe("resolveX402Target", () => {
+      it("defaults to the caller's own creator address", () => {
+        expect(resolveX402Target({}, WALLET)).toEqual({ type: "creator", address: WALLET });
+      });
+      it("honors --creator", () => {
+        expect(resolveX402Target({ creator: "0xC" }, WALLET)).toEqual({ type: "creator", address: "0xC" });
+      });
+      it("honors --app", () => {
+        expect(resolveX402Target({ app: "0xA" }, WALLET)).toEqual({ type: "app", address: "0xA" });
+      });
+      it("throws when both --app and --creator are given", () => {
+        expect(() => resolveX402Target({ app: "0xA", creator: "0xC" }, WALLET)).toThrow(/mutually exclusive/i);
+      });
+    });
+
+    describe("buildX402Url", () => {
+      it("builds a creator URL and trims a trailing slash", () => {
+        expect(buildX402Url("https://h/", { type: "creator", address: "0xC" })).toBe(
+          "https://h/creators/0xC/x402-credits",
+        );
+      });
+      it("builds an app URL", () => {
+        expect(buildX402Url("https://h", { type: "app", address: "0xA" })).toBe(
+          "https://h/apps/0xA/x402-credits",
+        );
+      });
+    });
+
+    describe("resolveX402BaseUrl", () => {
+      const OLD_ENV = process.env.ECLOUD_API_URL;
+      afterEach(() => {
+        if (OLD_ENV === undefined) delete process.env.ECLOUD_API_URL;
+        else process.env.ECLOUD_API_URL = OLD_ENV;
+      });
+      it("prefers --api-url", () => {
+        expect(resolveX402BaseUrl({ "api-url": "https://flag" }, "sepolia-dev")).toBe("https://flag");
+      });
+      it("falls back to ECLOUD_API_URL", () => {
+        delete process.env.ECLOUD_API_URL;
+        process.env.ECLOUD_API_URL = "https://envvar";
+        expect(resolveX402BaseUrl({}, "sepolia-dev")).toBe("https://envvar");
+      });
+      it("falls back to the environment platformApiURL", () => {
+        delete process.env.ECLOUD_API_URL;
+        expect(resolveX402BaseUrl({}, "sepolia-dev")).toContain("ecloud-platform-dev");
+      });
+    });
   });
 });
