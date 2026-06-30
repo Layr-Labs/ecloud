@@ -49,6 +49,7 @@ const ENVIRONMENTS: Record<string, Omit<EnvironmentConfig, "chainID">> = {
     usdcCreditsAddress: "0xbdA3897c3A428763B59015C64AB766c288C97376",
     baseUsdcCreditsAddress: "0x7673a47463F80c6a3553Db9E54c8cDcd5313d0ac",
     baseRPCURL: "https://base-sepolia-rpc.publicnode.com",
+    platformApiURL: "https://ecloud-platform-dev.internal.eigencompute-testnet.eigenlabshq.net",
   },
   sepolia: {
     name: "sepolia",

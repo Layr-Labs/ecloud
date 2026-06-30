@@ -256,6 +256,13 @@ export interface EnvironmentConfig {
   usdcCreditsAddress?: Address;
   baseUsdcCreditsAddress?: Address;
   baseRPCURL?: string;
+  /**
+   * Base URL of the ecloud-platform HTTP API (serves the x402 credit-purchase
+   * endpoint). Distinct from userApiServerURL/billingApiServerURL. Empty when
+   * the platform endpoint is not deployed for the environment; the CLI's
+   * --api-url / ECLOUD_API_URL override it.
+   */
+  platformApiURL?: string;
 }
 
 export interface EnvVar {
