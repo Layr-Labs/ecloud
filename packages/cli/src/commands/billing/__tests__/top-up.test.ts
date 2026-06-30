@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { resolveX402Target, buildX402Url, resolveX402BaseUrl } from "../top-up";
 
 vi.mock("../../../client", () => ({
   createBillingClient: vi.fn(),
@@ -17,9 +18,27 @@ vi.mock("open", () => ({
   default: vi.fn(),
 }));
 
+vi.mock("../../../x402/client", () => ({
+  purchaseCreditsX402: vi.fn(),
+}));
+vi.mock("@layr-labs/ecloud-sdk", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@layr-labs/ecloud-sdk")>();
+  return {
+    ...actual,
+    requirePrivateKey: vi.fn().mockResolvedValue({
+      key: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+      source: "test"
+    }),
+    getBillingEnvironmentConfig: vi.fn().mockReturnValue({
+      billingApiServerURL: "https://platform-dev.example",
+    }),
+  };
+});
+
 import BillingTopUp from "../top-up";
 import { createBillingClient } from "../../../client";
 import { input, select } from "@inquirer/prompts";
+import { purchaseCreditsX402 } from "../../../x402/client";
 
 const WALLET_ADDRESS = "0x1234567890abcdef1234567890abcdef12345678";
 const TX_HASH = "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890";
@@ -432,5 +451,108 @@ describe("ecloud billing top-up", () => {
 
     expect(select).not.toHaveBeenCalled();
     expect(input).not.toHaveBeenCalled();
+  });
+
+  describe("x402 helpers", () => {
+    const WALLET = "0x1234567890abcdef1234567890abcdef12345678";
+
+    describe("resolveX402Target", () => {
+      it("defaults to the caller's own creator address", () => {
+        expect(resolveX402Target({}, WALLET)).toEqual({ type: "creator", address: WALLET });
+      });
+      it("honors --creator", () => {
+        expect(resolveX402Target({ creator: "0xC" }, WALLET)).toEqual({ type: "creator", address: "0xC" });
+      });
+      it("honors --app", () => {
+        expect(resolveX402Target({ app: "0xA" }, WALLET)).toEqual({ type: "app", address: "0xA" });
+      });
+      it("throws when both --app and --creator are given", () => {
+        expect(() => resolveX402Target({ app: "0xA", creator: "0xC" }, WALLET)).toThrow(/mutually exclusive/i);
+      });
+    });
+
+    describe("buildX402Url", () => {
+      it("builds a creator URL and trims a trailing slash", () => {
+        expect(buildX402Url("https://h/", { type: "creator", address: "0xC" })).toBe(
+          "https://h/creators/0xC/x402-credits",
+        );
+      });
+      it("builds an app URL", () => {
+        expect(buildX402Url("https://h", { type: "app", address: "0xA" })).toBe(
+          "https://h/apps/0xA/x402-credits",
+        );
+      });
+    });
+
+    describe("resolveX402BaseUrl", () => {
+      it("prefers --api-url over the billing API config", () => {
+        expect(resolveX402BaseUrl({ "api-url": "https://flag" })).toBe("https://flag");
+      });
+      it("trims a trailing slash from --api-url", () => {
+        expect(resolveX402BaseUrl({ "api-url": "https://flag/" })).toBe("https://flag");
+      });
+      it("falls back to the billing API server URL", () => {
+        // getBillingEnvironmentConfig is mocked at the top of the file to
+        // return billingApiServerURL: "https://platform-dev.example". That
+        // helper already honors ECLOUD_API_URL / ECLOUD_BILLING_API_URL.
+        expect(resolveX402BaseUrl({})).toBe("https://platform-dev.example");
+      });
+    });
+  });
+
+  describe("x402 method", () => {
+    it("happy path: default creator target, 201 settle, prints tx + credits", async () => {
+      mockBilling.getStatus
+        .mockResolvedValueOnce({ subscriptionStatus: "active", remainingCredits: 10.0 })
+        .mockResolvedValueOnce({ subscriptionStatus: "active", remainingCredits: 60.0 });
+      (purchaseCreditsX402 as ReturnType<typeof vi.fn>).mockResolvedValue({
+        txHash: TX_HASH,
+        paymentId: "pay_abc",
+        creditedCents: 5000,
+        targetType: "creator",
+        targetAddress: WALLET_ADDRESS,
+      });
+
+      const cmd = createCommand({ amount: "50", method: "x402" });
+      const promise = cmd.run();
+      for (let i = 0; i < 10; i++) await vi.advanceTimersByTimeAsync(5_000);
+      await promise;
+      const out = logOutput.join("\n");
+
+      expect(purchaseCreditsX402).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: `https://platform-dev.example/creators/${WALLET_ADDRESS}/x402-credits`,
+          amountCents: 5000,
+        }),
+      );
+      expect(out).toContain("x402 payment settled");
+      expect(out).toContain(TX_HASH);
+      expect(out).toContain("$50.00");
+    });
+
+    it("--app targets the apps route", async () => {
+      mockBilling.getStatus.mockResolvedValue({ subscriptionStatus: "active", remainingCredits: 10.0 });
+      (purchaseCreditsX402 as ReturnType<typeof vi.fn>).mockResolvedValue({
+        txHash: TX_HASH, paymentId: "pay_abc", creditedCents: 5000, targetType: "app", targetAddress: "0xApp",
+      });
+      const cmd = createCommand({ amount: "50", method: "x402", app: "0xApp" });
+      await cmd.run();
+      expect(purchaseCreditsX402).toHaveBeenCalledWith(
+        expect.objectContaining({ url: "https://platform-dev.example/apps/0xApp/x402-credits" }),
+      );
+    });
+
+    it("rejects --app together with --creator", async () => {
+      const cmd = createCommand({ amount: "50", method: "x402", app: "0xApp", creator: "0xC" });
+      await expect(cmd.run()).rejects.toThrow(/mutually exclusive/i);
+      expect(purchaseCreditsX402).not.toHaveBeenCalled();
+    });
+
+    it("rejects amount below $5", async () => {
+      mockBilling.getStatus.mockResolvedValue({ subscriptionStatus: "active", remainingCredits: 10.0 });
+      const cmd = createCommand({ amount: "3", method: "x402" });
+      await expect(cmd.run()).rejects.toThrow(/Minimum purchase is \$5/);
+      expect(purchaseCreditsX402).not.toHaveBeenCalled();
+    });
   });
 });
