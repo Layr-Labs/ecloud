@@ -15,12 +15,14 @@
 import { Command, Flags } from "@oclif/core";
 import { createBillingClient } from "../../client";
 import { commonFlags } from "../../flags";
-import { type Address, formatUnits } from "viem";
+import { type Address, type Hex, formatUnits } from "viem";
 import chalk from "chalk";
 import { input, select } from "@inquirer/prompts";
 import open from "open";
 import { withTelemetry } from "../../telemetry";
-import { type BillingChain, getEnvironmentConfig } from "@layr-labs/ecloud-sdk";
+import { type BillingChain, getEnvironmentConfig, requirePrivateKey, addHexPrefix } from "@layr-labs/ecloud-sdk";
+import { privateKeyToAccount } from "viem/accounts";
+import { purchaseCreditsX402 } from "../../x402/client";
 
 const POLL_INTERVAL_MS = 5_000;
 const POLL_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
@@ -153,11 +155,14 @@ export default class BillingTopUp extends Command {
           choices: [
             { value: "card", name: "Credit card" },
             { value: "usdc", name: "USDC (on-chain)" },
+            { value: "x402", name: "USDC (x402)" },
           ],
         }));
 
       if (method === "usdc") {
         await this.handleUsdc(billing, flags, walletAddress, targetAccount, baselineTotal);
+      } else if (method === "x402") {
+        await this.handleX402(billing, flags, walletAddress, baselineTotal);
       } else {
         await this.handleCard(billing, flags, baselineTotal);
       }
@@ -306,6 +311,78 @@ export default class BillingTopUp extends Command {
     }
 
     await this.pollForCredits(billing, flags, baselineTotal, dollars);
+  }
+
+  private async handleX402(
+    billing: Awaited<ReturnType<typeof createBillingClient>>,
+    flags: Record<string, any>,
+    walletAddress: Address,
+    baselineTotal: number | undefined,
+  ) {
+    const MINIMUM_DOLLARS = 5;
+
+    const target = resolveX402Target(
+      { creator: flags.creator, app: flags.app },
+      walletAddress,
+    );
+    const baseUrl = resolveX402BaseUrl({ "api-url": flags["api-url"] }, flags.environment);
+    const url = buildX402Url(baseUrl, target);
+
+    // Amount (interactive when --amount is absent), whole dollars, min $5.
+    const amountStr =
+      flags.amount ??
+      (await input({
+        message: `How many dollars of credits to purchase? (minimum: $${MINIMUM_DOLLARS})`,
+        validate: (val) => {
+          const n = parseInt(val, 10);
+          if (isNaN(n) || n <= 0) return "Enter a positive whole number";
+          if (n.toString() !== val.trim()) return "Enter a whole dollar amount (no cents)";
+          if (n < MINIMUM_DOLLARS) return `Minimum purchase is $${MINIMUM_DOLLARS}`;
+          return true;
+        },
+      }));
+
+    const dollars = parseInt(amountStr, 10);
+    if (isNaN(dollars) || dollars < MINIMUM_DOLLARS) {
+      this.error(`Minimum purchase is $${MINIMUM_DOLLARS}`);
+    }
+    const amountCents = dollars * 100;
+
+    if (target.type === "app") {
+      this.log(`  ${chalk.bold("Crediting app:")} ${target.address}`);
+    } else if (target.address !== walletAddress) {
+      this.log(`  ${chalk.bold("Crediting creator:")} ${target.address}`);
+    }
+
+    // Build the x402 signer from the same private key the billing client uses.
+    const { key } = await requirePrivateKey({ privateKey: flags["private-key"] });
+    const account = privateKeyToAccount(addHexPrefix(key) as Hex);
+
+    this.log(`\n  Purchasing ${chalk.bold(`$${dollars}`)} in credits over x402...`);
+
+    const result = await purchaseCreditsX402({
+      url,
+      amountCents,
+      account,
+      verbose: flags.verbose,
+    });
+
+    this.log(`  ${chalk.green("✓")} x402 payment settled`);
+    this.log(`  ${chalk.bold("Transaction:")} ${result.txHash}`);
+    this.log(`  ${chalk.bold("Payment ID:")}  ${result.paymentId}`);
+    this.log(
+      `  ${chalk.bold("Credits added:")} ${chalk.cyan(`$${(result.creditedCents / 100).toFixed(2)}`)}`,
+    );
+
+    // Poll only when crediting our own account — otherwise our balance won't move.
+    if (target.address.toLowerCase() === walletAddress.toLowerCase()) {
+      await this.pollForCredits(billing, flags, baselineTotal, dollars);
+    } else {
+      this.log(
+        `\n  Credits applied to ${target.type} ${target.address}. ` +
+          `Check that account's balance with: ecloud billing status\n`,
+      );
+    }
   }
 
   private async pollForCredits(
