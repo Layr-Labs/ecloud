@@ -87,6 +87,9 @@ export function usdcDomainForNetwork(
   if (extraName && extraVersion) {
     return { name: extraName, version: extraVersion };
   }
+  // Override name and version independently against the per-network table —
+  // mirrors the x402 foundation client, which overrides each field separately.
+  // The early return above covers the unknown-network case when extra is complete.
   const fromTable = USDC_DOMAINS[network];
   if (fromTable) {
     return { name: extraName ?? fromTable.name, version: extraVersion ?? fromTable.version };
