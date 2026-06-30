@@ -21,7 +21,13 @@ import chalk from "chalk";
 import { input, select } from "@inquirer/prompts";
 import open from "open";
 import { withTelemetry } from "../../telemetry";
-import { type BillingChain, getEnvironmentConfig, requirePrivateKey, addHexPrefix } from "@layr-labs/ecloud-sdk";
+import {
+  type BillingChain,
+  getBillingEnvironmentConfig,
+  getBuildType,
+  requirePrivateKey,
+  addHexPrefix,
+} from "@layr-labs/ecloud-sdk";
 import { privateKeyToAccount } from "viem/accounts";
 import { purchaseCreditsX402 } from "../../x402/client";
 
@@ -51,20 +57,22 @@ export function buildX402Url(
   return `${base}/${segment}/${target.address}/x402-credits`;
 }
 
-/** Resolve the platform API base URL: --api-url → ECLOUD_API_URL → env config. */
-export function resolveX402BaseUrl(
-  flags: { "api-url"?: string },
-  environment: string,
-): string {
+/**
+ * Resolve the base URL for the x402 credit endpoint.
+ *
+ * The x402 routes are served by the ecloud-platform deployment, which is the
+ * same host that fronts the billing API — so we resolve against
+ * `billingApiServerURL`, exactly like the rest of the CLI's billing traffic.
+ * That URL already honors the `ECLOUD_API_URL` / `ECLOUD_BILLING_API_URL`
+ * runtime overrides internally. An explicit `--api-url` flag still wins.
+ */
+export function resolveX402BaseUrl(flags: { "api-url"?: string }): string {
   const fromFlag = flags["api-url"]; // also bound to ECLOUD_API_URL via the flag's env
   if (fromFlag) return fromFlag.replace(/\/+$/, "");
-  const fromEnvVar = process.env.ECLOUD_API_URL;
-  if (fromEnvVar) return fromEnvVar.replace(/\/+$/, "");
-  const fromConfig = getEnvironmentConfig(environment).platformApiURL;
-  if (fromConfig) return fromConfig.replace(/\/+$/, "");
+  const { billingApiServerURL } = getBillingEnvironmentConfig(getBuildType());
+  if (billingApiServerURL) return billingApiServerURL.replace(/\/+$/, "");
   throw new Error(
-    `No platform API URL configured for environment "${environment}"; pass --api-url ` +
-      `or set ECLOUD_API_URL.`,
+    "No billing API URL configured; pass --api-url or set ECLOUD_API_URL / ECLOUD_BILLING_API_URL.",
   );
 }
 
@@ -117,7 +125,7 @@ export default class BillingTopUp extends Command {
     }),
     "api-url": Flags.string({
       required: false,
-      description: "x402: override the platform API base URL",
+      description: "x402: override the billing API base URL (defaults to the environment's billing API)",
       env: "ECLOUD_API_URL",
     }),
   };
@@ -330,12 +338,12 @@ export default class BillingTopUp extends Command {
       walletAddress,
     );
     const targetIsSelf = target.address.toLowerCase() === walletAddress.toLowerCase();
-    const baseUrl = resolveX402BaseUrl({ "api-url": flags["api-url"] }, flags.environment);
+    const baseUrl = resolveX402BaseUrl({ "api-url": flags["api-url"] });
     const url = buildX402Url(baseUrl, target);
 
     if (flags.verbose) {
       // Route to stderr so --json/stdout stays clean; mirrors the client's tracing.
-      console.error(`[x402] platform API base URL: ${baseUrl}`);
+      console.error(`[x402] billing API base URL: ${baseUrl}`);
       console.error(`[x402] endpoint: ${url}`);
       console.error(`[x402] target: ${target.type} ${target.address} (self=${targetIsSelf})`);
     }

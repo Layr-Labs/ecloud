@@ -29,8 +29,8 @@ vi.mock("@layr-labs/ecloud-sdk", async (importOriginal) => {
       key: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
       source: "test"
     }),
-    getEnvironmentConfig: vi.fn().mockReturnValue({
-      platformApiURL: "https://platform-dev.example",
+    getBillingEnvironmentConfig: vi.fn().mockReturnValue({
+      billingApiServerURL: "https://platform-dev.example",
     }),
   };
 });
@@ -485,22 +485,17 @@ describe("ecloud billing top-up", () => {
     });
 
     describe("resolveX402BaseUrl", () => {
-      const OLD_ENV = process.env.ECLOUD_API_URL;
-      afterEach(() => {
-        if (OLD_ENV === undefined) delete process.env.ECLOUD_API_URL;
-        else process.env.ECLOUD_API_URL = OLD_ENV;
+      it("prefers --api-url over the billing API config", () => {
+        expect(resolveX402BaseUrl({ "api-url": "https://flag" })).toBe("https://flag");
       });
-      it("prefers --api-url", () => {
-        expect(resolveX402BaseUrl({ "api-url": "https://flag" }, "sepolia-dev")).toBe("https://flag");
+      it("trims a trailing slash from --api-url", () => {
+        expect(resolveX402BaseUrl({ "api-url": "https://flag/" })).toBe("https://flag");
       });
-      it("falls back to ECLOUD_API_URL", () => {
-        delete process.env.ECLOUD_API_URL;
-        process.env.ECLOUD_API_URL = "https://envvar";
-        expect(resolveX402BaseUrl({}, "sepolia-dev")).toBe("https://envvar");
-      });
-      it("falls back to the environment platformApiURL", () => {
-        delete process.env.ECLOUD_API_URL;
-        expect(resolveX402BaseUrl({}, "sepolia-dev")).toBe("https://platform-dev.example");
+      it("falls back to the billing API server URL", () => {
+        // getBillingEnvironmentConfig is mocked at the top of the file to
+        // return billingApiServerURL: "https://platform-dev.example". That
+        // helper already honors ECLOUD_API_URL / ECLOUD_BILLING_API_URL.
+        expect(resolveX402BaseUrl({})).toBe("https://platform-dev.example");
       });
     });
   });
