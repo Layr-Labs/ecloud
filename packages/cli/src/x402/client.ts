@@ -203,7 +203,6 @@ export async function purchaseCreditsX402(
 
   const reqs = parseChallenge(await readBody(challengeResp));
   if (opts.verbose) {
-    // eslint-disable-next-line no-console
     console.debug(`[x402] paying ${reqs.amount} ${reqs.asset} on ${reqs.network} to ${reqs.payTo}`);
   }
 
