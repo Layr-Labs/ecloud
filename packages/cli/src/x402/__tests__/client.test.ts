@@ -151,9 +151,11 @@ describe("purchaseCreditsX402", () => {
     const fetchImpl = (async (_url: string, init: any) => {
       seen.push({ headers: new Headers(init.headers), body: init.body });
       if (seen.length === 1) return jsonResponse(402, REQS_BODY);
+      // Real server shape for /creators/{creatorAddr}/x402-credits: the address
+      // is returned under `creatorAddr` (apps route uses `appId`); there is no
+      // `targetType` field — the client infers it from which field is present.
       return jsonResponse(201, {
-        targetType: "creator",
-        targetAddress: "0xCreator",
+        creatorAddr: "0xCreator",
         creditedCents: 500,
         paymentId: "pay_abc",
         txHash: "0xdeadbeef",
@@ -181,6 +183,30 @@ describe("purchaseCreditsX402", () => {
     const decoded = JSON.parse(Buffer.from(seen[1].headers.get("x-payment")!, "base64").toString());
     expect(decoded.accepted.extra.paymentId).toBe("pay_abc");
     expect(decoded.payload.authorization.value).toBe("5000000");
+  });
+
+  it("parses the apps-route response (appId field) to targetType 'app'", async () => {
+    let n = 0;
+    const fetchImpl = (async () => {
+      n += 1;
+      if (n === 1) return jsonResponse(402, REQS_BODY);
+      return jsonResponse(201, {
+        appId: "0xApp",
+        creditedCents: 500,
+        paymentId: "pay_abc",
+        txHash: "0xdeadbeef",
+      });
+    }) as unknown as typeof fetch;
+
+    const result = await purchaseCreditsX402({
+      url: "https://host/apps/0xApp/x402-credits",
+      amountCents: 500,
+      account: fakeAccount(),
+      fetchImpl,
+    });
+
+    expect(result.targetType).toBe("app");
+    expect(result.targetAddress).toBe("0xApp");
   });
 
   it("phase-1 non-402 maps to an X402Error with status", async () => {
@@ -212,7 +238,7 @@ describe("purchaseCreditsX402", () => {
       if (n === 1) return jsonResponse(402, REQS_BODY);
       return jsonResponse(
         201,
-        { targetType: "creator", targetAddress: "0xC", creditedCents: 500, paymentId: "pay_abc" },
+        { creatorAddr: "0xC", creditedCents: 500, paymentId: "pay_abc" },
         { "x-payment-response": receipt },
       );
     }) as unknown as typeof fetch;

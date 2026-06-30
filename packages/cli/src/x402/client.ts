@@ -242,11 +242,28 @@ export async function purchaseCreditsX402(
   const receipt = decodeReceipt(settleResp.headers.get("x-payment-response"));
   const txHash = ok.txHash ?? receipt?.transaction ?? "";
 
+  // The server returns the credited address under a route-specific field:
+  // `appId` on /apps/{appId}/x402-credits, `creatorAddr` on
+  // /creators/{creatorAddr}/x402-credits. There is no explicit targetType in
+  // the body, so we infer it from which field is present.
+  const targetAddress =
+    typeof ok.appId === "string"
+      ? ok.appId
+      : typeof ok.creatorAddr === "string"
+        ? ok.creatorAddr
+        : undefined;
+  const targetType =
+    typeof ok.appId === "string"
+      ? "app"
+      : typeof ok.creatorAddr === "string"
+        ? "creator"
+        : undefined;
+
   return {
     txHash,
     paymentId: ok.paymentId ?? reqs.extra?.paymentId ?? "",
     creditedCents: typeof ok.creditedCents === "number" ? ok.creditedCents : opts.amountCents,
-    targetType: ok.targetType,
-    targetAddress: ok.targetAddress,
+    targetType,
+    targetAddress,
   };
 }
