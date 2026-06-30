@@ -165,6 +165,45 @@ export interface PurchaseCreditsX402Opts {
 }
 
 /**
+ * Translate a thrown fetch/transport error into an actionable X402Error.
+ *
+ * Node's global `fetch` rejects with a generic `TypeError: fetch failed` and
+ * stashes the real network error on `.cause` (ENOTFOUND, ECONNREFUSED,
+ * ETIMEDOUT, TLS errors, …). We surface that cause — plus the URL and a hint —
+ * so `--verbose` users see *why* the request failed instead of "fetch failed".
+ * AbortError means our own timeout fired.
+ */
+function describeFetchError(err: any, url: string, timeoutMs: number): X402Error {
+  if (err instanceof X402Error) return err;
+
+  const name = err?.name;
+  if (name === "AbortError" || name === "TimeoutError") {
+    return new X402Error(`x402 request to ${url} timed out after ${timeoutMs}ms`);
+  }
+
+  const cause = err?.cause;
+  const code: string | undefined = cause?.code ?? err?.code;
+  const detail =
+    [code, cause?.message ?? err?.message].filter(Boolean).join(": ") || String(err);
+
+  let hint = "";
+  switch (code) {
+    case "ENOTFOUND":
+    case "EAI_AGAIN":
+      hint = " — the platform host could not be resolved; check --api-url / ECLOUD_API_URL";
+      break;
+    case "ECONNREFUSED":
+      hint = " — the platform host refused the connection; is the API URL correct and reachable?";
+      break;
+    case "ETIMEDOUT":
+    case "ECONNRESET":
+      hint = " — the connection dropped; the host may be unreachable from this network";
+      break;
+  }
+  return new X402Error(`x402 request to ${url} failed: ${detail}${hint}`);
+}
+
+/**
  * Purchase credits over x402: POST the amount, answer the 402 challenge with a
  * signed X-PAYMENT, and parse the 201 settlement. Throws X402Error (with the
  * HTTP status) on any failure.
@@ -176,25 +215,43 @@ export async function purchaseCreditsX402(
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const body = JSON.stringify({ amountCents: opts.amountCents });
 
-  const withTimeout = async (init: RequestInit): Promise<Response> => {
+  // Verbose diagnostics go to stderr so they never corrupt stdout.
+  const log = (msg: string) => {
+    if (opts.verbose) console.error(`[x402] ${msg}`);
+  };
+
+  // Single request path: times out via AbortController, traces under --verbose,
+  // and converts transport failures into actionable X402Errors.
+  const request = async (label: string, headers: Record<string, string>): Promise<Response> => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const startedAt = Date.now();
+    log(`${label}: POST ${opts.url}`);
     try {
-      return await doFetch(opts.url, { ...init, signal: controller.signal });
+      const resp = await doFetch(opts.url, { method: "POST", headers, body, signal: controller.signal });
+      log(`${label}: ← HTTP ${resp.status} (${Date.now() - startedAt}ms)`);
+      return resp;
+    } catch (err: any) {
+      log(
+        `${label}: transport error: ${err?.name ?? "Error"}: ${err?.message ?? err}` +
+          (err?.cause ? ` (cause: ${err.cause.code ?? ""} ${err.cause.message ?? ""})` : ""),
+      );
+      throw describeFetchError(err, opts.url, timeoutMs);
     } finally {
       clearTimeout(timer);
     }
   };
 
-  // Phase 1: challenge.
-  const challengeResp = await withTimeout({
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body,
-  });
+  log(`endpoint ${opts.url} — requesting ${opts.amountCents} cents of credits`);
+
+  // Phase 1: challenge (no payment header → expect 402).
+  const challengeResp = await request("challenge", { "Content-Type": "application/json" });
 
   if (challengeResp.status !== 402) {
     const errBody = await readBody(challengeResp);
+    log(
+      `challenge: expected 402, got ${challengeResp.status}; body: ${JSON.stringify(errBody)}`,
+    );
     throw new X402Error(
       errBody?.error ?? `x402 challenge failed (HTTP ${challengeResp.status})`,
       challengeResp.status,
@@ -202,11 +259,12 @@ export async function purchaseCreditsX402(
   }
 
   const reqs = parseChallenge(await readBody(challengeResp));
-  if (opts.verbose) {
-    console.debug(`[x402] paying ${reqs.amount} ${reqs.asset} on ${reqs.network} to ${reqs.payTo}`);
-  }
+  log(
+    `challenge: scheme=${reqs.scheme} network=${reqs.network} asset=${reqs.asset} ` +
+      `amount=${reqs.amount} payTo=${reqs.payTo} paymentId=${reqs.extra?.paymentId}`,
+  );
 
-  // Phase 2: sign + retry.
+  // Phase 2: sign the EIP-3009 authorization + retry with X-PAYMENT.
   const payload = await buildSignedPayload(
     reqs,
     opts.account,
@@ -214,15 +272,20 @@ export async function purchaseCreditsX402(
     createNonce,
   );
   const header = encodePaymentHeader(payload);
+  log(
+    `settle: signed authorization from=${payload.payload.authorization.from} ` +
+      `validBefore=${payload.payload.authorization.validBefore}; ` +
+      `sending X-PAYMENT (${header.length} chars)`,
+  );
 
-  const settleResp = await withTimeout({
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-PAYMENT": header },
-    body,
+  const settleResp = await request("settle", {
+    "Content-Type": "application/json",
+    "X-PAYMENT": header,
   });
 
   if (settleResp.status !== 201) {
     const errBody = await readBody(settleResp);
+    log(`settle: expected 201, got ${settleResp.status}; body: ${JSON.stringify(errBody)}`);
     const serverMsg = typeof errBody?.error === "string" ? `: ${errBody.error}` : "";
     switch (settleResp.status) {
       case 402:
@@ -258,6 +321,11 @@ export async function purchaseCreditsX402(
       : typeof ok.creatorAddr === "string"
         ? "creator"
         : undefined;
+
+  log(
+    `settle: 201 — txHash=${txHash} creditedCents=${ok.creditedCents} ` +
+      `target=${targetType ?? "?"}:${targetAddress ?? "?"}`,
+  );
 
   return {
     txHash,

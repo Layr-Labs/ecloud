@@ -209,6 +209,48 @@ describe("purchaseCreditsX402", () => {
     expect(result.targetAddress).toBe("0xApp");
   });
 
+  it("surfaces the underlying cause when fetch rejects (TypeError: fetch failed)", async () => {
+    // Node's global fetch throws a generic TypeError and stashes the real error
+    // on .cause. The client must surface the cause + URL, not "fetch failed".
+    const fetchImpl = (async () => {
+      const err: any = new TypeError("fetch failed");
+      err.cause = { code: "ENOTFOUND", message: "getaddrinfo ENOTFOUND bad.host" };
+      throw err;
+    }) as unknown as typeof fetch;
+
+    await expect(
+      purchaseCreditsX402({
+        url: "https://bad.host/creators/0xC/x402-credits",
+        amountCents: 500,
+        account: fakeAccount(),
+        fetchImpl,
+      }),
+    ).rejects.toThrow(/bad\.host\/creators.*ENOTFOUND.*could not be resolved/s);
+  });
+
+  it("reports a timeout distinctly from a network error", async () => {
+    const fetchImpl = (async (_url: string, init: any) => {
+      // Simulate the AbortController firing: reject with an AbortError.
+      return await new Promise((_resolve, reject) => {
+        init.signal?.addEventListener("abort", () => {
+          const e: any = new Error("aborted");
+          e.name = "AbortError";
+          reject(e);
+        });
+      });
+    }) as unknown as typeof fetch;
+
+    await expect(
+      purchaseCreditsX402({
+        url: "https://slow.host/x",
+        amountCents: 500,
+        account: fakeAccount(),
+        fetchImpl,
+        timeoutMs: 5,
+      }),
+    ).rejects.toThrow(/timed out after 5ms/);
+  });
+
   it("phase-1 non-402 maps to an X402Error with status", async () => {
     const fetchImpl = (async () =>
       jsonResponse(400, { error: "amountCents is below the minimum" })) as unknown as typeof fetch;

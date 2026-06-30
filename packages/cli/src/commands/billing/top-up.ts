@@ -333,6 +333,13 @@ export default class BillingTopUp extends Command {
     const baseUrl = resolveX402BaseUrl({ "api-url": flags["api-url"] }, flags.environment);
     const url = buildX402Url(baseUrl, target);
 
+    if (flags.verbose) {
+      // Route to stderr so --json/stdout stays clean; mirrors the client's tracing.
+      console.error(`[x402] platform API base URL: ${baseUrl}`);
+      console.error(`[x402] endpoint: ${url}`);
+      console.error(`[x402] target: ${target.type} ${target.address} (self=${targetIsSelf})`);
+    }
+
     // Amount (interactive when --amount is absent), whole dollars, min $5.
     const amountStr =
       flags.amount ??
