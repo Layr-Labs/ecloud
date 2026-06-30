@@ -1,15 +1,16 @@
 /**
- * ecloud billing top-up — Purchase EigenCompute credits with USDC or credit card
+ * ecloud billing top-up — Purchase EigenCompute credits with USDC, credit card, or x402
  *
  * Executes USDCCredits.purchaseCreditsFor(amount, account) on-chain via the SDK
- * billing module's topUp() method (EIP-7702 batched transaction), or initiates
- * credit card checkout via the purchaseCredits API.
+ * billing module's topUp() method (EIP-7702 batched transaction), initiates
+ * credit card checkout via the purchaseCredits API, or settles x402 payment over HTTP.
  *
  * Flow:
  *   1. Check current credit balance
- *   2. Prompt for payment method (USDC or card)
+ *   2. Prompt for payment method (USDC, card, or x402)
  *   3. USDC: Read wallet's USDC balance via SDK → prompt for amount → SDK topUp() → poll
  *   4. Card: Prompt for amount → check existing payment methods → purchaseCredits API → poll
+ *   5. x402: resolve target (creator default / --creator / --app) → POST to platform endpoint → sign 402 challenge → settle
  */
 
 import { Command, Flags } from "@oclif/core";
@@ -68,12 +69,15 @@ export function resolveX402BaseUrl(
 }
 
 export default class BillingTopUp extends Command {
-  static description = "Purchase EigenCompute credits with USDC or credit card";
+  static description = "Purchase EigenCompute credits with USDC, credit card, or x402";
 
   static examples = [
     "<%= config.bin %> billing top-up",
     "<%= config.bin %> billing top-up --method usdc --amount 50",
     "<%= config.bin %> billing top-up --method card --amount 25",
+    "<%= config.bin %> billing top-up --method x402 --amount 50",
+    "<%= config.bin %> billing top-up --method x402 --amount 50 --app 0xApp...",
+    "<%= config.bin %> billing top-up --method x402 --amount 50 --creator 0xCreator...",
   ];
 
   static flags = {
