@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseChallenge, chainIdFromNetwork, X402Error, buildSignedPayload, encodePaymentHeader } from "../client";
+import { parseChallenge, chainIdFromNetwork, X402Error, buildSignedPayload, encodePaymentHeader, purchaseCreditsX402 } from "../client";
 import type { PaymentRequired } from "../types";
 
 const REQS = {
@@ -119,5 +119,110 @@ describe("encodePaymentHeader", () => {
     const payload = { x402Version: 2, payload: { signature: "0x", authorization: {} }, accepted: {} } as any;
     const header = encodePaymentHeader(payload);
     expect(JSON.parse(Buffer.from(header, "base64").toString("utf8"))).toEqual(payload);
+  });
+});
+
+const REQS_BODY = {
+  x402Version: 2,
+  accepts: [
+    {
+      scheme: "exact",
+      network: "eip155:84532",
+      asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      amount: "5000000",
+      payTo: "0x000000000000000000000000000000000000dEaD",
+      maxTimeoutSeconds: 60,
+      extra: { paymentId: "pay_abc" },
+    },
+  ],
+};
+
+function jsonResponse(status: number, body: unknown, headers: Record<string, string> = {}) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json", ...headers },
+  });
+}
+
+describe("purchaseCreditsX402", () => {
+  it("402 → sign → 201: returns parsed result and sends X-PAYMENT on retry", async () => {
+    const account = fakeAccount();
+    const seen: Array<{ headers: Headers; body: string }> = [];
+    const fetchImpl = (async (_url: string, init: any) => {
+      seen.push({ headers: new Headers(init.headers), body: init.body });
+      if (seen.length === 1) return jsonResponse(402, REQS_BODY);
+      return jsonResponse(201, {
+        targetType: "creator",
+        targetAddress: "0xCreator",
+        creditedCents: 500,
+        paymentId: "pay_abc",
+        txHash: "0xdeadbeef",
+      });
+    }) as unknown as typeof fetch;
+
+    const result = await purchaseCreditsX402({
+      url: "https://host/creators/0xCreator/x402-credits",
+      amountCents: 500,
+      account,
+      fetchImpl,
+    });
+
+    expect(result).toEqual({
+      txHash: "0xdeadbeef",
+      paymentId: "pay_abc",
+      creditedCents: 500,
+      targetType: "creator",
+      targetAddress: "0xCreator",
+    });
+    // phase 1 has no payment header; phase 2 does
+    expect(seen[0].headers.get("x-payment")).toBeNull();
+    expect(seen[1].headers.get("x-payment")).toBeTruthy();
+    // the signed payload echoes the paymentId
+    const decoded = JSON.parse(Buffer.from(seen[1].headers.get("x-payment")!, "base64").toString());
+    expect(decoded.accepted.extra.paymentId).toBe("pay_abc");
+    expect(decoded.payload.authorization.value).toBe("5000000");
+  });
+
+  it("phase-1 non-402 maps to an X402Error with status", async () => {
+    const fetchImpl = (async () =>
+      jsonResponse(400, { error: "amountCents is below the minimum" })) as unknown as typeof fetch;
+    await expect(
+      purchaseCreditsX402({ url: "https://h/x", amountCents: 500, account: fakeAccount(), fetchImpl }),
+    ).rejects.toThrow(/below the minimum/);
+  });
+
+  it("phase-2 502 maps to a settlement-failed error", async () => {
+    let n = 0;
+    const fetchImpl = (async () => {
+      n += 1;
+      return n === 1 ? jsonResponse(402, REQS_BODY) : jsonResponse(502, { error: "x" });
+    }) as unknown as typeof fetch;
+    await expect(
+      purchaseCreditsX402({ url: "https://h/x", amountCents: 500, account: fakeAccount(), fetchImpl }),
+    ).rejects.toThrow(/settlement failed/i);
+  });
+
+  it("falls back to X-PAYMENT-RESPONSE receipt when body lacks txHash", async () => {
+    const receipt = Buffer.from(
+      JSON.stringify({ success: true, transaction: "0xfromheader", paymentId: "pay_abc" }),
+    ).toString("base64");
+    let n = 0;
+    const fetchImpl = (async () => {
+      n += 1;
+      if (n === 1) return jsonResponse(402, REQS_BODY);
+      return jsonResponse(
+        201,
+        { targetType: "creator", targetAddress: "0xC", creditedCents: 500, paymentId: "pay_abc" },
+        { "x-payment-response": receipt },
+      );
+    }) as unknown as typeof fetch;
+
+    const result = await purchaseCreditsX402({
+      url: "https://h/x",
+      amountCents: 500,
+      account: fakeAccount(),
+      fetchImpl,
+    });
+    expect(result.txHash).toBe("0xfromheader");
   });
 });
