@@ -329,6 +329,7 @@ export default class BillingTopUp extends Command {
       { creator: flags.creator, app: flags.app },
       walletAddress,
     );
+    const targetIsSelf = target.address.toLowerCase() === walletAddress.toLowerCase();
     const baseUrl = resolveX402BaseUrl({ "api-url": flags["api-url"] }, flags.environment);
     const url = buildX402Url(baseUrl, target);
 
@@ -354,7 +355,7 @@ export default class BillingTopUp extends Command {
 
     if (target.type === "app") {
       this.log(`  ${chalk.bold("Crediting app:")} ${target.address}`);
-    } else if (target.address !== walletAddress) {
+    } else if (!targetIsSelf) {
       this.log(`  ${chalk.bold("Crediting creator:")} ${target.address}`);
     }
 
@@ -379,7 +380,7 @@ export default class BillingTopUp extends Command {
     );
 
     // Poll only when crediting our own account — otherwise our balance won't move.
-    if (target.address.toLowerCase() === walletAddress.toLowerCase()) {
+    if (targetIsSelf) {
       await this.pollForCredits(billing, flags, baselineTotal, dollars);
     } else {
       this.log(
