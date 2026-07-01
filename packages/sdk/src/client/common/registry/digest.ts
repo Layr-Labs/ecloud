@@ -116,18 +116,11 @@ async function extractDigestFromSinglePlatform(
       : null;
 
     if (!config) {
-      // Try to get from manifest config digest
-      if (manifest.config?.digest) {
-        const digest = hexStringToBytes32(manifest.config.digest);
-        const registry = extractRegistryName(imageRef);
-        // Assume linux/amd64 if we can't determine platform
-        return {
-          digest,
-          registry,
-          platform: DOCKER_PLATFORM,
-        };
-      }
-      throw new Error(`Could not determine platform for ${imageRef}`);
+      // Architecture is undetectable from `docker inspect`. Previously this
+      // assumed linux/amd64 and deployed anyway — the silent hole that let an
+      // arm64 image through to crash on first request in the TEE. Fail closed
+      // instead: refuse rather than guess the platform.
+      throw createPlatformErrorMessage(imageRef, ["unknown (could not determine architecture)"]);
     }
 
     const platform = `${config.os}/${config.architecture}`;
@@ -236,14 +229,11 @@ Image: ${imageRef}
 Found platform(s): ${platforms.join(", ")}
 Required platform: ${DOCKER_PLATFORM}
 
-To fix this issue:
-1. Manual fix:
-   a. Rebuild your image with the correct platform:
-      docker build --platform ${DOCKER_PLATFORM} -t ${imageRef} .
-   b. Push the rebuilt image to your remote registry:
-      docker push ${imageRef}
-
-2. Or use the SDK to build with the correct platform automatically.`;
+To fix, either:
+1. Rebuild the image for ${DOCKER_PLATFORM} and push it:
+     docker buildx build --platform ${DOCKER_PLATFORM} -t ${imageRef} --push .
+2. Or use a verifiable build (--verifiable --repo <repo> --commit <sha>), which
+   builds server-side and needs no local Docker.`;
 
   return new Error(errorMsg);
 }

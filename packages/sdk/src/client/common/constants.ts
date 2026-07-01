@@ -2,9 +2,9 @@
  * Constants used throughout the SDK
  */
 
-import { sepolia, mainnet } from "viem/chains";
+import { sepolia, mainnet, baseSepolia } from "viem/chains";
 
-export const SUPPORTED_CHAINS = [mainnet, sepolia] as const;
+export const SUPPORTED_CHAINS = [mainnet, sepolia, baseSepolia] as const;
 
 export const DOCKER_PLATFORM = "linux/amd64";
 export const REGISTRY_PROPAGATION_WAIT_SECONDS = 3;

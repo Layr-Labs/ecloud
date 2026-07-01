@@ -2,12 +2,12 @@
  * Environment configuration for different networks
  */
 
-import { Address } from "viem";
 import { BillingEnvironmentConfig, EnvironmentConfig } from "../types";
 
 // Chain IDs
 export const SEPOLIA_CHAIN_ID = 11155111;
 export const MAINNET_CHAIN_ID = 1;
+export const BASE_SEPOLIA_CHAIN_ID = 84532;
 
 // Common addresses across all chains
 export const CommonAddresses: Record<string, string> = {
@@ -40,17 +40,21 @@ const ENVIRONMENTS: Record<string, Omit<EnvironmentConfig, "chainID">> = {
     name: "sepolia",
     build: "dev",
     appControllerAddress: "0xa86DC1C47cb2518327fB4f9A1627F51966c83B92",
+    releaseAbiVersion: "v1.5", // AppController upgraded to v1.5.x (containerPolicy)
     permissionControllerAddress: ChainAddresses[SEPOLIA_CHAIN_ID].PermissionController,
     erc7702DelegatorAddress: CommonAddresses.ERC7702Delegator,
     kmsServerURL: "http://10.128.0.57:8080",
     userApiServerURL: "https://userapi-compute-sepolia-dev.eigencloud.xyz",
     defaultRPCURL: "https://ethereum-sepolia-rpc.publicnode.com",
     usdcCreditsAddress: "0xbdA3897c3A428763B59015C64AB766c288C97376",
+    baseUsdcCreditsAddress: "0x7673a47463F80c6a3553Db9E54c8cDcd5313d0ac",
+    baseRPCURL: "https://base-sepolia-rpc.publicnode.com",
   },
   sepolia: {
     name: "sepolia",
     build: "prod",
     appControllerAddress: "0x0dd810a6ffba6a9820a10d97b659f07d8d23d4E2",
+    releaseAbiVersion: "v1.4", // prod still on AppController v1.4.0 (3-field Release)
     permissionControllerAddress: ChainAddresses[SEPOLIA_CHAIN_ID].PermissionController,
     erc7702DelegatorAddress: CommonAddresses.ERC7702Delegator,
     kmsServerURL: "http://10.128.15.203:8080",
@@ -58,11 +62,14 @@ const ENVIRONMENTS: Record<string, Omit<EnvironmentConfig, "chainID">> = {
     defaultRPCURL: "https://ethereum-sepolia-rpc.publicnode.com",
     billingRPCURL: "https://ethereum-rpc.publicnode.com",
     usdcCreditsAddress: "0xed9c88640ca9149Bd9f7ee6620074af10F2E145d",
+    baseUsdcCreditsAddress: "0x7673a47463F80c6a3553Db9E54c8cDcd5313d0ac",
+    baseRPCURL: "https://base-sepolia-rpc.publicnode.com",
   },
   "mainnet-alpha": {
     name: "mainnet-alpha",
     build: "prod",
     appControllerAddress: "0xc38d35Fc995e75342A21CBd6D770305b142Fbe67",
+    releaseAbiVersion: "v1.4", // prod still on AppController v1.4.0 (3-field Release)
     permissionControllerAddress: ChainAddresses[MAINNET_CHAIN_ID].PermissionController,
     erc7702DelegatorAddress: CommonAddresses.ERC7702Delegator,
     kmsServerURL: "http://10.128.0.2:8080",
@@ -135,6 +142,12 @@ export function getEnvironmentConfig(environment: string, chainID?: bigint): Env
     ...env,
     chainID: BigInt(resolvedChainID),
     ...(apiUrlOverride ? { userApiServerURL: apiUrlOverride } : {}),
+    ...(process.env.ECLOUD_USER_API_URL && {
+      userApiServerURL: process.env.ECLOUD_USER_API_URL,
+    }),
+    ...(process.env.ECLOUD_RPC_URL && {
+      defaultRPCURL: process.env.ECLOUD_RPC_URL,
+    }),
   };
 }
 
@@ -153,7 +166,12 @@ export function getBillingEnvironmentConfig(build: "dev" | "prod"): {
   if (apiUrlOverride) {
     return { billingApiServerURL: apiUrlOverride };
   }
-  return config;
+  return {
+    ...config,
+    ...(process.env.ECLOUD_BILLING_API_URL && {
+      billingApiServerURL: process.env.ECLOUD_BILLING_API_URL,
+    }),
+  };
 }
 
 /**

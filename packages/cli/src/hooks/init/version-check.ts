@@ -12,7 +12,12 @@ const NPM_REGISTRY_URL = "https://registry.npmjs.org/@layr-labs/ecloud-cli";
 const VERSION_CHECK_TIMEOUT_MS = 3000;
 const VERSION_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
-function parseVersion(v: string): { major: number; minor: number; patch: number; prerelease: string | null } {
+function parseVersion(v: string): {
+  major: number;
+  minor: number;
+  patch: number;
+  prerelease: string | null;
+} {
   const clean = v.replace(/^v/, "");
   const [core, ...rest] = clean.split("-");
   const [major = 0, minor = 0, patch = 0] = core.split(".").map(Number);
@@ -109,6 +114,15 @@ const hook: Hook<"init"> = async function (options) {
       `\nA new version of ecloud-cli is available: ${chalk.red(currentVersion)} -> ${chalk.green(latestVersion)}`,
     ),
   );
+
+  // Non-interactive (CI / no TTY): never block the command on an update prompt.
+  // The hook runs before the command parses flags, so it cannot see
+  // --non-interactive; CI and isTTY cover the agent/CI failure mode.
+  if (process.env.CI === "true" || !process.stdin.isTTY) {
+    globalConfig.last_version_check = now;
+    saveGlobalConfig(globalConfig);
+    return;
+  }
 
   const shouldUpdate = await confirm({
     message: "Would you like to update now?",

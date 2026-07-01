@@ -1,17 +1,22 @@
 import { Command, Args, Flags } from "@oclif/core";
-import { getEnvironmentConfig, UserApiClient, isMainnet } from "@layr-labs/ecloud-sdk";
+import {
+  getEnvironmentConfig,
+  UserApiClient,
+  isMainnet,
+  WatchTimeoutError,
+} from "@layr-labs/ecloud-sdk";
+import type { PrepareUpgradeResult, GasEstimate } from "@layr-labs/ecloud-sdk";
 import { withTelemetry } from "../../../telemetry";
 import { commonFlags, applyTxOverrides } from "../../../flags";
 import { createBuildClient, createComputeClient } from "../../../client";
 import { createViemClients } from "../../../utils/viemClients";
 import {
-  getDockerfileInteractive,
+  getDockerfile,
   getImageReferenceInteractive,
-  getEnvFileInteractive,
-  getInstanceTypeInteractive,
-  type SkuInfo,
-  getLogSettingsInteractive,
-  getResourceUsageMonitoringInteractive,
+  getEnvFile,
+  getInstanceType,
+  getLogSettings,
+  getResourceUsageMonitoring,
   getOrPromptAppID,
   LogVisibility,
   ResourceUsageMonitoring,
@@ -20,8 +25,11 @@ import {
   promptVerifiableSourceType,
   promptVerifiableGitSourceInputs,
   promptVerifiablePrebuiltImageRef,
+  isNonInteractive,
+  collectMissingRequiredInputs,
 } from "../../../utils/prompts";
 import { getClientId } from "../../../utils/version";
+import { fetchAvailableInstanceTypes } from "../../../utils/instanceTypes";
 import { setLinkedAppForDirectory, invalidateProfileCache } from "../../../utils/globalConfig";
 import chalk from "chalk";
 import { formatVerifiableBuildSummary } from "../../../utils/build";
@@ -33,6 +41,7 @@ import {
 } from "../../../utils/dockerhub";
 import { isTlsEnabledFromEnvFile } from "../../../utils/tls";
 import { mergeInlineEnvVars } from "../../../utils/env";
+import { stageFailure } from "../../../utils/exitCodes";
 import type { SubmitBuildRequest } from "@layr-labs/ecloud-sdk";
 
 export default class AppUpgrade extends Command {
@@ -40,7 +49,7 @@ export default class AppUpgrade extends Command {
 
   static args = {
     "app-id": Args.string({
-      description: "App ID or name to upgrade",
+      description: "App ID or name to upgrade (env: ECLOUD_APP_ID)",
       required: false,
     }),
   };
@@ -76,7 +85,8 @@ export default class AppUpgrade extends Command {
     }),
     "log-visibility": Flags.string({
       required: false,
-      description: "Log visibility setting: public, private, or off",
+      description:
+        "Log visibility setting: public, private, or off (non-interactive default: private)",
       options: ["public", "private", "off"],
       env: "ECLOUD_LOG_VISIBILITY",
     }),
@@ -87,7 +97,8 @@ export default class AppUpgrade extends Command {
     }),
     "resource-usage-monitoring": Flags.string({
       required: false,
-      description: "Resource usage monitoring: enable or disable",
+      description:
+        "Resource usage monitoring: enable or disable (non-interactive default: disable)",
       options: ["enable", "disable"],
       env: "ECLOUD_RESOURCE_USAGE_MONITORING",
     }),
@@ -129,12 +140,55 @@ export default class AppUpgrade extends Command {
     force: Flags.boolean({
       description: "Skip all confirmation prompts",
       default: false,
+      env: "ECLOUD_FORCE",
+    }),
+    "watch-timeout": Flags.integer({
+      description:
+        "Maximum seconds to wait for the upgrade to complete before returning a recovery hint (default: 600)",
+      env: "ECLOUD_WATCH_TIMEOUT_SECONDS",
     }),
   };
 
   async run() {
     return withTelemetry(this, async () => {
       const { args, flags } = await this.parse(AppUpgrade);
+
+      // Resolve the app to upgrade from the positional arg or ECLOUD_APP_ID env
+      // (oclif Args don't support env bindings directly).
+      const appIdInput = args["app-id"] ?? process.env.ECLOUD_APP_ID;
+
+      // Resolve the interactivity decision once (flag › CI › !TTY) and thread it
+      // into the optional-input helpers. They take it as a parameter rather than
+      // re-deriving from process internally, so --non-interactive is honored
+      // even on a TTY and the helpers stay pure/testable.
+      const nonInteractive = isNonInteractive(flags);
+
+      // Non-interactive: report every missing required input at once instead of
+      // failing one prompt at a time.
+      if (nonInteractive) {
+        const missing = collectMissingRequiredInputs(
+          {
+            imageRef: flags["image-ref"],
+            dockerfile: flags.dockerfile,
+            verifiable: flags.verifiable,
+            repo: flags.repo,
+            commit: flags.commit,
+          },
+          "app-id",
+        );
+        if (!appIdInput) {
+          missing.push("app-id (positional arg or ECLOUD_APP_ID)");
+        }
+        if (missing.length > 0) {
+          const { message, exit } = stageFailure(
+            "upgrade",
+            "invalid-input",
+            `Missing required input(s) for non-interactive upgrade:\n  - ${missing.join("\n  - ")}`,
+          );
+          this.error(message, { exit });
+        }
+      }
+
       const compute = await createComputeClient(flags);
 
       // Get validated values from flags (mutated by createComputeClient)
@@ -145,7 +199,7 @@ export default class AppUpgrade extends Command {
 
       // 1. Get app ID interactively if not provided
       const appID = await getOrPromptAppID({
-        appID: args["app-id"],
+        appID: appIdInput,
         environment,
         privateKey,
         rpcUrl,
@@ -218,7 +272,7 @@ export default class AppUpgrade extends Command {
           : await promptVerifiableGitSourceInputs();
 
         // Prompt for env file after git inputs
-        envFilePath = await getEnvFileInteractive(flags["env-file"]);
+        envFilePath = await getEnvFile(flags["env-file"], nonInteractive);
         const includeTlsCaddyfile = isTlsEnabledFromEnvFile(envFilePath);
         if (includeTlsCaddyfile && !inputs.caddyfilePath) {
           inputs.caddyfilePath = "Caddyfile";
@@ -290,9 +344,17 @@ export default class AppUpgrade extends Command {
         }
       }
 
-      // 2. Get dockerfile path interactively (skip when using verifiable image)
+      // 2. Get dockerfile path interactively (skip when using verifiable image).
+      // Also skip when --image-ref is explicitly provided and no --dockerfile was:
+      // the user is upgrading to an existing image, so a stray Dockerfile in the
+      // working directory must not trigger a "build or deploy existing?" prompt
+      // (or, in non-interactive mode, silently flip the upgrade to a local build).
       const isVerifiable = verifiableMode !== "none";
-      const dockerfilePath = isVerifiable ? "" : await getDockerfileInteractive(flags.dockerfile);
+      const deployExistingImageRef = !!flags["image-ref"] && !flags.dockerfile;
+      const dockerfilePath =
+        isVerifiable || deployExistingImageRef
+          ? ""
+          : await getDockerfile(flags.dockerfile, nonInteractive);
       const buildFromDockerfile = dockerfilePath !== "";
 
       // 3. Get image reference interactively (context-aware)
@@ -301,7 +363,7 @@ export default class AppUpgrade extends Command {
         : await getImageReferenceInteractive(flags["image-ref"], buildFromDockerfile);
 
       // 4. Get env file path interactively
-      envFilePath = envFilePath ?? (await getEnvFileInteractive(flags["env-file"]));
+      envFilePath = envFilePath ?? (await getEnvFile(flags["env-file"], nonInteractive));
 
       // 4b. Merge inline --env KEY=VALUE vars (overrides env file values)
       if (flags.env && flags.env.length > 0) {
@@ -334,20 +396,23 @@ export default class AppUpgrade extends Command {
         privateKey,
         rpcUrl,
       );
-      const instanceType = await getInstanceTypeInteractive(
+      const instanceType = await getInstanceType(
         flags["instance-type"],
         currentInstanceType,
         availableTypes,
+        nonInteractive,
       );
 
       // 7. Get log visibility interactively
-      const logSettings = await getLogSettingsInteractive(
+      const logSettings = await getLogSettings(
         flags["log-visibility"] as LogVisibility | undefined,
+        nonInteractive,
       );
 
       // 8. Get resource usage monitoring interactively
-      const resourceUsageMonitoring = await getResourceUsageMonitoringInteractive(
+      const resourceUsageMonitoring = await getResourceUsageMonitoring(
         flags["resource-usage-monitoring"] as ResourceUsageMonitoring | undefined,
+        nonInteractive,
       );
 
       // 9. Prepare upgrade (builds image, pushes to registry, prepares batch, estimates gas)
@@ -362,24 +427,33 @@ export default class AppUpgrade extends Command {
       // the normal prepareUpgrade path so that layerRemoteImageIfNeeded can
       // add the ecloud runtime layer (startup script, KMS client, Caddy) if
       // the image doesn't already have it.
-      const { prepared, gasEstimate } =
-        verifiableMode === "git"
-          ? await compute.app.prepareUpgradeFromVerifiableBuild(appID, {
-              imageRef,
-              imageDigest: verifiableImageDigest!,
-              envFile: envFilePath,
-              instanceType,
-              logVisibility,
-              resourceUsageMonitoring,
-            })
-          : await compute.app.prepareUpgrade(appID, {
-              dockerfile: dockerfilePath,
-              imageRef,
-              envFile: envFilePath,
-              instanceType,
-              logVisibility,
-              resourceUsageMonitoring,
-            });
+      // Build/push stage — failures here mean no image was produced and no
+      // on-chain tx was attempted.
+      let prepared: PrepareUpgradeResult["prepared"];
+      let gasEstimate: GasEstimate;
+      try {
+        ({ prepared, gasEstimate } =
+          verifiableMode === "git"
+            ? await compute.app.prepareUpgradeFromVerifiableBuild(appID, {
+                imageRef,
+                imageDigest: verifiableImageDigest!,
+                envFile: envFilePath,
+                instanceType,
+                logVisibility,
+                resourceUsageMonitoring,
+              })
+            : await compute.app.prepareUpgrade(appID, {
+                dockerfile: dockerfilePath,
+                imageRef,
+                envFile: envFilePath,
+                instanceType,
+                logVisibility,
+                resourceUsageMonitoring,
+              }));
+      } catch (err) {
+        const { message, exit } = stageFailure("upgrade", "build", err);
+        this.error(message, { exit });
+      }
 
       // 10. Apply gas overrides if provided, show estimate, and prompt for confirmation on mainnet
       const finalTx = await applyTxOverrides(gasEstimate, flags, { publicClient, address });
@@ -403,11 +477,44 @@ export default class AppUpgrade extends Command {
         }
       }
 
-      // 11. Execute the upgrade
-      const res = await compute.app.executeUpgrade(prepared, finalTx);
+      // 11. Execute the upgrade (on-chain stage). Image already built+pushed;
+      // a failure here is distinct from a build failure and a re-run reuses the
+      // pushed image.
+      let res: Awaited<ReturnType<typeof compute.app.executeUpgrade>>;
+      try {
+        res = await compute.app.executeUpgrade(prepared, finalTx);
+      } catch (err) {
+        const { message, exit } = stageFailure("upgrade", "onchain", err);
+        this.error(message, { exit });
+      }
 
       // 12. Watch until upgrade completes
-      await compute.app.watchUpgrade(res.appId);
+      try {
+        await compute.app.watchUpgrade(res.appId, { timeoutSeconds: flags["watch-timeout"] });
+      } catch (err: any) {
+        if (err instanceof WatchTimeoutError) {
+          this.log("");
+          this.log(
+            chalk.yellow(
+              `Timed out after ${err.elapsedSeconds}s waiting for upgrade to complete (last status: ${err.lastStatus ?? "unknown"}).`,
+            ),
+          );
+          this.log(chalk.gray("The on-chain transaction was submitted; the orchestrator may"));
+          this.log(chalk.gray("still be processing. To check the current status, run:"));
+          this.log("");
+          this.log(`  ${chalk.cyan(`ecloud compute app info ${res.appId}`)}`);
+          this.log("");
+          this.log(chalk.gray(`appId:  ${res.appId}`));
+          this.log(chalk.gray(`txHash: ${res.txHash}`));
+          this.log(
+            chalk.gray(
+              `(override the watch deadline with ECLOUD_WATCH_TIMEOUT_SECONDS, currently ${err.timeoutSeconds}s)`,
+            ),
+          );
+          this.exit(1);
+        }
+        throw err;
+      }
 
       try {
         const cwd = process.env.INIT_CWD || process.cwd();
@@ -458,37 +565,5 @@ export default class AppUpgrade extends Command {
         ),
       );
     });
-  }
-}
-
-/**
- * Fetch available instance types from backend
- */
-async function fetchAvailableInstanceTypes(
-  environment: string,
-  environmentConfig: any,
-  privateKey: string,
-  rpcUrl: string,
-): Promise<SkuInfo[]> {
-  try {
-    const { publicClient, walletClient } = createViemClients({
-      privateKey,
-      rpcUrl,
-      environment,
-    });
-    const userApiClient = new UserApiClient(environmentConfig, walletClient, publicClient, {
-      clientId: getClientId(),
-    });
-
-    const skuList = await userApiClient.getSKUs();
-    if (skuList.skus.length === 0) {
-      throw new Error("No instance types available from server");
-    }
-
-    return skuList.skus;
-  } catch (err: any) {
-    console.warn(`Failed to fetch instance types: ${err.message}`);
-    // Return a default fallback
-    return [{ sku: "g1-standard-4t", description: "4 vCPUs, 16 GB memory, TDX" }];
   }
 }

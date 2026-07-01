@@ -2,15 +2,30 @@ import {
   createComputeModule,
   createBillingModule,
   createBuildModule,
+  createAdminModule,
   getEnvironmentConfig,
   requirePrivateKey,
+  type Logger,
 } from "@layr-labs/ecloud-sdk";
 import { CommonFlags, validateCommonFlags } from "./flags";
 import { getClientId } from "./utils/version";
 import { createViemClients } from "./utils/viemClients";
 import { Hex } from "viem";
 
-export async function createComputeClient(flags: CommonFlags) {
+/** Options for {@link createComputeClient}. */
+export interface CreateComputeClientOptions {
+  /**
+   * Logger override forwarded to the SDK compute module. Commands emitting
+   * machine-readable output (`--json`) pass a stderr-routed logger so SDK
+   * progress messages never corrupt stdout.
+   */
+  logger?: Logger;
+}
+
+export async function createComputeClient(
+  flags: CommonFlags,
+  options: CreateComputeClientOptions = {},
+) {
   flags = await validateCommonFlags(flags);
 
   const environment = flags.environment;
@@ -38,6 +53,7 @@ export async function createComputeClient(flags: CommonFlags) {
     environment,
     clientId: getClientId(),
     skipTelemetry: true, // CLI already has telemetry, skip SDK telemetry
+    logger: options.logger,
   });
 }
 
@@ -67,6 +83,7 @@ export async function createBillingClient(flags: CommonFlags) {
     publicClient,
     environment,
     skipTelemetry: true,
+    privateKey: privateKey as Hex,
   });
 }
 
@@ -96,5 +113,33 @@ export async function createBuildClient(flags: CommonFlags) {
     environment,
     clientId: getClientId(),
     skipTelemetry: true, // CLI already has telemetry, skip SDK telemetry
+  });
+}
+
+export async function createAdminClient(flags: CommonFlags) {
+  flags = await validateCommonFlags(flags);
+
+  const environment = flags.environment;
+  const environmentConfig = getEnvironmentConfig(environment);
+  const rpcUrl = flags["rpc-url"] || environmentConfig.billingRPCURL || environmentConfig.defaultRPCURL;
+  const { key: privateKey, source } = await requirePrivateKey({
+    privateKey: flags["private-key"],
+  });
+
+  if (flags.verbose) {
+    console.log(`Using private key from: ${source}`);
+  }
+
+  const { walletClient, publicClient } = createViemClients({
+    privateKey: privateKey as Hex,
+    rpcUrl,
+    environment,
+  });
+
+  return createAdminModule({
+    verbose: flags.verbose,
+    walletClient,
+    publicClient,
+    environment,
   });
 }

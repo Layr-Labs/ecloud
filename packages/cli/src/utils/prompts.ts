@@ -62,12 +62,89 @@ function ensureInteractive(missingFlagHint: string): void {
   }
 }
 
+/**
+ * True when the CLI should run without interactive prompts.
+ *
+ * Precedence: an explicit `--non-interactive` flag, then `CI=true`, then the
+ * absence of a TTY. `isTTY` alone is unreliable in pipes/CI, so the flag and CI
+ * env give callers (agents, scripts) a deterministic signal.
+ *
+ * The optional deploy/upgrade prompts (env file, log visibility, resource-usage
+ * monitoring, Dockerfile-vs-existing-image, instance type) all have a safe
+ * default, so rather than throwing via `ensureInteractive` they fall back to
+ * that default and log what was chosen. Required inputs with no safe default
+ * (image source, app name/id) are reported all-at-once by the command layer.
+ */
+export function isNonInteractive(flags?: { "non-interactive"?: boolean }): boolean {
+  if (flags?.["non-interactive"]) return true;
+  if (process.env.CI === "true") return true;
+  return !process.stdin.isTTY;
+}
+
+/**
+ * Emit a single, consistent line noting that an optional flag was defaulted
+ * because we are running without a TTY. Keeps the choice visible/auditable in
+ * CI logs.
+ */
+function warnDefaulted(flagHint: string, chosen: string): void {
+  console.warn(`Warning: ${flagHint} not set in non-interactive mode; defaulting to ${chosen}.`);
+}
+
+/** The set of required deploy/upgrade inputs that have no safe default. */
+export interface RequiredInputState {
+  imageRef?: string;
+  dockerfile?: string;
+  verifiable?: boolean;
+  repo?: string;
+  commit?: string;
+  name?: string;
+}
+
+/**
+ * Collect ALL missing required deploy/upgrade inputs for non-interactive mode,
+ * so the caller can report them in one error instead of one prompt at a time.
+ *
+ * Covers the image source (and, for deploy, `--name`). The upgrade `app-id` is
+ * a positional arg, so its presence is checked at the call site; this helper
+ * only reports the image-source half for `"app-id"` callers.
+ *
+ * @param identityFlag "name" for deploy, "app-id" for upgrade.
+ */
+export function collectMissingRequiredInputs(
+  state: RequiredInputState,
+  identityFlag: "name" | "app-id",
+): string[] {
+  const missing: string[] = [];
+  const hasImageSource =
+    !!state.imageRef ||
+    !!state.dockerfile ||
+    (!!state.verifiable && !!state.repo && !!state.commit);
+  if (!hasImageSource) {
+    missing.push(
+      "an image source (one of: --image-ref, --dockerfile, or --verifiable with --repo and --commit)",
+    );
+  } else if (state.dockerfile && !state.imageRef && !state.verifiable) {
+    // A local --dockerfile build still needs a registry destination to push
+    // the built image to. Without --image-ref, the non-interactive run would
+    // otherwise fall through to an interactive --image-ref prompt and throw.
+    missing.push("--image-ref (registry destination for the built image)");
+  }
+  if (identityFlag === "name" && !state.name) {
+    missing.push("--name");
+  }
+  return missing;
+}
+
 // ==================== Dockerfile Selection ====================
 
 /**
- * Prompt for Dockerfile selection
+ * Resolve the Dockerfile path: explicit flag, else the discovered ./Dockerfile.
+ * When nonInteractive, defaults instead of prompting for build-vs-existing.
  */
-export async function getDockerfileInteractive(dockerfilePath?: string): Promise<string> {
+export async function getDockerfile(
+  dockerfilePath?: string,
+  nonInteractive: boolean = false,
+): Promise<string> {
   // Check if provided via option
   if (dockerfilePath) {
     return dockerfilePath;
@@ -81,6 +158,17 @@ export async function getDockerfileInteractive(dockerfilePath?: string): Promise
   if (!fs.existsSync(dockerfilePath_resolved)) {
     // No Dockerfile found, return empty string (deploy existing image)
     return "";
+  }
+
+  // In non-interactive mode we cannot ask the user to choose between building
+  // the discovered Dockerfile and deploying an existing image. Default to
+  // building from the discovered Dockerfile — the intent when a Dockerfile is
+  // sitting in the working directory. Callers that pass --image-ref skip this
+  // helper entirely (see deploy.ts / upgrade.ts), so this default never
+  // overrides an explicit image reference.
+  if (nonInteractive) {
+    warnDefaulted("--dockerfile/--image-ref", `build from '${dockerfilePath_resolved}'`);
+    return dockerfilePath_resolved;
   }
 
   // Interactive prompt when Dockerfile exists
@@ -809,15 +897,26 @@ export async function promptBuildIdFromRecentBuilds(options: {
 // ==================== Environment File Selection ====================
 
 /**
- * Prompt for environment file
+ * Resolve the env file path: explicit flag, else auto-detected ./.env.
+ * When nonInteractive, defaults to no env file instead of prompting.
  */
-export async function getEnvFileInteractive(envFilePath?: string): Promise<string> {
+export async function getEnvFile(
+  envFilePath?: string,
+  nonInteractive: boolean = false,
+): Promise<string> {
   if (envFilePath && fs.existsSync(envFilePath)) {
     return envFilePath;
   }
 
   if (fs.existsSync(".env")) {
     return ".env";
+  }
+
+  // In non-interactive mode, default to no env file (the same outcome as the
+  // interactive "Continue without env file" choice).
+  if (nonInteractive) {
+    warnDefaulted("--env-file", "no env file");
+    return "";
   }
 
   ensureInteractive("--env-file");
@@ -851,6 +950,13 @@ export async function getEnvFileInteractive(envFilePath?: string): Promise<strin
 }
 
 // ==================== Instance Type Selection ====================
+
+/**
+ * Smallest TEE tier that runs a real workload (2 vCPU / 8 GB / AMD SEV-SNP);
+ * used as the non-interactive deploy default. Confirmed present in the live
+ * getSKUs list on mainnet-alpha and sepolia-prod.
+ */
+export const DEFAULT_NONINTERACTIVE_SKU = "g1-standard-2s";
 
 /**
  * Prompt for instance type
@@ -892,10 +998,11 @@ function formatSkuChoice(it: SkuInfo): string {
   return `${it.sku} - ${it.description}`;
 }
 
-export async function getInstanceTypeInteractive(
+export async function getInstanceType(
   instanceType: string | undefined,
   defaultSKU: string,
   availableTypes: SkuInfo[],
+  nonInteractive: boolean = false,
 ): Promise<string> {
   if (instanceType) {
     // Validate provided instance type
@@ -905,6 +1012,25 @@ export async function getInstanceTypeInteractive(
     }
     const validSKUs = availableTypes.map((t) => t.sku).join(", ");
     throw new Error(`Invalid instance-type: ${instanceType} (must be one of: ${validSKUs})`);
+  }
+
+  // Non-interactive: pick a default instead of prompting.
+  // Callers pass isNonInteractive(flags) (flag + CI + isTTY) as this argument.
+  if (nonInteractive) {
+    // Upgrade path: reuse the currently pinned type when one is known.
+    if (defaultSKU) {
+      warnDefaulted("--instance-type", `current type '${defaultSKU}'`);
+      return defaultSKU;
+    }
+    // Deploy path: smallest TEE tier, if the backend offers it.
+    if (availableTypes.some((t) => t.sku === DEFAULT_NONINTERACTIVE_SKU)) {
+      warnDefaulted("--instance-type", `'${DEFAULT_NONINTERACTIVE_SKU}'`);
+      return DEFAULT_NONINTERACTIVE_SKU;
+    }
+    const validSKUs = availableTypes.map((t) => t.sku).join(", ");
+    throw new Error(
+      `Cannot pick a default --instance-type in non-interactive mode: '${DEFAULT_NONINTERACTIVE_SKU}' not offered (available: ${validSKUs}). Provide --instance-type.`,
+    );
   }
 
   ensureInteractive("--instance-type");
@@ -949,10 +1075,12 @@ export async function getInstanceTypeInteractive(
 export type LogVisibility = "public" | "private" | "off";
 
 /**
- * Prompt for log settings
+ * Resolve log settings from the --log-visibility value.
+ * When nonInteractive, defaults to private instead of prompting.
  */
-export async function getLogSettingsInteractive(
+export async function getLogSettings(
   logVisibility?: LogVisibility,
+  nonInteractive: boolean = false,
 ): Promise<{ logRedirect: string; publicLogs: boolean }> {
   if (logVisibility) {
     switch (logVisibility) {
@@ -967,6 +1095,13 @@ export async function getLogSettingsInteractive(
           `Invalid log-visibility: ${logVisibility} (must be public, private, or off)`,
         );
     }
+  }
+
+  // In non-interactive mode, default to private logs. Never silently default
+  // to public — private is the conservative choice for an unattended deploy.
+  if (nonInteractive) {
+    warnDefaulted("--log-visibility", "'private'");
+    return { logRedirect: "always", publicLogs: false };
   }
 
   ensureInteractive("--log-visibility");
@@ -1422,10 +1557,12 @@ async function getAppIDInteractiveFromRegistry(
 export type ResourceUsageMonitoring = "enable" | "disable";
 
 /**
- * Prompt for resource usage monitoring settings
+ * Resolve the resource-usage-monitoring setting from the flag value.
+ * When nonInteractive, defaults to disable instead of prompting.
  */
-export async function getResourceUsageMonitoringInteractive(
+export async function getResourceUsageMonitoring(
   resourceUsageMonitoring?: ResourceUsageMonitoring,
+  nonInteractive: boolean = false,
 ): Promise<ResourceUsageMonitoring> {
   if (resourceUsageMonitoring) {
     switch (resourceUsageMonitoring) {
@@ -1437,6 +1574,12 @@ export async function getResourceUsageMonitoringInteractive(
           `Invalid resource-usage-monitoring: ${resourceUsageMonitoring} (must be enable or disable)`,
         );
     }
+  }
+
+  // In non-interactive mode, default to disabled resource usage monitoring.
+  if (nonInteractive) {
+    warnDefaulted("--resource-usage-monitoring", "'disable'");
+    return "disable";
   }
 
   ensureInteractive("--resource-usage-monitoring");
@@ -1469,9 +1612,7 @@ export async function confirmWithDefault(
   defaultValue: boolean = false,
 ): Promise<boolean> {
   if (!process.stdin.isTTY) {
-    throw new Error(
-      `Cannot confirm "${prompt}" in non-interactive mode. Use --force to skip confirmation prompts.`,
-    );
+    return defaultValue;
   }
   return await inquirerConfirm({
     message: prompt,

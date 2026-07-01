@@ -18,6 +18,14 @@ import {
   CreateSubscriptionResponse,
   GetSubscriptionOptions,
   ProductSubscriptionResponse,
+  PaymentMethodsResponse,
+  CreditPurchaseResponse,
+  CreateCouponResponse,
+  ListCouponsResponse,
+  GetCouponResponse,
+  AddAdminResponse,
+  ListAdminsResponse,
+  RedeemCouponResponse,
 } from "../types";
 import { calculateBillingAuthSignature } from "./auth";
 import { BillingEnvironmentConfig } from "../types";
@@ -37,6 +45,8 @@ export interface BillingApiClientOptions {
    * When false (default), uses EIP-712 typed data signatures for each request.
    */
   useSession?: boolean;
+  /** Log request/response details to stderr */
+  verbose?: boolean;
 }
 
 /**
@@ -176,6 +186,94 @@ export class BillingApiClient {
     await this.makeAuthenticatedRequest(endpoint, "DELETE", productId);
   }
 
+  async getPaymentMethods(): Promise<PaymentMethodsResponse> {
+    const endpoint = `${this.config.billingApiServerURL}/v1/payment-methods`;
+    const resp = await this.makeAuthenticatedRequest(endpoint, "GET", "compute");
+    return resp.json();
+  }
+
+  async purchaseCredits(
+    amountCents: number,
+    paymentMethodId?: string,
+  ): Promise<CreditPurchaseResponse> {
+    const endpoint = `${this.config.billingApiServerURL}/v1/credits/purchase`;
+    const body: Record<string, unknown> = { amountCents };
+    if (paymentMethodId) {
+      body.paymentMethodId = paymentMethodId;
+    }
+    const resp = await this.makeAuthenticatedRequest(endpoint, "POST", "compute", body);
+    return resp.json();
+  }
+
+  // ==========================================================================
+  // Admin - Coupon Methods
+  // ==========================================================================
+
+  async createCoupon(amountCents: number): Promise<CreateCouponResponse> {
+    const endpoint = `${this.config.billingApiServerURL}/admin/coupons`;
+    const resp = await this.makeAuthenticatedRequest(endpoint, "POST", "compute", { amountCents });
+    return resp.json();
+  }
+
+  async listCoupons(opts?: { offset?: number; limit?: number; active?: boolean; redeemed?: boolean }): Promise<ListCouponsResponse> {
+    const params = new URLSearchParams();
+    if (opts?.offset !== undefined) params.set("offset", opts.offset.toString());
+    if (opts?.limit !== undefined) params.set("limit", opts.limit.toString());
+    if (opts?.active !== undefined) params.set("active", opts.active.toString());
+    if (opts?.redeemed !== undefined) params.set("redeemed", opts.redeemed.toString());
+    const qs = params.toString();
+    const endpoint = `${this.config.billingApiServerURL}/admin/coupons${qs ? `?${qs}` : ""}`;
+    const resp = await this.makeAuthenticatedRequest(endpoint, "GET", "compute");
+    return resp.json();
+  }
+
+  async getCoupon(id: string): Promise<GetCouponResponse> {
+    const endpoint = `${this.config.billingApiServerURL}/admin/coupons/${id}`;
+    const resp = await this.makeAuthenticatedRequest(endpoint, "GET", "compute");
+    return resp.json();
+  }
+
+  async deactivateCoupon(id: string): Promise<void> {
+    const endpoint = `${this.config.billingApiServerURL}/admin/coupons/${id}/deactivate`;
+    await this.makeAuthenticatedRequest(endpoint, "POST", "compute");
+  }
+
+  async redeemCouponForUser(id: string, address: string): Promise<void> {
+    const endpoint = `${this.config.billingApiServerURL}/admin/coupons/${id}/redeem`;
+    await this.makeAuthenticatedRequest(endpoint, "POST", "compute", { address });
+  }
+
+  // ==========================================================================
+  // Admin - Admin Management Methods
+  // ==========================================================================
+
+  async addAdmin(address: string): Promise<AddAdminResponse> {
+    const endpoint = `${this.config.billingApiServerURL}/admin/admins`;
+    const resp = await this.makeAuthenticatedRequest(endpoint, "POST", "compute", { address });
+    return resp.json();
+  }
+
+  async removeAdmin(address: string): Promise<void> {
+    const endpoint = `${this.config.billingApiServerURL}/admin/admins/${address}`;
+    await this.makeAuthenticatedRequest(endpoint, "DELETE", "compute");
+  }
+
+  async listAdmins(): Promise<ListAdminsResponse> {
+    const endpoint = `${this.config.billingApiServerURL}/admin/admins`;
+    const resp = await this.makeAuthenticatedRequest(endpoint, "GET", "compute");
+    return resp.json();
+  }
+
+  // ==========================================================================
+  // User - Coupon Redemption
+  // ==========================================================================
+
+  async redeemCoupon(code: string): Promise<RedeemCouponResponse> {
+    const endpoint = `${this.config.billingApiServerURL}/v1/coupons/redeem`;
+    const resp = await this.makeAuthenticatedRequest(endpoint, "POST", "compute", { code });
+    return resp.json();
+  }
+
   // ==========================================================================
   // Internal Methods
   // ==========================================================================
@@ -191,10 +289,25 @@ export class BillingApiClient {
     productId: ProductID,
     body?: Record<string, unknown>,
   ): Promise<{ json: () => Promise<any>; text: () => Promise<string> }> {
-    if (this.useSession) {
-      return this.makeSessionAuthenticatedRequest(url, method, body);
+    if (this.options.verbose) {
+      console.debug(`[BillingAPI] ${method} ${url}`);
+      if (body) {
+        console.debug(`[BillingAPI] Payload:`, JSON.stringify(body, null, 2));
+      }
     }
-    return this.makeSignatureAuthenticatedRequest(url, method, productId, body);
+    const resp = this.useSession
+      ? await this.makeSessionAuthenticatedRequest(url, method, body)
+      : await this.makeSignatureAuthenticatedRequest(url, method, productId, body);
+
+    if (this.options.verbose) {
+      const data = await resp.json();
+      console.debug(`[BillingAPI] Response:`, JSON.stringify(data, null, 2));
+      return {
+        json: async () => data,
+        text: async () => JSON.stringify(data),
+      };
+    }
+    return resp;
   }
 
   /**
