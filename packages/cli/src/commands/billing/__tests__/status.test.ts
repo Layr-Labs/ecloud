@@ -19,7 +19,7 @@ vi.mock("../../../utils/viemClients", () => ({
 import { createBillingClient } from "../../../client";
 import { createViemClients } from "../../../utils/viemClients";
 
-describe("ecloud billing status — top-up hint", () => {
+describe("ecloud billing status", () => {
   let logOutput: string[];
   let mockBilling: {
     address: string;
@@ -102,6 +102,33 @@ describe("ecloud billing status — top-up hint", () => {
     const fullOutput = output.join("\n");
 
     expect(fullOutput).not.toContain("Need more credits?");
+  });
+
+  describe("credit expiry", () => {
+    it("does not render the API's string zero sentinel as the Unix epoch", async () => {
+      const output = await runStatusCommand({
+        subscriptionStatus: "active",
+        productId: "compute",
+        remainingCredits: 5,
+        nextCreditExpiry: "0",
+      });
+      const fullOutput = output.join("\n");
+
+      expect(fullOutput).toContain("Credits: $5.00");
+      expect(fullOutput).not.toContain("expires");
+      expect(fullOutput).not.toContain("1970");
+    });
+
+    it("renders a valid positive expiry timestamp", async () => {
+      const output = await runStatusCommand({
+        subscriptionStatus: "active",
+        productId: "compute",
+        remainingCredits: 5,
+        nextCreditExpiry: 1893456000,
+      });
+
+      expect(output.join("\n")).toContain("expires");
+    });
   });
 
   describe("wallet ETH balance line", () => {

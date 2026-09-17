@@ -505,10 +505,11 @@ async function checkQuotaAvailable(
     throw new Error(`failed to get quota limit: ${err.message}`);
   }
 
-  // If quota is 0, user needs to subscribe
+  // A zero quota means deployment access has not been initialized. Billing is
+  // credit-based, so subscribing is not an appropriate recovery action.
   if (maxQuota === 0) {
     throw new Error(
-      "no app quota available. Run 'ecloud billing subscribe' to enable app deployment",
+      `no app quota available for ${environmentConfig.name}. If you recently purchased compute credits, quota initialization may still be pending. Retry shortly. If the issue persists, contact EigenCloud support at eigencloud_support@eigenlabs.org and include wallet ${userAddress}.`,
     );
   }
 
@@ -591,7 +592,9 @@ export async function prepareDeploy(
 
       // 4. Generate or use provided salt
       const salt = options.salt ?? generateRandomSalt();
-      logger.debug(`${options.salt ? "Using provided" : "Generated"} salt: ${Buffer.from(salt).toString("hex")}`);
+      logger.debug(
+        `${options.salt ? "Using provided" : "Generated"} salt: ${Buffer.from(salt).toString("hex")}`,
+      );
 
       // 5. Get app ID (calculate from salt and address)
       logger.debug("Calculating app ID...");

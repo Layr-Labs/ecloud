@@ -31,8 +31,14 @@ export default class BillingStatus extends Command {
         productId: flags.product as "compute",
       });
 
-      const formatExpiry = (timestamp?: number) =>
-        timestamp ? ` (expires ${new Date(timestamp * 1000).toLocaleDateString()})` : "";
+      const formatExpiry = (timestamp?: number | string | null) => {
+        const normalizedTimestamp = Number(timestamp);
+        if (!Number.isFinite(normalizedTimestamp) || normalizedTimestamp <= 0) {
+          return "";
+        }
+
+        return ` (expires ${new Date(normalizedTimestamp * 1000).toLocaleDateString()})`;
+      };
 
       // Format status with appropriate color and symbol
       const formatStatus = (status: string) => {
